@@ -9,11 +9,7 @@ from engineering_gateway.application.validation import DeterministicValidationEn
 from engineering_gateway.domain.adapters import GitAdapter, ReadAdapter
 from engineering_gateway.domain.audit import ActorType, AuditEvent, AuditResult
 from engineering_gateway.domain.baselines import Baseline, ExternalSystemVersion
-from engineering_gateway.domain.change_control import (
-    AuthorizationLevel,
-    ChangeGate,
-    ChangeRequestState,
-)
+from engineering_gateway.domain.change_control import AuthorizationLevel, ChangeGate, ChangeRequestState
 from engineering_gateway.domain.models import EngineeringElement, EngineeringRelation
 from engineering_gateway.domain.ports import (
     AuditSink,
@@ -136,8 +132,7 @@ class GatewayApplicationService:
             git_ref=git_ref,
         )
         try:
-            if change_request.state is ChangeRequestState.OPEN:
-                ChangeGate.require_transition(change_request.state, ChangeRequestState.IN_PROGRESS)
+            ChangeGate.require_transition(change_request.state, ChangeRequestState.IN_PROGRESS)
             change_request = change_request.model_copy(update={
                 "state": ChangeRequestState.IN_PROGRESS,
                 "source_baseline_id": baseline.id,
@@ -160,7 +155,7 @@ class GatewayApplicationService:
         elements: list[EngineeringElement], relations: list[EngineeringRelation],
         profile_id: str, profile_version: str,
     ) -> ValidationResult:
-        """Validate an active workspace and its change request before approval."""
+        """Validate an active workspace and bind the exact profile used for approval."""
         if self._workspaces is None or self._change_requests is None:
             raise GatewayServiceError("workspace/change-request registries are not configured")
         self._require_modify(actor)
@@ -174,6 +169,8 @@ class GatewayApplicationService:
             raise GatewayServiceError("only an active workspace can be prepared for approval")
         if change_request.state is not ChangeRequestState.IN_PROGRESS:
             raise GatewayServiceError("change request must be in progress before approval preparation")
+        if workspace.profile_id is not None and (workspace.profile_id != profile_id or workspace.profile_version != profile_version):
+            raise GatewayServiceError("workspace is already bound to a different validation profile")
         result = await self.validate(actor, elements, relations, profile_id, profile_version)
         if not result.valid:
             await self._record(actor, action="prepare_for_approval", target_type="workspace", target_id=workspace_id,
@@ -181,12 +178,65 @@ class GatewayApplicationService:
             return result
         WorkspaceGate.require_transition(workspace.state, WorkspaceState.READY_FOR_APPROVAL)
         ChangeGate.require_transition(change_request.state, ChangeRequestState.READY_FOR_APPROVAL)
-        await self._workspaces.update(workspace.model_copy(update={"state": WorkspaceState.READY_FOR_APPROVAL}))
+        bound = workspace.bind_profile(profile_id, profile_version)
+        await self._workspaces.update(bound.model_copy(update={"state": WorkspaceState.READY_FOR_APPROVAL}))
         await self._change_requests.update(change_request.model_copy(update={"state": ChangeRequestState.READY_FOR_APPROVAL}))
         await self._record(actor, action="prepare_for_approval", target_type="workspace", target_id=workspace_id,
                            result=AuditResult.SUCCESS,
                            metadata={"profile_id": profile_id, "profile_version": profile_version})
         return result
+
+    async def reject_workspace(self, actor: Actor, workspace_id: UUID, reason: str) -> None:
+        """Reject a ready workspace and return it to active engineering work."""
+        if self._workspaces is None or self._change_requests is None:
+            raise GatewayServiceError("workspace/change-request registries are not configured")
+        if actor.is_ai or actor.authorization_level != AuthorizationLevel.L3_APPROVE:
+            raise GatewayServiceError("workspace rejection requires a human L3 approver")
+        workspace, change_request = await self._load_workflow(workspace_id)
+        if workspace.state is not WorkspaceState.READY_FOR_APPROVAL or change_request.state is not ChangeRequestState.READY_FOR_APPROVAL:
+            raise GatewayServiceError("workspace and change request must both be ready for rejection")
+        if not reason.strip():
+            raise GatewayServiceError("rejection requires a non-empty reason")
+        WorkspaceGate.require_transition(workspace.state, WorkspaceState.ACTIVE)
+        ChangeGate.require_transition(change_request.state, ChangeRequestState.REJECTED)
+        await self._workspaces.update(workspace.model_copy(update={"state": WorkspaceState.ACTIVE}))
+        await self._change_requests.update(change_request.model_copy(update={"state": ChangeRequestState.REJECTED}))
+        await self._record(actor, action="reject_workspace", target_type="workspace", target_id=workspace_id,
+                           result=AuditResult.SUCCESS, reason=reason)
+
+    async def reopen_workspace(self, actor: Actor, workspace_id: UUID) -> None:
+        """Reopen a rejected change request for further engineering work."""
+        if self._workspaces is None or self._change_requests is None:
+            raise GatewayServiceError("workspace/change-request registries are not configured")
+        self._require_modify(actor)
+        workspace, change_request = await self._load_workflow(workspace_id)
+        if workspace.state is not WorkspaceState.ACTIVE or change_request.state is not ChangeRequestState.REJECTED:
+            raise GatewayServiceError("only a rejected change request with an active workspace can be reopened")
+        ChangeGate.require_transition(change_request.state, ChangeRequestState.IN_PROGRESS)
+        await self._change_requests.update(change_request.model_copy(update={"state": ChangeRequestState.IN_PROGRESS}))
+        await self._record(actor, action="reopen_workspace", target_type="workspace", target_id=workspace_id,
+                           result=AuditResult.SUCCESS)
+
+    async def close_workspace(self, actor: Actor, workspace_id: UUID) -> None:
+        """Close a completed workflow; closed workspaces are immutable and non-writable."""
+        if self._workspaces is None or self._change_requests is None:
+            raise GatewayServiceError("workspace/change-request registries are not configured")
+        self._require_modify(actor)
+        workspace, change_request = await self._load_workflow(workspace_id)
+        if workspace.state is WorkspaceState.APPROVED:
+            if change_request.state is not ChangeRequestState.APPROVED:
+                raise GatewayServiceError("approved workspace requires an approved change request before closure")
+            ChangeGate.require_transition(change_request.state, ChangeRequestState.CLOSED)
+            await self._change_requests.update(change_request.model_copy(update={"state": ChangeRequestState.CLOSED}))
+        elif workspace.state is WorkspaceState.ACTIVE and change_request.state is ChangeRequestState.REJECTED:
+            ChangeGate.require_transition(change_request.state, ChangeRequestState.CLOSED)
+            await self._change_requests.update(change_request.model_copy(update={"state": ChangeRequestState.CLOSED}))
+        else:
+            raise GatewayServiceError("workspace can be closed only after approval or rejection")
+        WorkspaceGate.require_transition(workspace.state, WorkspaceState.CLOSED)
+        await self._workspaces.update(workspace.model_copy(update={"state": WorkspaceState.CLOSED}))
+        await self._record(actor, action="close_workspace", target_type="workspace", target_id=workspace_id,
+                           result=AuditResult.SUCCESS)
 
     async def save_workspace_element(self, actor: Actor, element: EngineeringElement, workspace_id: UUID) -> EngineeringElement:
         await self._require_workspace(actor, workspace_id)
@@ -222,14 +272,11 @@ class GatewayApplicationService:
             await self._record(actor, action="approve_workspace", target_type="workspace", target_id=workspace_id,
                                result=AuditResult.DENIED, reason=str(exc))
             raise GatewayServiceError(str(exc)) from exc
-        workspace = await self._workspaces.get(workspace_id)
-        if workspace is None:
-            raise GatewayServiceError(f"workspace '{workspace_id}' was not found")
-        change_request = await self._change_requests.get(workspace.change_request_id)
-        if change_request is None:
-            raise GatewayServiceError("workspace change request was not found")
+        workspace, change_request = await self._load_workflow(workspace_id)
         if workspace.state is not WorkspaceState.READY_FOR_APPROVAL or change_request.state is not ChangeRequestState.READY_FOR_APPROVAL:
             raise GatewayServiceError("workspace and change request must both be ready for approval")
+        if workspace.profile_id is None or workspace.profile_version is None:
+            raise GatewayServiceError("workspace has no validation profile provenance")
         source = await self._baselines.get(workspace.source_baseline_id)
         if source is None:
             raise GatewayServiceError("workspace source baseline was not found")
@@ -242,16 +289,10 @@ class GatewayApplicationService:
                 raise GatewayServiceError("workspace Git ref does not descend from its source baseline commit")
             tag = f"baseline-{workspace.id}"
             tagged = await self._git.create_tag(snapshot.repository, tag, snapshot.commit)
-            versions = tuple(
-                ExternalSystemVersion(system=version.system, version=version.version)
-                for version in await self._read_external_versions()
-            )
+            versions = tuple(ExternalSystemVersion(system=version.system, version=version.version) for version in await self._read_external_versions())
             baseline = Baseline(
-                name=tag,
-                git_repository=tagged.repository,
-                git_commit=tagged.commit,
-                git_tag=tagged.tag or tag,
-                external_versions=versions,
+                name=tag, git_repository=tagged.repository, git_commit=tagged.commit,
+                git_tag=tagged.tag or tag, external_versions=versions,
             )
             registered = await self._baselines.register(baseline)
             WorkspaceGate.require_transition(workspace.state, WorkspaceState.APPROVED)
@@ -269,8 +310,20 @@ class GatewayApplicationService:
                            result=AuditResult.SUCCESS,
                            metadata={"workspace_id": str(workspace_id), "change_request_id": str(change_request.id),
                                      "source_baseline_id": str(source.id), "source_git_commit": workspace.source_git_commit,
-                                     "git_commit": registered.git_commit, "git_tag": registered.git_tag})
+                                     "git_commit": registered.git_commit, "git_tag": registered.git_tag,
+                                     "profile_id": workspace.profile_id, "profile_version": workspace.profile_version})
         return registered
+
+    async def _load_workflow(self, workspace_id: UUID) -> tuple[Workspace, object]:
+        if self._workspaces is None or self._change_requests is None:
+            raise GatewayServiceError("workspace/change-request registries are not configured")
+        workspace = await self._workspaces.get(workspace_id)
+        if workspace is None:
+            raise GatewayServiceError(f"workspace '{workspace_id}' was not found")
+        change_request = await self._change_requests.get(workspace.change_request_id)
+        if change_request is None:
+            raise GatewayServiceError("workspace change request was not found")
+        return workspace, change_request
 
     async def _read_external_versions(self):
         versions = []
