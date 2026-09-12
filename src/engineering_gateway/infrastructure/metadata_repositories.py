@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from engineering_gateway.application.profile_engine import StandardProfileEngine
 from engineering_gateway.domain.audit import AuditEvent
 from engineering_gateway.domain.baselines import Baseline, ExternalSystemVersion
 from engineering_gateway.domain.change_control import ChangeRequest, ChangeRequestState
@@ -20,20 +21,46 @@ from engineering_gateway.infrastructure.metadata_models import (
 
 
 class SqlAlchemyStandardProfileRegistry:
-    """Durable Standard Profile registry with immutable version identities."""
+    """Durable Standard Profile registry with explicit activation state."""
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
     async def register(self, profile: StandardProfile) -> None:
+        StandardProfileEngine.validate_profile(profile)
         existing = await self._session.scalar(select(StandardProfileRecord).where(StandardProfileRecord.profile_id == profile.id, StandardProfileRecord.version == profile.version))
         definition = profile.model_dump(mode="json")
         if existing is not None:
             if existing.definition != definition:
                 raise ValueError(f"profile '{profile.id}@{profile.version}' already exists")
             return
-        self._session.add(StandardProfileRecord(id=uuid4(), profile_id=profile.id, version=profile.version, name=profile.name, definition=definition))
+        self._session.add(StandardProfileRecord(id=uuid4(), profile_id=profile.id, version=profile.version, name=profile.name, definition=definition, active=False))
         await self._session.commit()
+
+    async def activate(self, profile_id: str, version: str) -> StandardProfile:
+        record = await self._session.scalar(select(StandardProfileRecord).where(StandardProfileRecord.profile_id == profile_id, StandardProfileRecord.version == version))
+        if record is None:
+            raise ValueError(f"profile '{profile_id}@{version}' was not found")
+        profile = StandardProfile.model_validate(record.definition)
+        StandardProfileEngine.validate_profile(profile)
+        record.active = True
+        await self._session.commit()
+        return profile
+
+    async def deactivate(self, profile_id: str, version: str) -> None:
+        record = await self._session.scalar(select(StandardProfileRecord).where(StandardProfileRecord.profile_id == profile_id, StandardProfileRecord.version == version))
+        if record is None:
+            raise ValueError(f"profile '{profile_id}@{version}' was not found")
+        record.active = False
+        await self._session.commit()
+
+    async def is_active(self, profile_id: str, version: str) -> bool:
+        record = await self._session.scalar(select(StandardProfileRecord).where(StandardProfileRecord.profile_id == profile_id, StandardProfileRecord.version == version))
+        return bool(record and record.active)
+
+    async def get_active(self) -> list[StandardProfile]:
+        result = await self._session.scalars(select(StandardProfileRecord).where(StandardProfileRecord.active.is_(True)).order_by(StandardProfileRecord.profile_id, StandardProfileRecord.version))
+        return [StandardProfile.model_validate(record.definition) for record in result]
 
     async def get(self, profile_id: str, version: str) -> StandardProfile | None:
         record = await self._session.scalar(select(StandardProfileRecord).where(StandardProfileRecord.profile_id == profile_id, StandardProfileRecord.version == version))
@@ -118,6 +145,7 @@ class SqlAlchemyWorkspaceRegistry:
                                           git_ref=workspace.git_ref,
                                           profile_id=workspace.profile_id,
                                           profile_version=workspace.profile_version,
+                                          reconciled=workspace.reconciled,
                                           state=workspace.state.value))
         await self._session.commit()
         return workspace
@@ -141,12 +169,15 @@ class SqlAlchemyWorkspaceRegistry:
             raise ValueError("workspace validation profile is immutable once bound")
         if record.profile_version is not None and record.profile_version != workspace.profile_version:
             raise ValueError("workspace validation profile is immutable once bound")
+        if record.reconciled and not workspace.reconciled:
+            raise ValueError("workspace reconciliation evidence is immutable")
         current = WorkspaceState(record.state)
         if current is not workspace.state:
             from engineering_gateway.domain.workspaces import WorkspaceGate
             WorkspaceGate.require_transition(current, workspace.state)
         record.profile_id = workspace.profile_id
         record.profile_version = workspace.profile_version
+        record.reconciled = workspace.reconciled
         record.state = workspace.state.value
         await self._session.commit()
         return workspace
@@ -168,7 +199,7 @@ def _to_workspace(record: WorkspaceRecord) -> Workspace:
                      source_git_commit=record.source_git_commit,
                      change_request_id=record.change_request_id, git_ref=record.git_ref,
                      profile_id=record.profile_id, profile_version=record.profile_version,
-                     state=WorkspaceState(record.state))
+                     reconciled=record.reconciled, state=WorkspaceState(record.state))
 
 
 class SqlAlchemyAuditSink:
