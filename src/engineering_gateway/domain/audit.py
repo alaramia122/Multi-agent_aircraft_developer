@@ -44,11 +44,6 @@ class AuditEvent(BaseModel):
     reason: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
-    @property
-    def is_state_changing(self) -> bool:
-        """Return whether this event records a successful state-changing action."""
-        return self.result is AuditResult.SUCCESS
-
 
 class InMemoryAuditSink:
     """Append-only audit sink used before durable persistence is introduced."""
