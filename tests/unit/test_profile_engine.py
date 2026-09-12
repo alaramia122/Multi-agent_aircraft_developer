@@ -72,7 +72,7 @@ def test_composition_merges_non_conflicting_definitions() -> None:
         "verification",
         "safety_case",
     }
-    assert composed.metadata["composed_from"] == ["base", "extension"]
+    assert composed.metadata["composed_from"] == ["base@1.0", "extension@1.0"]
 
 
 def test_composition_rejects_conflicting_definition() -> None:
