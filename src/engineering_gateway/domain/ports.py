@@ -1,21 +1,21 @@
-"""Ports for external systems and persistence.
-
-Adapters implement these protocols. Domain/application code depends on the protocols,
-not on vendor SDKs or wire formats.
-"""
+"""Ports for persistence and external engineering systems."""
 
 from typing import Protocol
 from uuid import UUID
 
-from engineering_gateway.domain.models import EngineeringElement
+from engineering_gateway.domain.models import EngineeringElement, EngineeringRelation
 
 
 class EngineeringRepository(Protocol):
-    """Gateway reference store for canonical engineering elements."""
+    """Gateway reference store for canonical engineering elements and relations."""
 
     async def get(self, element_id: UUID) -> EngineeringElement | None: ...
 
     async def save(self, element: EngineeringElement) -> EngineeringElement: ...
+
+    async def add_relation(self, relation: EngineeringRelation) -> EngineeringRelation: ...
+
+    async def get_relations(self, element_id: UUID) -> list[EngineeringRelation]: ...
 
 
 class EngineeringSystemAdapter(Protocol):

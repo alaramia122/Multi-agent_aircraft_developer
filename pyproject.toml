@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "engineering-gateway"
-version = "0.1.0"
+version = "0.2.0"
 description = "Engineering Gateway infrastructure for the multi-agent aircraft developer system"
 requires-python = ">=3.12,<3.14"
 dependencies = [
@@ -14,6 +14,7 @@ dependencies = [
     "sqlalchemy>=2.0,<3.0",
     "alembic>=1.14,<2.0",
     "psycopg[binary]>=3.2,<4.0",
+    "aiosqlite>=0.20,<1.0",
     "uvicorn[standard]>=0.30,<1.0",
 ]
 
