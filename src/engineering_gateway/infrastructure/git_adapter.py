@@ -1,7 +1,7 @@
 """Local Git adapter implementation for reproducible repository references."""
 
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 from engineering_gateway.domain.adapters import GitSnapshot
 
