@@ -26,6 +26,7 @@ class Workspace(BaseModel):
     git_ref: str = Field(default="HEAD", min_length=1)
     profile_id: str | None = Field(default=None, min_length=1)
     profile_version: str | None = Field(default=None, min_length=1)
+    published_baseline_id: UUID | None = None
     state: WorkspaceState = WorkspaceState.ACTIVE
 
     def bind_profile(self, profile_id: str, profile_version: str) -> "Workspace":
@@ -35,6 +36,12 @@ class Workspace(BaseModel):
         if self.profile_version is not None and self.profile_version != profile_version:
             raise ValueError("workspace validation profile is immutable once bound")
         return self.model_copy(update={"profile_id": profile_id, "profile_version": profile_version})
+
+    def bind_published_baseline(self, baseline_id: UUID) -> "Workspace":
+        """Bind the immutable baseline produced by successful publication."""
+        if self.published_baseline_id is not None and self.published_baseline_id != baseline_id:
+            raise ValueError("published baseline is immutable once bound")
+        return self.model_copy(update={"published_baseline_id": baseline_id})
 
 
 class WorkspaceGateError(ValueError):
@@ -89,6 +96,8 @@ class WorkspaceRegistry:
             raise ValueError("workspace validation profile is immutable once bound")
         if current.profile_version is not None and current.profile_version != workspace.profile_version:
             raise ValueError("workspace validation profile is immutable once bound")
+        if current.published_baseline_id is not None and current.published_baseline_id != workspace.published_baseline_id:
+            raise ValueError("published baseline is immutable once bound")
         WorkspaceGate.require_transition(current.state, workspace.state)
         self._workspaces[workspace.id] = workspace
         return workspace
