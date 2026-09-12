@@ -113,8 +113,9 @@ class SqlAlchemyWorkspaceRegistry:
         if await self.get(workspace.id) is not None:
             raise ValueError(f"workspace '{workspace.id}' already exists")
         self._session.add(WorkspaceRecord(id=workspace.id, source_baseline_id=workspace.source_baseline_id,
-                                          change_request_id=workspace.change_request_id, git_ref=workspace.git_ref,
-                                          state=workspace.state.value))
+                                          source_git_commit=workspace.source_git_commit,
+                                          change_request_id=workspace.change_request_id,
+                                          git_ref=workspace.git_ref, state=workspace.state.value))
         await self._session.commit()
         return workspace
 
@@ -126,8 +127,17 @@ class SqlAlchemyWorkspaceRegistry:
         record = await self._session.get(WorkspaceRecord, workspace.id)
         if record is None:
             raise ValueError(f"workspace '{workspace.id}' does not exist")
-        if record.source_baseline_id != workspace.source_baseline_id or record.change_request_id != workspace.change_request_id or record.git_ref != workspace.git_ref:
+        if (
+            record.source_baseline_id != workspace.source_baseline_id
+            or record.source_git_commit != workspace.source_git_commit
+            or record.change_request_id != workspace.change_request_id
+            or record.git_ref != workspace.git_ref
+        ):
             raise ValueError("workspace origin and Git reference are immutable")
+        current = WorkspaceState(record.state)
+        if current is not workspace.state:
+            from engineering_gateway.domain.workspaces import WorkspaceGate
+            WorkspaceGate.require_transition(current, workspace.state)
         record.state = workspace.state.value
         await self._session.commit()
         return workspace
@@ -146,6 +156,7 @@ def _to_change_request(record: ChangeRequestRecord) -> ChangeRequest:
 
 def _to_workspace(record: WorkspaceRecord) -> Workspace:
     return Workspace(id=record.id, source_baseline_id=record.source_baseline_id,
+                     source_git_commit=record.source_git_commit,
                      change_request_id=record.change_request_id, git_ref=record.git_ref,
                      state=WorkspaceState(record.state))
 
