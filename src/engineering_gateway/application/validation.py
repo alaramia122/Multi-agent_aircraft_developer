@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from uuid import UUID
 
-from engineering_gateway.domain.models import EngineeringElement, EngineeringRelation, RelationType
+from engineering_gateway.domain.models import EngineeringElement, EngineeringRelation
 from engineering_gateway.domain.profiles import StandardProfile
 from engineering_gateway.domain.traceability import TraceabilityGraph
 
@@ -71,27 +71,19 @@ class DeterministicValidationEngine:
                     )
                 )
 
-        issues.extend(self._traceability_issues(elements, relations, profile))
-        return issues
-
-    @staticmethod
-    def _traceability_issues(
-        elements: list[EngineeringElement],
-        relations: list[EngineeringRelation],
-        profile: StandardProfile,
-    ) -> list[ValidationIssue]:
         graph = TraceabilityGraph(elements, relations)
-        return [
-            ValidationIssue(
-                code="MISSING_TRACEABILITY",
-                message=(
-                    f"Required traceability '{gap.rule_id}' is missing for element "
-                    f"{gap.source_id}"
-                ),
-                element_id=gap.source_id,
+        for gap in graph.traceability_violations(profile):
+            issues.append(
+                ValidationIssue(
+                    code=("FORBIDDEN_TRACEABILITY" if gap.forbidden else "MISSING_TRACEABILITY"),
+                    message=(
+                        f"Traceability rule '{gap.rule_id}' is violated for element "
+                        f"{gap.source_id}"
+                    ),
+                    element_id=gap.source_id,
+                )
             )
-            for gap in graph.missing_required(profile)
-        ]
+        return issues
 
 
 __all__ = ["DeterministicValidationEngine", "ValidationIssue"]
