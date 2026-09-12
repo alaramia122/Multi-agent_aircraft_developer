@@ -5,7 +5,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from engineering_gateway.domain.models import EngineeringElement, EngineeringRelation
+from engineering_gateway.domain.models import EngineeringElement, EngineeringGraph, EngineeringRelation
 from engineering_gateway.infrastructure.models import EngineeringElementRecord, EngineeringRelationRecord
 
 
@@ -57,6 +57,14 @@ class SqlAlchemyEngineeringRepository:
             )
         )
         return [self._to_relation(record) for record in result.scalars()]
+
+    async def list_graph(self) -> EngineeringGraph:
+        elements_result = await self._session.scalars(select(EngineeringElementRecord).order_by(EngineeringElementRecord.id))
+        relations_result = await self._session.scalars(select(EngineeringRelationRecord).order_by(EngineeringRelationRecord.id))
+        return EngineeringGraph(
+            elements=[self._to_element(record) for record in elements_result],
+            relations=[self._to_relation(record) for record in relations_result],
+        )
 
     @staticmethod
     def _to_element(record: EngineeringElementRecord) -> EngineeringElement:
