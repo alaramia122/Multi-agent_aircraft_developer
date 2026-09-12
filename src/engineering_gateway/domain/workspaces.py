@@ -29,7 +29,7 @@ class Workspace(BaseModel):
     state: WorkspaceState = WorkspaceState.ACTIVE
 
     def bind_profile(self, profile_id: str, profile_version: str) -> "Workspace":
-        """Return a copy bound to the exact profile used for approval preparation."""
+        """Bind the exact profile used for deterministic approval validation."""
         if self.profile_id is not None and self.profile_id != profile_id:
             raise ValueError("workspace validation profile is immutable once bound")
         if self.profile_version is not None and self.profile_version != profile_version:
@@ -53,6 +53,8 @@ class WorkspaceGate:
 
     @classmethod
     def require_transition(cls, current: WorkspaceState, target: WorkspaceState) -> None:
+        if current is target:
+            return
         if target not in cls._TRANSITIONS[current]:
             raise WorkspaceGateError(f"invalid workspace transition: {current.value} -> {target.value}")
 
