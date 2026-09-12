@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import DateTime, Index, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Index, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
@@ -18,6 +18,7 @@ class StandardProfileRecord(Base):
     version: Mapped[str] = mapped_column(String(128), nullable=False)
     name: Mapped[str] = mapped_column(String(1024), nullable=False)
     definition: Mapped[dict] = mapped_column(JSON, nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
 class BaselineRecord(Base):
@@ -53,6 +54,7 @@ class WorkspaceRecord(Base):
     git_ref: Mapped[str] = mapped_column(String(2048), nullable=False, default="HEAD")
     profile_id: Mapped[str | None] = mapped_column(String(255))
     profile_version: Mapped[str | None] = mapped_column(String(128))
+    reconciled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     state: Mapped[str] = mapped_column(String(64), nullable=False)
 
 
