@@ -1,7 +1,12 @@
 """Persistence implementations for Gateway metadata."""
 
+from uuid import uuid4
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from engineering_gateway.domain.audit import AuditEvent
-from engineering_gateway.domain.baselines import Baseline, ExternalSystemVersion
+from engineering_gateway.domain.baselines import Baseline
 from engineering_gateway.domain.profiles import StandardProfile
 from engineering_gateway.infrastructure.metadata_models import (
     AuditEventRecord,
@@ -13,36 +18,54 @@ from engineering_gateway.infrastructure.metadata_models import (
 class SqlAlchemyStandardProfileRegistry:
     """Durable Standard Profile registry with immutable version identities."""
 
-    def __init__(self, session) -> None:
+    def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
     async def register(self, profile: StandardProfile) -> None:
         existing = await self._session.scalar(
-            __import__("sqlalchemy").select(StandardProfileRecord).where(
+            select(StandardProfileRecord).where(
                 StandardProfileRecord.profile_id == profile.id,
                 StandardProfileRecord.version == profile.version,
             )
         )
+        definition = profile.model_dump(mode="json")
         if existing is not None:
-            if existing.definition != profile.model_dump(mode="json"):
+            if existing.definition != definition:
                 raise ValueError(f"profile '{profile.id}@{profile.version}' already exists")
             return
         self._session.add(
             StandardProfileRecord(
-                id=__import__("uuid").uuid4(),
+                id=uuid4(),
                 profile_id=profile.id,
                 version=profile.version,
                 name=profile.name,
-                definition=profile.model_dump(mode="json"),
+                definition=definition,
             )
         )
         await self._session.commit()
+
+    async def get(self, profile_id: str, version: str) -> StandardProfile | None:
+        record = await self._session.scalar(
+            select(StandardProfileRecord).where(
+                StandardProfileRecord.profile_id == profile_id,
+                StandardProfileRecord.version == version,
+            )
+        )
+        return StandardProfile.model_validate(record.definition) if record else None
+
+    async def list(self) -> list[StandardProfile]:
+        result = await self._session.scalars(
+            select(StandardProfileRecord).order_by(
+                StandardProfileRecord.profile_id, StandardProfileRecord.version
+            )
+        )
+        return [StandardProfile.model_validate(record.definition) for record in result]
 
 
 class SqlAlchemyBaselineRegistry:
     """Durable immutable baseline registry."""
 
-    def __init__(self, session) -> None:
+    def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
     async def register(self, baseline: Baseline) -> Baseline:
@@ -64,6 +87,14 @@ class SqlAlchemyBaselineRegistry:
         await self._session.commit()
         return baseline
 
+    async def get(self, baseline_id) -> Baseline | None:
+        record = await self._session.get(BaselineRecord, baseline_id)
+        return _to_baseline(record) if record else None
+
+    async def list(self) -> list[Baseline]:
+        result = await self._session.scalars(select(BaselineRecord).order_by(BaselineRecord.id))
+        return [_to_baseline(record) for record in result]
+
 
 def _baseline_payload(record: BaselineRecord) -> dict:
     return {
@@ -76,10 +107,21 @@ def _baseline_payload(record: BaselineRecord) -> dict:
     }
 
 
+def _to_baseline(record: BaselineRecord) -> Baseline:
+    return Baseline(
+        id=record.id,
+        name=record.name,
+        git_repository=record.git_repository,
+        git_commit=record.git_commit,
+        git_tag=record.git_tag,
+        external_versions=tuple(record.external_versions),
+    )
+
+
 class SqlAlchemyAuditSink:
     """Append-only durable audit sink."""
 
-    def __init__(self, session) -> None:
+    def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
     async def record(self, event: AuditEvent) -> None:
