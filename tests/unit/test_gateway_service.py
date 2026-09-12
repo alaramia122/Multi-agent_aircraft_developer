@@ -37,12 +37,16 @@ class FakeRepository:
 class FakeGit:
     system_name = "git"
 
-    def __init__(self, commit: str = "def456") -> None:
+    def __init__(self, commit: str = "def456", ancestor: bool = True) -> None:
         self.commit = commit
+        self.ancestor = ancestor
         self.tags: list[tuple[str, str, str]] = []
 
     async def get_snapshot(self, repository: str, ref: str = "HEAD") -> GitSnapshot:
         return GitSnapshot(repository=repository, commit=self.commit, tag=None)
+
+    async def is_ancestor(self, repository: str, ancestor_commit: str, descendant_ref: str) -> bool:
+        return self.ancestor
 
     async def create_tag(self, repository: str, tag: str, commit: str) -> GitSnapshot:
         self.tags.append((repository, tag, commit))
@@ -230,7 +234,7 @@ async def test_approval_requires_both_workspace_and_change_request_ready(workflo
 
 @pytest.mark.asyncio
 async def test_approve_workspace_updates_change_request_and_derives_baseline(workflow_service) -> None:
-    gateway, _, baselines, workspaces, _, change_requests = workflow_service
+    gateway, _, baselines, workspaces, git, change_requests = workflow_service
     source = await baselines.register(Baseline(name="B0", git_repository="repo", git_commit="abc123"))
     change_request = await make_change_request(change_requests)
     workspace = await gateway.create_workspace(Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE), source.id, change_request.id, git_ref="feature/change-1")
@@ -245,6 +249,7 @@ async def test_approve_workspace_updates_change_request_and_derives_baseline(wor
     assert registered.git_tag == f"baseline-{workspace.id}"
     assert registered.external_versions[0].system == "strictdoc"
     assert registered.external_versions[0].version == "rev-42"
+    assert git.tags == [("repo", f"baseline-{workspace.id}", "def456")]
     assert (await workspaces.get(workspace.id)).state is WorkspaceState.APPROVED
     stored_cr = await change_requests.get(change_request.id)
     assert stored_cr is not None
@@ -254,10 +259,17 @@ async def test_approve_workspace_updates_change_request_and_derives_baseline(wor
 
 
 @pytest.mark.asyncio
-async def test_workspace_provenance_is_immutable(workflow_service) -> None:
-    gateway, _, baselines, workspaces, _, change_requests = workflow_service
+async def test_approval_rejects_unrelated_git_history(workflow_service) -> None:
+    gateway, _, baselines, workspaces, git, change_requests = workflow_service
     source = await baselines.register(Baseline(name="B0", git_repository="repo", git_commit="abc123"))
     change_request = await make_change_request(change_requests)
     workspace = await gateway.create_workspace(Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE), source.id, change_request.id)
-    with pytest.raises(ValueError, match="immutable"):
-        await workspaces.update(workspace.model_copy(update={"source_git_commit": "attacker-controlled-commit"}))
+    await workspaces.update(workspace.model_copy(update={"state": WorkspaceState.READY_FOR_APPROVAL}))
+    await change_requests.update(change_request.model_copy(update={
+        "state": ChangeRequestState.READY_FOR_APPROVAL,
+        "source_baseline_id": source.id,
+        "workspace_id": workspace.id,
+    }))
+    git.ancestor = False
+    with pytest.raises(GatewayServiceError, match="does not descend"):
+        await gateway.approve_workspace(Actor("reviewer", ActorType.HUMAN, AuthorizationLevel.L3_APPROVE), workspace.id)
