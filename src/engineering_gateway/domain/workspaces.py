@@ -22,6 +22,7 @@ class Workspace(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     source_baseline_id: UUID
     change_request_id: UUID
+    git_ref: str = Field(default="HEAD", min_length=1)
     state: WorkspaceState = WorkspaceState.ACTIVE
 
 
