@@ -81,10 +81,12 @@ class WorkspaceRegistry:
             or current.source_git_commit != workspace.source_git_commit
             or current.change_request_id != workspace.change_request_id
             or current.git_ref != workspace.git_ref
-            or current.profile_id != workspace.profile_id
-            or current.profile_version != workspace.profile_version
         ):
-            raise ValueError("workspace origin, Git reference and validation profile are immutable")
+            raise ValueError("workspace origin and Git reference are immutable")
+        if current.profile_id is not None and current.profile_id != workspace.profile_id:
+            raise ValueError("workspace validation profile is immutable once bound")
+        if current.profile_version is not None and current.profile_version != workspace.profile_version:
+            raise ValueError("workspace validation profile is immutable once bound")
         WorkspaceGate.require_transition(current.state, workspace.state)
         self._workspaces[workspace.id] = workspace
         return workspace
