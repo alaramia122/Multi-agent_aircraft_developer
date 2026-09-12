@@ -54,8 +54,8 @@ class GitAdapter(Protocol):
     async def create_tag(self, repository: str, tag: str, commit: str) -> GitSnapshot: ...
 
 
-class StrictDocAdapter(WorkspaceAdapter, Protocol):
-    """StrictDoc requirements and traceability integration boundary."""
+class StrictDocAdapter(ReadAdapter, Protocol):
+    """Read-only StrictDoc requirements and traceability integration boundary."""
 
 
 class CapellaAdapter(WorkspaceAdapter, Protocol):
