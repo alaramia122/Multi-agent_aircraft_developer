@@ -12,7 +12,6 @@ from engineering_gateway.domain.baselines import Baseline, ExternalSystemVersion
 from engineering_gateway.domain.change_control import (
     AuthorizationLevel,
     ChangeGate,
-    ChangeRequest,
     ChangeRequestState,
 )
 from engineering_gateway.domain.models import EngineeringElement, EngineeringRelation
@@ -125,6 +124,8 @@ class GatewayApplicationService:
             raise GatewayServiceError(f"change request '{change_request_id}' was not found")
         if change_request.source_baseline_id not in (None, baseline.id):
             raise GatewayServiceError("change request source baseline does not match workspace baseline")
+        if change_request.workspace_id is not None:
+            raise GatewayServiceError("change request is already linked to a workspace")
         if change_request.state not in (ChangeRequestState.OPEN, ChangeRequestState.IN_PROGRESS):
             raise GatewayServiceError("change request is not open for workspace creation")
 
@@ -137,16 +138,12 @@ class GatewayApplicationService:
         try:
             if change_request.state is ChangeRequestState.OPEN:
                 ChangeGate.require_transition(change_request.state, ChangeRequestState.IN_PROGRESS)
-                change_request = change_request.model_copy(update={
-                    "state": ChangeRequestState.IN_PROGRESS,
-                    "source_baseline_id": baseline.id,
-                    "workspace_id": workspace.id,
-                })
-            elif change_request.workspace_id not in (None, workspace.id):
-                raise GatewayServiceError("change request is already linked to another workspace")
-            else:
-                change_request = change_request.model_copy(update={"workspace_id": workspace.id, "source_baseline_id": baseline.id})
-            await self._change_requests.update(change_request) if change_request.state is ChangeRequestState.IN_PROGRESS else None
+            change_request = change_request.model_copy(update={
+                "state": ChangeRequestState.IN_PROGRESS,
+                "source_baseline_id": baseline.id,
+                "workspace_id": workspace.id,
+            })
+            await self._change_requests.update(change_request)
             created = await self._workspaces.create(workspace)
         except ValueError as exc:
             await self._record(actor, action="create_workspace", target_type="workspace", target_id=workspace.id,
@@ -206,7 +203,7 @@ class GatewayApplicationService:
         return saved
 
     async def approve(self, actor: Actor, baseline_id: UUID) -> None:
-        """Legacy boundary retained only for compatibility; it cannot create a baseline."""
+        """Legacy boundary retained only to reject direct baseline approval."""
         try:
             ChangeGate.require_approval(actor.authorization_level, actor_is_ai=actor.is_ai)
         except ValueError as exc:
@@ -241,6 +238,8 @@ class GatewayApplicationService:
 
         try:
             snapshot = await self._git.get_snapshot(source.git_repository, workspace.git_ref)
+            if not await self._git.is_ancestor(source.git_repository, workspace.source_git_commit, workspace.git_ref):
+                raise GatewayServiceError("workspace Git ref does not descend from its source baseline commit")
             tag = f"baseline-{workspace.id}"
             tagged = await self._git.create_tag(snapshot.repository, tag, snapshot.commit)
             versions = tuple(
