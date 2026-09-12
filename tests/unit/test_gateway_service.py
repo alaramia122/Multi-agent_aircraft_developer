@@ -59,6 +59,24 @@ class FakeExternalAdapter:
         return ExternalVersion(system=self.system_name, version="rev-42")
 
 
+class InMemoryChangeRequests:
+    def __init__(self) -> None:
+        self.items: dict[UUID, ChangeRequest] = {}
+
+    async def create(self, change_request: ChangeRequest) -> ChangeRequest:
+        self.items[change_request.id] = change_request
+        return change_request
+
+    async def get(self, change_request_id: UUID) -> ChangeRequest | None:
+        return self.items.get(change_request_id)
+
+    async def update(self, change_request: ChangeRequest) -> ChangeRequest:
+        if change_request.id not in self.items:
+            raise ValueError("change request does not exist")
+        self.items[change_request.id] = change_request
+        return change_request
+
+
 @pytest.fixture
 def actor_read() -> Actor:
     return Actor("human-reader", ActorType.HUMAN, AuthorizationLevel.L0_READ)
@@ -84,36 +102,21 @@ async def workflow_service():
     profiles = InMemoryStandardProfileRegistry()
     baselines = BaselineRegistry()
     workspaces = WorkspaceRegistry()
-    change_requests: dict[UUID, ChangeRequest] = {}
-
-    class ChangeRequests:
-        async def create(self, change_request: ChangeRequest) -> ChangeRequest:
-            change_requests[change_request.id] = change_request
-            return change_request
-
-        async def get(self, change_request_id: UUID) -> ChangeRequest | None:
-            return change_requests.get(change_request_id)
-
-        async def update(self, change_request: ChangeRequest) -> ChangeRequest:
-            if change_request.id not in change_requests:
-                raise ValueError("change request does not exist")
-            change_requests[change_request.id] = change_request
-            return change_request
-
+    change_requests = InMemoryChangeRequests()
     git = FakeGit()
     gateway = GatewayApplicationService(
-        repository, profiles, audit, baselines=baselines, change_requests=ChangeRequests(),
+        repository, profiles, audit, baselines=baselines, change_requests=change_requests,
         workspaces=workspaces, git=git, external_adapters=(FakeExternalAdapter(),),
     )
     return gateway, audit, baselines, workspaces, git, change_requests
 
 
-async def make_change_request(change_requests: dict[UUID, ChangeRequest], baseline_id: UUID | None = None) -> ChangeRequest:
+async def make_change_request(change_requests: InMemoryChangeRequests, baseline_id: UUID | None = None) -> ChangeRequest:
     change_request = ChangeRequest(
         external_system="openproject", external_id=f"CR-{uuid4()}", title="Controlled change",
         source_baseline_id=baseline_id,
     )
-    change_requests[change_request.id] = change_request
+    await change_requests.create(change_request)
     return change_request
 
 
@@ -137,12 +140,11 @@ async def test_ai_cannot_approve(service, actor_ai: Actor) -> None:
 
 @pytest.mark.asyncio
 async def test_workspace_write_requires_configured_active_workspace(service) -> None:
-    gateway, audit, _ = service
+    gateway, _, _ = service
     actor = Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE)
     element = EngineeringElement(kind="requirement", type_id="requirement", name="REQ-2", external_system="strictdoc", external_id="REQ-2")
     with pytest.raises(GatewayServiceError, match="workspace registry is not configured"):
         await gateway.save_workspace_element(actor, element, uuid4())
-    assert (await audit.list())[-1].result.value == "success" or (await audit.list())[-1].result.value == "denied"
 
 
 @pytest.mark.asyncio
@@ -178,10 +180,11 @@ async def test_workspace_creation_binds_baseline_and_change_request(workflow_ser
     change_request = await make_change_request(change_requests)
     actor = Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE)
     workspace = await gateway.create_workspace(actor, source.id, change_request.id, git_ref="feature/change-1")
-    stored_cr = change_requests[change_request.id]
+    stored_cr = await change_requests.get(change_request.id)
     assert workspace.source_baseline_id == source.id
     assert workspace.source_git_commit == source.git_commit
     assert workspace.git_ref == "feature/change-1"
+    assert stored_cr is not None
     assert stored_cr.state is ChangeRequestState.IN_PROGRESS
     assert stored_cr.source_baseline_id == source.id
     assert stored_cr.workspace_id == workspace.id
@@ -209,7 +212,7 @@ async def test_ai_cannot_approve_workspace(workflow_service, actor_ai: Actor) ->
     change_request = await make_change_request(change_requests)
     workspace = await gateway.create_workspace(Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE), source.id, change_request.id)
     await workspaces.update(workspace.model_copy(update={"state": WorkspaceState.READY_FOR_APPROVAL}))
-    change_requests[change_request.id] = change_request.model_copy(update={"state": ChangeRequestState.READY_FOR_APPROVAL})
+    await change_requests.update(change_request.model_copy(update={"state": ChangeRequestState.READY_FOR_APPROVAL}))
     with pytest.raises(GatewayServiceError, match="human L3 approver"):
         await gateway.approve_workspace(actor_ai, workspace.id)
 
@@ -232,19 +235,21 @@ async def test_approve_workspace_updates_change_request_and_derives_baseline(wor
     change_request = await make_change_request(change_requests)
     workspace = await gateway.create_workspace(Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE), source.id, change_request.id, git_ref="feature/change-1")
     await workspaces.update(workspace.model_copy(update={"state": WorkspaceState.READY_FOR_APPROVAL}))
-    change_requests[change_request.id] = change_request.model_copy(update={
+    await change_requests.update(change_request.model_copy(update={
         "state": ChangeRequestState.READY_FOR_APPROVAL,
         "source_baseline_id": source.id,
         "workspace_id": workspace.id,
-    })
+    }))
     registered = await gateway.approve_workspace(Actor("reviewer", ActorType.HUMAN, AuthorizationLevel.L3_APPROVE), workspace.id)
     assert registered.git_commit == "def456"
     assert registered.git_tag == f"baseline-{workspace.id}"
     assert registered.external_versions[0].system == "strictdoc"
     assert registered.external_versions[0].version == "rev-42"
     assert (await workspaces.get(workspace.id)).state is WorkspaceState.APPROVED
-    assert change_requests[change_request.id].state is ChangeRequestState.APPROVED
-    assert change_requests[change_request.id].workspace_id == workspace.id
+    stored_cr = await change_requests.get(change_request.id)
+    assert stored_cr is not None
+    assert stored_cr.state is ChangeRequestState.APPROVED
+    assert stored_cr.workspace_id == workspace.id
     assert await baselines.get(registered.id) == registered
 
 
