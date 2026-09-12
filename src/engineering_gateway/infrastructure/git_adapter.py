@@ -26,6 +26,33 @@ class LocalGitAdapter:
         tag = self._run(repository, "describe", "--exact-match", "--tags", commit)
         return GitSnapshot(repository=str(Path(repository).resolve()), commit=commit, tag=tag)
 
+    async def is_ancestor(self, repository: str, ancestor_commit: str, descendant_ref: str) -> bool:
+        """Return whether the working ref descends from the workspace source commit."""
+        result = self._run(repository, "merge-base", "--is-ancestor", ancestor_commit, descendant_ref)
+        if result is not None:
+            return True
+        # `--is-ancestor` communicates false through exit status 1 and therefore
+        # cannot be distinguished from an operational failure by `_run` alone.
+        try:
+            completed = subprocess.run(
+                [
+                    "git", "-C", str(Path(repository)), "merge-base", "--is-ancestor",
+                    ancestor_commit, descendant_ref,
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=self._timeout_seconds,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise RuntimeError("Git ancestry check failed") from exc
+        if completed.returncode == 0:
+            return True
+        if completed.returncode == 1:
+            return False
+        detail = completed.stderr.strip() or "unknown Git error"
+        raise RuntimeError(f"Git ancestry check failed: {detail}")
+
     async def create_tag(self, repository: str, tag: str, commit: str) -> GitSnapshot:
         """Create a lightweight tag without moving an existing reference."""
         if not tag or tag.startswith("-"):
