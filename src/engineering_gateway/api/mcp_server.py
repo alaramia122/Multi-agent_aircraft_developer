@@ -6,6 +6,7 @@ from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 
 from engineering_gateway.application.gateway_service import Actor, GatewayApplicationService
+from engineering_gateway.application.governed_gateway_service import GovernedGatewayApplicationService
 from engineering_gateway.domain.models import EngineeringElement, EngineeringRelation
 
 
@@ -36,6 +37,26 @@ def create_mcp_server(service: GatewayApplicationService, actor: Actor) -> MCPSe
         from uuid import UUID
 
         return await service.get_relations(actor, UUID(element_id))
+
+    if isinstance(service, GovernedGatewayApplicationService):
+        @server.tool(
+            name="reconcile_workspace",
+            title="Reconcile workspace",
+            annotations=ToolAnnotations(read_only_hint=False, open_world_hint=False),
+            structured_output=True,
+        )
+        async def reconcile_workspace(workspace_id: str) -> dict[str, object]:
+            """Publish a ready workspace change-set through the governed L2 boundary."""
+            from uuid import UUID
+
+            result = await service.reconcile_workspace(actor, UUID(workspace_id))
+            return {
+                "workspace_id": str(result.workspace_id),
+                "external_versions": [
+                    {"system": version.system, "version": version.version}
+                    for version in result.external_versions
+                ],
+            }
 
     return server
 
