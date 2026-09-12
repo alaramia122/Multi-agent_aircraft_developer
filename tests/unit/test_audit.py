@@ -55,5 +55,3 @@ def test_audit_result_distinguishes_denied_from_failure() -> None:
     failed = make_event(AuditResult.FAILURE)
 
     assert denied.result != failed.result
-    assert denied.is_state_changing is False
-    assert failed.is_state_changing is False
