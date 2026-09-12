@@ -19,7 +19,6 @@ class Workspace(BaseModel):
     """Gateway-owned workspace identity and immutable origin reference."""
 
     model_config = ConfigDict(extra="forbid")
-
     id: UUID = Field(default_factory=uuid4)
     source_baseline_id: UUID
     change_request_id: UUID
@@ -32,16 +31,16 @@ class WorkspaceRegistry:
     def __init__(self) -> None:
         self._workspaces: dict[UUID, Workspace] = {}
 
-    def create(self, workspace: Workspace) -> Workspace:
+    async def create(self, workspace: Workspace) -> Workspace:
         if workspace.id in self._workspaces:
             raise ValueError(f"workspace '{workspace.id}' already exists")
         self._workspaces[workspace.id] = workspace
         return workspace
 
-    def get(self, workspace_id: UUID) -> Workspace | None:
+    async def get(self, workspace_id: UUID) -> Workspace | None:
         return self._workspaces.get(workspace_id)
 
-    def update(self, workspace: Workspace) -> Workspace:
+    async def update(self, workspace: Workspace) -> Workspace:
         if workspace.id not in self._workspaces:
             raise ValueError(f"workspace '{workspace.id}' does not exist")
         self._workspaces[workspace.id] = workspace
