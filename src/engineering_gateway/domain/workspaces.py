@@ -24,7 +24,17 @@ class Workspace(BaseModel):
     source_git_commit: str = Field(min_length=1)
     change_request_id: UUID
     git_ref: str = Field(default="HEAD", min_length=1)
+    profile_id: str | None = Field(default=None, min_length=1)
+    profile_version: str | None = Field(default=None, min_length=1)
     state: WorkspaceState = WorkspaceState.ACTIVE
+
+    def bind_profile(self, profile_id: str, profile_version: str) -> "Workspace":
+        """Return a copy bound to the exact profile used for approval preparation."""
+        if self.profile_id is not None and self.profile_id != profile_id:
+            raise ValueError("workspace validation profile is immutable once bound")
+        if self.profile_version is not None and self.profile_version != profile_version:
+            raise ValueError("workspace validation profile is immutable once bound")
+        return self.model_copy(update={"profile_id": profile_id, "profile_version": profile_version})
 
 
 class WorkspaceGateError(ValueError):
@@ -71,8 +81,10 @@ class WorkspaceRegistry:
             or current.source_git_commit != workspace.source_git_commit
             or current.change_request_id != workspace.change_request_id
             or current.git_ref != workspace.git_ref
+            or current.profile_id != workspace.profile_id
+            or current.profile_version != workspace.profile_version
         ):
-            raise ValueError("workspace origin and Git reference are immutable")
+            raise ValueError("workspace origin, Git reference and validation profile are immutable")
         WorkspaceGate.require_transition(current.state, workspace.state)
         self._workspaces[workspace.id] = workspace
         return workspace
