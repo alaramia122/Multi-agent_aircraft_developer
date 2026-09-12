@@ -44,6 +44,13 @@ class InMemoryWorkspaceChangeSetRepository:
         self._relations.setdefault(workspace_id, {})[relation.id] = relation
         return relation
 
+    async def get_changes(self, workspace_id: UUID) -> EngineeringGraph:
+        """Return only records explicitly staged in the workspace."""
+        return EngineeringGraph(
+            elements=list(self._elements.get(workspace_id, {}).values()),
+            relations=list(self._relations.get(workspace_id, {}).values()),
+        )
+
     async def get_graph(self, workspace_id: UUID) -> EngineeringGraph:
         """Return the current workspace view: canonical graph overlaid by staged writes."""
         canonical_graph = await self._canonical.list_graph()
@@ -119,28 +126,31 @@ class SqlAlchemyWorkspaceChangeSetRepository:
         await self._session.flush()
         return self._to_relation(record)
 
-    async def get_graph(self, workspace_id: UUID) -> EngineeringGraph:
-        """Return canonical state overlaid by all persisted workspace changes."""
-        canonical_graph = await self._canonical.list_graph()
-        elements = {element.id: element for element in canonical_graph.elements}
-        relations = {relation.id: relation for relation in canonical_graph.relations}
-
+    async def get_changes(self, workspace_id: UUID) -> EngineeringGraph:
+        """Return only records explicitly staged in the workspace."""
         element_result = await self._session.scalars(
             select(WorkspaceChangeElementRecord)
             .where(WorkspaceChangeElementRecord.workspace_id == workspace_id)
             .order_by(WorkspaceChangeElementRecord.element_id)
         )
-        for record in element_result:
-            elements[record.element_id] = self._to_element(record)
-
         relation_result = await self._session.scalars(
             select(WorkspaceChangeRelationRecord)
             .where(WorkspaceChangeRelationRecord.workspace_id == workspace_id)
             .order_by(WorkspaceChangeRelationRecord.relation_id)
         )
-        for record in relation_result:
-            relations[record.relation_id] = self._to_relation(record)
+        return EngineeringGraph(
+            elements=[self._to_element(record) for record in element_result],
+            relations=[self._to_relation(record) for record in relation_result],
+        )
 
+    async def get_graph(self, workspace_id: UUID) -> EngineeringGraph:
+        """Return canonical state overlaid by all persisted workspace changes."""
+        canonical_graph = await self._canonical.list_graph()
+        elements = {element.id: element for element in canonical_graph.elements}
+        relations = {relation.id: relation for relation in canonical_graph.relations}
+        changes = await self.get_changes(workspace_id)
+        elements.update({element.id: element for element in changes.elements})
+        relations.update({relation.id: relation for relation in changes.relations})
         return EngineeringGraph(elements=list(elements.values()), relations=list(relations.values()))
 
     @staticmethod
