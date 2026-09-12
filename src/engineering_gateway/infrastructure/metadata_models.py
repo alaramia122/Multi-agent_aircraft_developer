@@ -1,4 +1,4 @@
-"""SQLAlchemy models for Gateway-owned profiles, baselines and audit events."""
+"""SQLAlchemy models for Gateway-owned governance metadata."""
 
 from datetime import datetime
 from uuid import UUID
@@ -34,6 +34,36 @@ class BaselineRecord(Base):
     git_commit: Mapped[str] = mapped_column(String(255), nullable=False)
     git_tag: Mapped[str | None] = mapped_column(String(255))
     external_versions: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+
+
+class ChangeRequestRecord(Base):
+    __tablename__ = "change_requests"
+    __table_args__ = (
+        UniqueConstraint("external_system", "external_id", name="uq_change_request_external_identity"),
+        Index("ix_change_requests_state", "state"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    external_system: Mapped[str] = mapped_column(String(64), nullable=False)
+    external_id: Mapped[str] = mapped_column(String(1024), nullable=False)
+    title: Mapped[str] = mapped_column(String(1024), nullable=False)
+    state: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_baseline_id: Mapped[UUID | None] = mapped_column(Uuid)
+    workspace_id: Mapped[UUID | None] = mapped_column(Uuid)
+
+
+class WorkspaceRecord(Base):
+    __tablename__ = "workspaces"
+    __table_args__ = (
+        Index("ix_workspaces_source_baseline", "source_baseline_id"),
+        Index("ix_workspaces_change_request", "change_request_id"),
+        Index("ix_workspaces_state", "state"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    source_baseline_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    change_request_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    state: Mapped[str] = mapped_column(String(64), nullable=False)
 
 
 class AuditEventRecord(Base):
