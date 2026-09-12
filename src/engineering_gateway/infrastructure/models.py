@@ -7,8 +7,8 @@ external engineering-system payloads are not copied into this schema.
 from uuid import UUID
 
 from sqlalchemy import ForeignKey, Index, String, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.types import Uuid
 
 from engineering_gateway.infrastructure.db import Base
 
@@ -20,7 +20,7 @@ class EngineeringElementRecord(Base):
         Index("ix_engineering_elements_kind", "kind"),
     )
 
-    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     kind: Mapped[str] = mapped_column(String(64), nullable=False)
     type_id: Mapped[str] = mapped_column(String(255), nullable=False)
     name: Mapped[str] = mapped_column(String(1024), nullable=False)
@@ -44,13 +44,13 @@ class EngineeringRelationRecord(Base):
         Index("ix_relations_target", "target_id"),
     )
 
-    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     source_id: Mapped[UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("engineering_elements.id", ondelete="RESTRICT"), nullable=False
+        Uuid, ForeignKey("engineering_elements.id", ondelete="RESTRICT"), nullable=False
     )
     relation_type: Mapped[str] = mapped_column(String(64), nullable=False)
     target_id: Mapped[UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("engineering_elements.id", ondelete="RESTRICT"), nullable=False
+        Uuid, ForeignKey("engineering_elements.id", ondelete="RESTRICT"), nullable=False
     )
 
     source: Mapped[EngineeringElementRecord] = relationship(
