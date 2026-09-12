@@ -1,20 +1,16 @@
-"""MCP interface for read-only Engineering Gateway operations."""
+"""MCP interface for governed Engineering Gateway operations."""
 
 from __future__ import annotations
 
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 
+from engineering_gateway.application.gateway_service import Actor, GatewayApplicationService
 from engineering_gateway.domain.models import EngineeringElement, EngineeringRelation
-from engineering_gateway.domain.ports import EngineeringRepository
 
 
-def create_mcp_server(repository: EngineeringRepository) -> MCPServer:
-    """Create an MCP server exposing only safe read operations.
-
-    State-changing operations are intentionally absent until the Gateway application
-    services enforce authorization, change gates, approval, and audit as one boundary.
-    """
+def create_mcp_server(service: GatewayApplicationService, actor: Actor) -> MCPServer:
+    """Create an MCP server backed by the governed application boundary."""
     server = MCPServer("Engineering Gateway")
 
     @server.tool(
@@ -24,10 +20,10 @@ def create_mcp_server(repository: EngineeringRepository) -> MCPServer:
         structured_output=True,
     )
     async def get_engineering_element(element_id: str) -> EngineeringElement | None:
-        """Read one canonical engineering element by UUID."""
+        """Read one canonical engineering element by UUID through the Gateway."""
         from uuid import UUID
 
-        return await repository.get(UUID(element_id))
+        return await service.get_element(actor, UUID(element_id))
 
     @server.tool(
         name="get_engineering_relations",
@@ -36,10 +32,10 @@ def create_mcp_server(repository: EngineeringRepository) -> MCPServer:
         structured_output=True,
     )
     async def get_engineering_relations(element_id: str) -> list[EngineeringRelation]:
-        """Read incoming and outgoing canonical relations for an element."""
+        """Read incoming and outgoing canonical relations through the Gateway."""
         from uuid import UUID
 
-        return await repository.get_relations(UUID(element_id))
+        return await service.get_relations(actor, UUID(element_id))
 
     return server
 
