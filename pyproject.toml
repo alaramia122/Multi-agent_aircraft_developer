@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "engineering-gateway"
+version = "0.1.0"
+description = "Engineering Gateway infrastructure for the multi-agent aircraft developer system"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "fastapi>=0.115,<1.0",
+    "pydantic>=2.9,<3.0",
+    "pydantic-settings>=2.6,<3.0",
+    "sqlalchemy>=2.0,<3.0",
+    "alembic>=1.14,<2.0",
+    "psycopg[binary]>=3.2,<4.0",
+    "uvicorn[standard]>=0.30,<1.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3,<9.0",
+    "pytest-asyncio>=0.24,<1.0",
+    "httpx>=0.27,<1.0",
+    "ruff>=0.8,<1.0",
+    "mypy>=1.13,<2.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/engineering_gateway"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "src"

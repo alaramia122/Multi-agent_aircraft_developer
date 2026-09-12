@@ -1,0 +1,23 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+
+# Local infrastructure
+postgres-data/
+object-storage-data/
+
+# Coverage
+.coverage
+htmlcov/
