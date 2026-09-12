@@ -1,0 +1,43 @@
+{
+  "id": "verification-baseline",
+  "version": "1.0",
+  "name": "Verification Baseline Example",
+  "description": "Illustrative profile schema; not a certification interpretation of any standard.",
+  "element_types": [
+    {
+      "id": "system_requirement",
+      "kind": "requirement",
+      "attributes": [
+        {"id": "text", "type": "string", "required": true}
+      ]
+    },
+    {
+      "id": "verification_case",
+      "kind": "verification",
+      "attributes": []
+    }
+  ],
+  "relations": [
+    {
+      "id": "requirement_verified_by_case",
+      "relation_type": "verified_by",
+      "source_type_ids": ["system_requirement"],
+      "target_type_ids": ["verification_case"]
+    }
+  ],
+  "lifecycles": [],
+  "artifacts": [],
+  "traceability": [
+    {
+      "id": "requirement_requires_verification",
+      "source_type_id": "system_requirement",
+      "relation_type": "verified_by",
+      "target_type_id": "verification_case",
+      "required": true
+    }
+  ],
+  "verification": [],
+  "metadata": {
+    "example": true
+  }
+}

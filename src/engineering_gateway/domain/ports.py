@@ -1,25 +1,37 @@
-"""Ports for external systems and persistence.
-
-Adapters implement these protocols. Domain/application code depends on the protocols,
-not on vendor SDKs or wire formats.
-"""
+"""Ports for persistence and external engineering systems."""
 
 from typing import Protocol
 from uuid import UUID
 
-from engineering_gateway.domain.models import EngineeringElement
+from engineering_gateway.domain.audit import AuditEvent
+from engineering_gateway.domain.models import EngineeringElement, EngineeringRelation
+from engineering_gateway.domain.profiles import StandardProfile
 
 
 class EngineeringRepository(Protocol):
-    """Gateway reference store for canonical engineering elements."""
+    """Gateway reference store for canonical engineering elements and relations."""
 
     async def get(self, element_id: UUID) -> EngineeringElement | None: ...
 
     async def save(self, element: EngineeringElement) -> EngineeringElement: ...
 
+    async def add_relation(self, relation: EngineeringRelation) -> EngineeringRelation: ...
+
+    async def get_relations(self, element_id: UUID) -> list[EngineeringRelation]: ...
+
+
+class StandardProfileRegistry(Protocol):
+    """Port for versioned, declarative standard-profile definitions."""
+
+    async def register(self, profile: StandardProfile) -> None: ...
+
+    async def get(self, profile_id: str, version: str) -> StandardProfile | None: ...
+
+    async def list(self) -> list[StandardProfile]: ...
+
 
 class EngineeringSystemAdapter(Protocol):
-    """Common boundary for StrictDoc, Capella, OpenProject and Git adapters."""
+    """Read boundary for authoritative external engineering systems."""
 
     system_name: str
 
@@ -27,6 +39,6 @@ class EngineeringSystemAdapter(Protocol):
 
 
 class AuditSink(Protocol):
-    """Sink for immutable audit events."""
+    """Append-only sink for immutable audit events."""
 
-    async def record(self, event: object) -> None: ...
+    async def record(self, event: AuditEvent) -> None: ...
