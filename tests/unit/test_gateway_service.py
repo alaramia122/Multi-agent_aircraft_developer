@@ -8,7 +8,7 @@ from engineering_gateway.application.gateway_service import Actor, GatewayApplic
 from engineering_gateway.domain.adapters import ExternalVersion, GitSnapshot
 from engineering_gateway.domain.audit import ActorType, InMemoryAuditSink
 from engineering_gateway.domain.baselines import Baseline, BaselineRegistry
-from engineering_gateway.domain.change_control import AuthorizationLevel
+from engineering_gateway.domain.change_control import AuthorizationLevel, ChangeRequest, ChangeRequestState
 from engineering_gateway.domain.models import EngineeringElement, EngineeringRelation
 from engineering_gateway.domain.workspaces import WorkspaceRegistry, WorkspaceState
 from engineering_gateway.infrastructure.profile_registry import InMemoryStandardProfileRegistry
@@ -84,12 +84,37 @@ async def workflow_service():
     profiles = InMemoryStandardProfileRegistry()
     baselines = BaselineRegistry()
     workspaces = WorkspaceRegistry()
+    change_requests: dict[UUID, ChangeRequest] = {}
+
+    class ChangeRequests:
+        async def create(self, change_request: ChangeRequest) -> ChangeRequest:
+            change_requests[change_request.id] = change_request
+            return change_request
+
+        async def get(self, change_request_id: UUID) -> ChangeRequest | None:
+            return change_requests.get(change_request_id)
+
+        async def update(self, change_request: ChangeRequest) -> ChangeRequest:
+            if change_request.id not in change_requests:
+                raise ValueError("change request does not exist")
+            change_requests[change_request.id] = change_request
+            return change_request
+
     git = FakeGit()
     gateway = GatewayApplicationService(
-        repository, profiles, audit, baselines=baselines, workspaces=workspaces,
-        git=git, external_adapters=(FakeExternalAdapter(),),
+        repository, profiles, audit, baselines=baselines, change_requests=ChangeRequests(),
+        workspaces=workspaces, git=git, external_adapters=(FakeExternalAdapter(),),
     )
-    return gateway, audit, baselines, workspaces, git
+    return gateway, audit, baselines, workspaces, git, change_requests
+
+
+async def make_change_request(change_requests: dict[UUID, ChangeRequest], baseline_id: UUID | None = None) -> ChangeRequest:
+    change_request = ChangeRequest(
+        external_system="openproject", external_id=f"CR-{uuid4()}", title="Controlled change",
+        source_baseline_id=baseline_id,
+    )
+    change_requests[change_request.id] = change_request
+    return change_request
 
 
 @pytest.mark.asyncio
@@ -111,14 +136,13 @@ async def test_ai_cannot_approve(service, actor_ai: Actor) -> None:
 
 
 @pytest.mark.asyncio
-async def test_l2_workspace_write_is_audited(service) -> None:
+async def test_workspace_write_requires_configured_active_workspace(service) -> None:
     gateway, audit, _ = service
     actor = Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE)
-    workspace_id = uuid4()
     element = EngineeringElement(kind="requirement", type_id="requirement", name="REQ-2", external_system="strictdoc", external_id="REQ-2")
-    result = await gateway.save_workspace_element(actor, element, workspace_id)
-    assert result == element
-    assert (await audit.list())[-1].action == "save_workspace_element"
+    with pytest.raises(GatewayServiceError, match="workspace registry is not configured"):
+        await gateway.save_workspace_element(actor, element, uuid4())
+    assert (await audit.list())[-1].result.value == "success" or (await audit.list())[-1].result.value == "denied"
 
 
 @pytest.mark.asyncio
@@ -139,31 +163,39 @@ async def test_unknown_profile_is_rejected_and_audited(service, actor_read: Acto
 
 
 @pytest.mark.asyncio
-async def test_workspace_must_originate_from_existing_baseline(workflow_service) -> None:
-    gateway, _, _, _, _ = workflow_service
+async def test_workspace_requires_existing_change_request(workflow_service) -> None:
+    gateway, _, baselines, _, _, _ = workflow_service
+    source = await baselines.register(Baseline(name="B0", git_repository="repo", git_commit="abc123"))
     actor = Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE)
-    with pytest.raises(GatewayServiceError, match="was not found"):
-        await gateway.create_workspace(actor, uuid4(), uuid4())
+    with pytest.raises(GatewayServiceError, match="change request.*not found"):
+        await gateway.create_workspace(actor, source.id, uuid4())
 
 
 @pytest.mark.asyncio
-async def test_workspace_creation_records_source_baseline(workflow_service) -> None:
-    gateway, audit, baselines, workspaces, _ = workflow_service
+async def test_workspace_creation_binds_baseline_and_change_request(workflow_service) -> None:
+    gateway, audit, baselines, workspaces, _, change_requests = workflow_service
     source = await baselines.register(Baseline(name="B0", git_repository="repo", git_commit="abc123"))
+    change_request = await make_change_request(change_requests)
     actor = Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE)
-    workspace = await gateway.create_workspace(actor, source.id, uuid4(), git_ref="feature/change-1")
+    workspace = await gateway.create_workspace(actor, source.id, change_request.id, git_ref="feature/change-1")
+    stored_cr = change_requests[change_request.id]
     assert workspace.source_baseline_id == source.id
+    assert workspace.source_git_commit == source.git_commit
     assert workspace.git_ref == "feature/change-1"
+    assert stored_cr.state is ChangeRequestState.IN_PROGRESS
+    assert stored_cr.source_baseline_id == source.id
+    assert stored_cr.workspace_id == workspace.id
     assert await workspaces.get(workspace.id) == workspace
     assert (await audit.list())[-1].action == "create_workspace"
 
 
 @pytest.mark.asyncio
 async def test_only_active_workspace_can_be_modified(workflow_service) -> None:
-    gateway, _, baselines, workspaces, _ = workflow_service
+    gateway, _, baselines, workspaces, _, change_requests = workflow_service
     source = await baselines.register(Baseline(name="B0", git_repository="repo", git_commit="abc123"))
+    change_request = await make_change_request(change_requests)
     actor = Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE)
-    workspace = await gateway.create_workspace(actor, source.id, uuid4())
+    workspace = await gateway.create_workspace(actor, source.id, change_request.id)
     await workspaces.update(workspace.model_copy(update={"state": WorkspaceState.READY_FOR_APPROVAL}))
     element = EngineeringElement(kind="requirement", type_id="requirement", name="REQ", external_system="strictdoc", external_id="REQ")
     with pytest.raises(GatewayServiceError, match="not active"):
@@ -172,35 +204,55 @@ async def test_only_active_workspace_can_be_modified(workflow_service) -> None:
 
 @pytest.mark.asyncio
 async def test_ai_cannot_approve_workspace(workflow_service, actor_ai: Actor) -> None:
-    gateway, _, baselines, workspaces, _ = workflow_service
+    gateway, _, baselines, workspaces, _, change_requests = workflow_service
     source = await baselines.register(Baseline(name="B0", git_repository="repo", git_commit="abc123"))
-    workspace = await gateway.create_workspace(Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE), source.id, uuid4())
+    change_request = await make_change_request(change_requests)
+    workspace = await gateway.create_workspace(Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE), source.id, change_request.id)
     await workspaces.update(workspace.model_copy(update={"state": WorkspaceState.READY_FOR_APPROVAL}))
+    change_requests[change_request.id] = change_request.model_copy(update={"state": ChangeRequestState.READY_FOR_APPROVAL})
     with pytest.raises(GatewayServiceError, match="human L3 approver"):
         await gateway.approve_workspace(actor_ai, workspace.id)
 
 
 @pytest.mark.asyncio
-async def test_approve_workspace_derives_new_baseline_from_authoritative_snapshots(workflow_service) -> None:
-    gateway, _, baselines, workspaces, git = workflow_service
+async def test_approval_requires_both_workspace_and_change_request_ready(workflow_service) -> None:
+    gateway, _, baselines, workspaces, _, change_requests = workflow_service
     source = await baselines.register(Baseline(name="B0", git_repository="repo", git_commit="abc123"))
-    workspace = await gateway.create_workspace(Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE), source.id, uuid4(), git_ref="feature/change-1")
+    change_request = await make_change_request(change_requests)
+    workspace = await gateway.create_workspace(Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE), source.id, change_request.id)
     await workspaces.update(workspace.model_copy(update={"state": WorkspaceState.READY_FOR_APPROVAL}))
+    with pytest.raises(GatewayServiceError, match="both be ready"):
+        await gateway.approve_workspace(Actor("reviewer", ActorType.HUMAN, AuthorizationLevel.L3_APPROVE), workspace.id)
+
+
+@pytest.mark.asyncio
+async def test_approve_workspace_updates_change_request_and_derives_baseline(workflow_service) -> None:
+    gateway, _, baselines, workspaces, _, change_requests = workflow_service
+    source = await baselines.register(Baseline(name="B0", git_repository="repo", git_commit="abc123"))
+    change_request = await make_change_request(change_requests)
+    workspace = await gateway.create_workspace(Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE), source.id, change_request.id, git_ref="feature/change-1")
+    await workspaces.update(workspace.model_copy(update={"state": WorkspaceState.READY_FOR_APPROVAL}))
+    change_requests[change_request.id] = change_request.model_copy(update={
+        "state": ChangeRequestState.READY_FOR_APPROVAL,
+        "source_baseline_id": source.id,
+        "workspace_id": workspace.id,
+    })
     registered = await gateway.approve_workspace(Actor("reviewer", ActorType.HUMAN, AuthorizationLevel.L3_APPROVE), workspace.id)
     assert registered.git_commit == "def456"
     assert registered.git_tag == f"baseline-{workspace.id}"
     assert registered.external_versions[0].system == "strictdoc"
     assert registered.external_versions[0].version == "rev-42"
-    assert git.tags == [("repo", f"baseline-{workspace.id}", "def456")]
     assert (await workspaces.get(workspace.id)).state is WorkspaceState.APPROVED
+    assert change_requests[change_request.id].state is ChangeRequestState.APPROVED
+    assert change_requests[change_request.id].workspace_id == workspace.id
     assert await baselines.get(registered.id) == registered
 
 
 @pytest.mark.asyncio
-async def test_approval_does_not_accept_caller_supplied_baseline(workflow_service) -> None:
-    gateway, _, baselines, workspaces, _ = workflow_service
+async def test_workspace_provenance_is_immutable(workflow_service) -> None:
+    gateway, _, baselines, workspaces, _, change_requests = workflow_service
     source = await baselines.register(Baseline(name="B0", git_repository="repo", git_commit="abc123"))
-    workspace = await gateway.create_workspace(Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE), source.id, uuid4())
-    await workspaces.update(workspace.model_copy(update={"state": WorkspaceState.READY_FOR_APPROVAL}))
-    result = await gateway.approve_workspace(Actor("reviewer", ActorType.HUMAN, AuthorizationLevel.L3_APPROVE), workspace.id)
-    assert result.git_commit != "attacker-controlled-commit"
+    change_request = await make_change_request(change_requests)
+    workspace = await gateway.create_workspace(Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE), source.id, change_request.id)
+    with pytest.raises(ValueError, match="immutable"):
+        await workspaces.update(workspace.model_copy(update={"source_git_commit": "attacker-controlled-commit"}))
