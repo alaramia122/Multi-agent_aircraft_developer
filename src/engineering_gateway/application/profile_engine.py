@@ -1,6 +1,7 @@
 """Application service for loading, validating and composing standard profiles."""
 
 from collections.abc import Iterable
+from typing import Any
 
 from engineering_gateway.domain.profiles import (
     ArtifactRequirement,
@@ -26,7 +27,9 @@ class StandardProfileEngine:
     """
 
     @staticmethod
-    def compose(profiles: Iterable[StandardProfile], *, id: str, version: str, name: str) -> StandardProfile:
+    def compose(
+        profiles: Iterable[StandardProfile], *, id: str, version: str, name: str
+    ) -> StandardProfile:
         profiles = list(profiles)
         if not profiles:
             raise ProfileCompositionError("at least one profile is required")
@@ -53,8 +56,8 @@ class StandardProfileEngine:
         )
 
     @staticmethod
-    def _merge(profiles: list[StandardProfile], field: str) -> list[object]:
-        merged: dict[str, object] = {}
+    def _merge(profiles: list[StandardProfile], field: str) -> list[Any]:
+        merged: dict[str, Any] = {}
         for profile in profiles:
             for definition in getattr(profile, field):
                 existing = merged.get(definition.id)
@@ -99,7 +102,7 @@ class StandardProfileEngine:
 
     @staticmethod
     def _validate_unique_definition_types(profile: StandardProfile) -> None:
-        definitions: tuple[tuple[str, list[object]], ...] = (
+        definitions: tuple[tuple[str, list[Any]], ...] = (
             ("element_types", profile.element_types),
             ("relations", profile.relations),
             ("lifecycles", profile.lifecycles),
