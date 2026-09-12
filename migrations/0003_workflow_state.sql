@@ -16,7 +16,6 @@ CREATE INDEX IF NOT EXISTS ix_change_requests_state ON change_requests (state);
 CREATE TABLE IF NOT EXISTS workspaces (
     id UUID PRIMARY KEY,
     source_baseline_id UUID NOT NULL,
-    source_git_commit VARCHAR(255) NOT NULL,
     change_request_id UUID NOT NULL,
     git_ref VARCHAR(2048) NOT NULL DEFAULT 'HEAD',
     state VARCHAR(64) NOT NULL
