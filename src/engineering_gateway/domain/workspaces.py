@@ -26,6 +26,26 @@ class Workspace(BaseModel):
     state: WorkspaceState = WorkspaceState.ACTIVE
 
 
+class WorkspaceGateError(ValueError):
+    """Raised when a workspace lifecycle transition is invalid."""
+
+
+class WorkspaceGate:
+    """Enforce the deterministic workspace lifecycle."""
+
+    _TRANSITIONS: dict[WorkspaceState, frozenset[WorkspaceState]] = {
+        WorkspaceState.ACTIVE: frozenset({WorkspaceState.READY_FOR_APPROVAL, WorkspaceState.CLOSED}),
+        WorkspaceState.READY_FOR_APPROVAL: frozenset({WorkspaceState.ACTIVE, WorkspaceState.APPROVED}),
+        WorkspaceState.APPROVED: frozenset({WorkspaceState.CLOSED}),
+        WorkspaceState.CLOSED: frozenset(),
+    }
+
+    @classmethod
+    def require_transition(cls, current: WorkspaceState, target: WorkspaceState) -> None:
+        if target not in cls._TRANSITIONS[current]:
+            raise WorkspaceGateError(f"invalid workspace transition: {current.value} -> {target.value}")
+
+
 class WorkspaceRegistry:
     """Minimal application-state registry used until durable workflow persistence."""
 
@@ -42,10 +62,14 @@ class WorkspaceRegistry:
         return self._workspaces.get(workspace_id)
 
     async def update(self, workspace: Workspace) -> Workspace:
-        if workspace.id not in self._workspaces:
+        current = self._workspaces.get(workspace.id)
+        if current is None:
             raise ValueError(f"workspace '{workspace.id}' does not exist")
+        if current.source_baseline_id != workspace.source_baseline_id or current.change_request_id != workspace.change_request_id or current.git_ref != workspace.git_ref:
+            raise ValueError("workspace origin and Git reference are immutable")
+        WorkspaceGate.require_transition(current.state, workspace.state)
         self._workspaces[workspace.id] = workspace
         return workspace
 
 
-__all__ = ["Workspace", "WorkspaceRegistry", "WorkspaceState"]
+__all__ = ["Workspace", "WorkspaceGate", "WorkspaceGateError", "WorkspaceRegistry", "WorkspaceState"]
