@@ -5,18 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID, uuid4
 
-from engineering_gateway.application.validation import (
-    DeterministicValidationEngine,
-    ValidationIssue,
-)
+from engineering_gateway.application.validation import DeterministicValidationEngine, ValidationIssue
 from engineering_gateway.domain.audit import ActorType, AuditEvent, AuditResult
 from engineering_gateway.domain.baselines import Baseline
-from engineering_gateway.domain.change_control import (
-    AuthorizationLevel,
-    ChangeGate,
-    ChangeRequest,
-    ChangeRequestState,
-)
+from engineering_gateway.domain.change_control import AuthorizationLevel, ChangeGate
 from engineering_gateway.domain.models import EngineeringElement, EngineeringRelation
 from engineering_gateway.domain.ports import (
     AuditSink,
@@ -98,11 +90,9 @@ class GatewayApplicationService:
         self._require_read(actor)
         profile = await self._profiles.get(profile_id, profile_version)
         if profile is None:
-            await self._record(
-                actor, action="validate", target_type="standard_profile",
-                result=AuditResult.FAILURE,
-                reason=f"profile '{profile_id}@{profile_version}' was not found",
-            )
+            await self._record(actor, action="validate", target_type="standard_profile",
+                               result=AuditResult.FAILURE,
+                               reason=f"profile '{profile_id}@{profile_version}' was not found")
             raise GatewayServiceError(f"profile '{profile_id}@{profile_version}' was not found")
         issues = tuple(self._validator.validate(elements, relations, profile))
         await self._record(
@@ -112,10 +102,8 @@ class GatewayApplicationService:
         )
         return ValidationResult(profile_id, profile_version, issues)
 
-    async def create_workspace(
-        self, actor: Actor, baseline_id: UUID, change_request_id: UUID,
-    ) -> Workspace:
-        """Create a new controlled workspace whose origin is an approved baseline."""
+    async def create_workspace(self, actor: Actor, baseline_id: UUID, change_request_id: UUID) -> Workspace:
+        """Create a controlled workspace whose origin is an approved baseline."""
         if self._baselines is None or self._workspaces is None:
             raise GatewayServiceError("baseline/workspace registries are not configured")
         self._require_modify(actor)
@@ -125,10 +113,7 @@ class GatewayApplicationService:
                                target_id=baseline_id, result=AuditResult.FAILURE,
                                reason="source baseline was not found")
             raise GatewayServiceError(f"baseline '{baseline_id}' was not found")
-        workspace = Workspace(
-            source_baseline_id=baseline.id,
-            change_request_id=change_request_id,
-        )
+        workspace = Workspace(source_baseline_id=baseline.id, change_request_id=change_request_id)
         try:
             created = self._workspaces.create(workspace)
         except ValueError as exc:
@@ -147,7 +132,7 @@ class GatewayApplicationService:
         elements: list[EngineeringElement], relations: list[EngineeringRelation],
         profile_id: str, profile_version: str,
     ) -> ValidationResult:
-        """Validate an active workspace and transition it only when validation is clean."""
+        """Validate an active workspace and mark it ready only when validation is clean."""
         if self._workspaces is None:
             raise GatewayServiceError("workspace registry is not configured")
         self._require_modify(actor)
@@ -158,22 +143,16 @@ class GatewayApplicationService:
             raise GatewayServiceError("only an active workspace can be prepared for approval")
         result = await self.validate(actor, elements, relations, profile_id, profile_version)
         if not result.valid:
-            await self._record(
-                actor, action="prepare_for_approval", target_type="workspace",
-                target_id=workspace_id, result=AuditResult.FAILURE,
-                reason=f"validation found {len(result.issues)} issue(s)",
-            )
+            await self._record(actor, action="prepare_for_approval", target_type="workspace",
+                               target_id=workspace_id, result=AuditResult.FAILURE,
+                               reason=f"validation found {len(result.issues)} issue(s)")
             return result
         self._workspaces.update(workspace.model_copy(update={"state": WorkspaceState.READY_FOR_APPROVAL}))
-        await self._record(
-            actor, action="prepare_for_approval", target_type="workspace", target_id=workspace_id,
-            result=AuditResult.SUCCESS,
-        )
+        await self._record(actor, action="prepare_for_approval", target_type="workspace",
+                           target_id=workspace_id, result=AuditResult.SUCCESS)
         return result
 
-    async def save_workspace_element(
-        self, actor: Actor, element: EngineeringElement, workspace_id: UUID,
-    ) -> EngineeringElement:
+    async def save_workspace_element(self, actor: Actor, element: EngineeringElement, workspace_id: UUID) -> EngineeringElement:
         self._require_workspace(actor, workspace_id)
         saved = await self._repository.save(element)
         await self._record(actor, action="save_workspace_element", target_type="engineering_element",
@@ -181,9 +160,7 @@ class GatewayApplicationService:
                            metadata={"workspace_id": str(workspace_id)})
         return saved
 
-    async def add_workspace_relation(
-        self, actor: Actor, relation: EngineeringRelation, workspace_id: UUID,
-    ) -> EngineeringRelation:
+    async def add_workspace_relation(self, actor: Actor, relation: EngineeringRelation, workspace_id: UUID) -> EngineeringRelation:
         self._require_workspace(actor, workspace_id)
         saved = await self._repository.add_relation(relation)
         await self._record(actor, action="add_workspace_relation", target_type="engineering_relation",
@@ -192,7 +169,7 @@ class GatewayApplicationService:
         return saved
 
     async def approve(self, actor: Actor, baseline_id: UUID) -> None:
-        """Retain the human-only approval boundary for compatibility with the read-only stage."""
+        """Enforce the human-only approval boundary without mutating a baseline."""
         try:
             ChangeGate.require_approval(actor.authorization_level, actor_is_ai=actor.is_ai)
         except ValueError as exc:
@@ -202,10 +179,8 @@ class GatewayApplicationService:
         await self._record(actor, action="approve_baseline", target_type="baseline",
                            target_id=baseline_id, result=AuditResult.SUCCESS)
 
-    async def approve_workspace(
-        self, actor: Actor, workspace_id: UUID, baseline: Baseline,
-    ) -> Baseline:
-        """Approve a validated workspace and register a new immutable baseline."""
+    async def approve_workspace(self, actor: Actor, workspace_id: UUID, baseline: Baseline) -> Baseline:
+        """Approve a ready workspace and register a new immutable baseline."""
         if self._workspaces is None or self._baselines is None:
             raise GatewayServiceError("baseline/workspace registries are not configured")
         try:
