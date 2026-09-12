@@ -115,7 +115,10 @@ class SqlAlchemyWorkspaceRegistry:
         self._session.add(WorkspaceRecord(id=workspace.id, source_baseline_id=workspace.source_baseline_id,
                                           source_git_commit=workspace.source_git_commit,
                                           change_request_id=workspace.change_request_id,
-                                          git_ref=workspace.git_ref, state=workspace.state.value))
+                                          git_ref=workspace.git_ref,
+                                          profile_id=workspace.profile_id,
+                                          profile_version=workspace.profile_version,
+                                          state=workspace.state.value))
         await self._session.commit()
         return workspace
 
@@ -134,10 +137,16 @@ class SqlAlchemyWorkspaceRegistry:
             or record.git_ref != workspace.git_ref
         ):
             raise ValueError("workspace origin and Git reference are immutable")
+        if record.profile_id is not None and record.profile_id != workspace.profile_id:
+            raise ValueError("workspace validation profile is immutable once bound")
+        if record.profile_version is not None and record.profile_version != workspace.profile_version:
+            raise ValueError("workspace validation profile is immutable once bound")
         current = WorkspaceState(record.state)
         if current is not workspace.state:
             from engineering_gateway.domain.workspaces import WorkspaceGate
             WorkspaceGate.require_transition(current, workspace.state)
+        record.profile_id = workspace.profile_id
+        record.profile_version = workspace.profile_version
         record.state = workspace.state.value
         await self._session.commit()
         return workspace
@@ -158,6 +167,7 @@ def _to_workspace(record: WorkspaceRecord) -> Workspace:
     return Workspace(id=record.id, source_baseline_id=record.source_baseline_id,
                      source_git_commit=record.source_git_commit,
                      change_request_id=record.change_request_id, git_ref=record.git_ref,
+                     profile_id=record.profile_id, profile_version=record.profile_version,
                      state=WorkspaceState(record.state))
 
 
