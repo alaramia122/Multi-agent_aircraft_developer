@@ -43,13 +43,11 @@ class GovernedGatewayApplicationService(GatewayApplicationService):
             )
 
     async def prepare_for_approval(self, actor: Actor, workspace_id: UUID, *args, **kwargs) -> ValidationResult:
-        """Prepare a workspace and invalidate old reconciliation evidence."""
-        result = await super().prepare_for_approval(actor, workspace_id, *args, **kwargs)
-        if result.valid:
-            workspace = await self._workspaces.get(workspace_id)
-            if workspace is not None and workspace.reconciled:
-                await self._workspaces.update(workspace.model_copy(update={"reconciled": False}))
-        return result
+        """Prepare a workspace and invalidate any previous reconciliation evidence."""
+        workspace = await self._workspaces.get(workspace_id)
+        if workspace is not None and workspace.reconciled:
+            await self._workspaces.update(workspace.model_copy(update={"reconciled": False}))
+        return await super().prepare_for_approval(actor, workspace_id, *args, **kwargs)
 
     async def reconcile_workspace(self, actor: Actor, workspace_id: UUID) -> ReconciliationResult:
         """Publish the staged workspace change-set to authoritative systems."""
