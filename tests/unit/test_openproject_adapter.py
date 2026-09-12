@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import io
 import json
-from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request
 
@@ -15,6 +14,14 @@ from engineering_gateway.infrastructure.openproject_adapter import (
     OpenProjectAdapterError,
     OpenProjectConfig,
 )
+
+
+class _Response(io.BytesIO):
+    def __enter__(self) -> "_Response":
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        self.close()
 
 
 @pytest.fixture
@@ -29,18 +36,15 @@ def adapter() -> LocalOpenProjectAdapter:
     )
 
 
-def _response(payload: dict[str, object]) -> io.BytesIO:
-    response = io.BytesIO(json.dumps(payload).encode("utf-8"))
-    response.__enter__ = lambda: response  # type: ignore[attr-defined]
-    response.__exit__ = lambda *_: None  # type: ignore[attr-defined]
-    return response
+def _response(payload: dict[str, object]) -> _Response:
+    return _Response(json.dumps(payload).encode("utf-8"))
 
 
 @pytest.mark.asyncio
 async def test_get_element_maps_work_package(
     adapter: LocalOpenProjectAdapter, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def fake_urlopen(request: Request, timeout: float) -> io.BytesIO:
+    def fake_urlopen(request: Request, timeout: float) -> _Response:
         assert request.full_url.endswith("/api/v3/work_packages/123")
         assert timeout == 30.0
         return _response({"id": 123, "subject": "Approve change"})
@@ -63,7 +67,7 @@ async def test_create_change_request_sends_project_and_type_links(
 ) -> None:
     captured: dict[str, object] = {}
 
-    def fake_urlopen(request: Request, timeout: float) -> io.BytesIO:
+    def fake_urlopen(request: Request, timeout: float) -> _Response:
         captured["method"] = request.method
         captured["body"] = json.loads(request.data.decode("utf-8")) if request.data else None
         return _response({"id": 321})
@@ -89,7 +93,7 @@ async def test_update_change_request_uses_lock_version(
 ) -> None:
     calls: list[tuple[str, dict[str, object] | None]] = []
 
-    def fake_urlopen(request: Request, timeout: float) -> io.BytesIO:
+    def fake_urlopen(request: Request, timeout: float) -> _Response:
         payload = json.loads(request.data.decode("utf-8")) if request.data else None
         calls.append((request.method, payload))
         if request.method == "GET":
