@@ -45,7 +45,16 @@ class ChangeGateError(ValueError):
 
 
 class ChangeGate:
-    """Enforce workspace-only modification and human approval boundaries."""
+    """Enforce deterministic change-request/workspace lifecycle boundaries."""
+
+    _TRANSITIONS: dict[ChangeRequestState, frozenset[ChangeRequestState]] = {
+        ChangeRequestState.OPEN: frozenset({ChangeRequestState.IN_PROGRESS}),
+        ChangeRequestState.IN_PROGRESS: frozenset({ChangeRequestState.READY_FOR_APPROVAL}),
+        ChangeRequestState.READY_FOR_APPROVAL: frozenset({ChangeRequestState.APPROVED, ChangeRequestState.REJECTED}),
+        ChangeRequestState.APPROVED: frozenset({ChangeRequestState.CLOSED}),
+        ChangeRequestState.REJECTED: frozenset({ChangeRequestState.IN_PROGRESS}),
+        ChangeRequestState.CLOSED: frozenset(),
+    }
 
     @staticmethod
     def require_workspace_modification(level: AuthorizationLevel, workspace_id: UUID | None) -> None:
@@ -58,6 +67,11 @@ class ChangeGate:
     def require_approval(level: AuthorizationLevel, *, actor_is_ai: bool = False) -> None:
         if actor_is_ai or level != AuthorizationLevel.L3_APPROVE:
             raise ChangeGateError("baseline approval requires a human L3 approver")
+
+    @classmethod
+    def require_transition(cls, current: ChangeRequestState, target: ChangeRequestState) -> None:
+        if target not in cls._TRANSITIONS[current]:
+            raise ChangeGateError(f"invalid change-request transition: {current.value} -> {target.value}")
 
     @staticmethod
     def require_new_workspace_for_baseline_change(
