@@ -22,11 +22,27 @@ Profiles are composed by stable definition identifiers. A definition may be cont
 
 Composition therefore supports combinations such as an engineering-process profile plus a software-assurance profile without embedding either standard into Gateway code.
 
+The composition result records the exact `profile_id@version` identities of its source profiles in `metadata.composed_from`. The source versions, rather than only profile IDs, are part of the reproducibility boundary.
+
 ## Validation boundary
 
-Pydantic models provide structural validation. `StandardProfileEngine` performs semantic validation, including references to known element types and consistency between traceability rules and relation definitions.
+Pydantic models provide structural validation. `StandardProfileEngine` performs semantic validation, including:
 
-The profile engine does not decide whether an actual project complies with a profile. That belongs to the later deterministic Validation Engine, which evaluates canonical project state against an activated profile.
+- references to known element types;
+- relation endpoint consistency;
+- lifecycle element-type uniqueness and transition consistency;
+- artifact references;
+- consistency between traceability rules and relation definitions;
+- consistency between verification rules and verification relation definitions;
+- uniqueness of all definition identifiers.
+
+The profile engine does not decide whether an actual project complies with a profile. That belongs to the deterministic Validation Engine, which evaluates canonical project state against an activated profile.
+
+## Activation
+
+Registration and activation are separate operations. A profile must first be registered as an immutable `(id, version)` definition. Activation runs semantic validation again and records that the exact version is eligible for project validation.
+
+Multiple profile versions may coexist and may be active simultaneously. A workspace stores the exact profile ID and version used for its approval preparation, so later activation/deactivation cannot silently change an existing workflow.
 
 ## Example
 
