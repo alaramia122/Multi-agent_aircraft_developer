@@ -101,8 +101,8 @@ class WorkspaceRegistry:
             raise ValueError("workspace validation profile is immutable once bound")
         if current.profile_version is not None and current.profile_version != workspace.profile_version:
             raise ValueError("workspace validation profile is immutable once bound")
-        if current.reconciled and not workspace.reconciled:
-            raise ValueError("workspace reconciliation evidence is immutable")
+        if current.reconciled and not workspace.reconciled and current.state is not WorkspaceState.ACTIVE:
+            raise ValueError("workspace reconciliation evidence is immutable outside active engineering")
         WorkspaceGate.require_transition(current.state, workspace.state)
         self._workspaces[workspace.id] = workspace
         return workspace
