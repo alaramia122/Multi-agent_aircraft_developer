@@ -1,12 +1,12 @@
 """Persistence implementations for Gateway metadata."""
 
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from engineering_gateway.domain.audit import AuditEvent
-from engineering_gateway.domain.baselines import Baseline
+from engineering_gateway.domain.baselines import Baseline, ExternalSystemVersion
 from engineering_gateway.domain.profiles import StandardProfile
 from engineering_gateway.infrastructure.metadata_models import (
     AuditEventRecord,
@@ -71,7 +71,8 @@ class SqlAlchemyBaselineRegistry:
     async def register(self, baseline: Baseline) -> Baseline:
         existing = await self._session.get(BaselineRecord, baseline.id)
         if existing is not None:
-            if _baseline_payload(existing) != baseline.model_dump(mode="json"):
+            stored = _to_baseline(existing)
+            if stored != baseline:
                 raise ValueError(f"baseline '{baseline.id}' already exists and is immutable")
             return baseline
         self._session.add(
@@ -87,24 +88,13 @@ class SqlAlchemyBaselineRegistry:
         await self._session.commit()
         return baseline
 
-    async def get(self, baseline_id) -> Baseline | None:
+    async def get(self, baseline_id: UUID) -> Baseline | None:
         record = await self._session.get(BaselineRecord, baseline_id)
         return _to_baseline(record) if record else None
 
     async def list(self) -> list[Baseline]:
         result = await self._session.scalars(select(BaselineRecord).order_by(BaselineRecord.id))
         return [_to_baseline(record) for record in result]
-
-
-def _baseline_payload(record: BaselineRecord) -> dict:
-    return {
-        "id": record.id,
-        "name": record.name,
-        "git_repository": record.git_repository,
-        "git_commit": record.git_commit,
-        "git_tag": record.git_tag,
-        "external_versions": record.external_versions,
-    }
 
 
 def _to_baseline(record: BaselineRecord) -> Baseline:
@@ -114,7 +104,9 @@ def _to_baseline(record: BaselineRecord) -> Baseline:
         git_repository=record.git_repository,
         git_commit=record.git_commit,
         git_tag=record.git_tag,
-        external_versions=tuple(record.external_versions),
+        external_versions=tuple(
+            ExternalSystemVersion.model_validate(item) for item in record.external_versions
+        ),
     )
 
 
