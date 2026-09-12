@@ -51,6 +51,8 @@ class WorkspaceRecord(Base):
     source_git_commit: Mapped[str] = mapped_column(String(255), nullable=False)
     change_request_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
     git_ref: Mapped[str] = mapped_column(String(2048), nullable=False, default="HEAD")
+    profile_id: Mapped[str | None] = mapped_column(String(255))
+    profile_version: Mapped[str | None] = mapped_column(String(128))
     state: Mapped[str] = mapped_column(String(64), nullable=False)
 
 
