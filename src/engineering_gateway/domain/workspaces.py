@@ -16,11 +16,12 @@ class WorkspaceState(StrEnum):
 
 
 class Workspace(BaseModel):
-    """Gateway-owned workspace identity and immutable origin reference."""
+    """Gateway-owned workspace identity, origin and working Git reference."""
 
     model_config = ConfigDict(extra="forbid")
     id: UUID = Field(default_factory=uuid4)
     source_baseline_id: UUID
+    source_git_commit: str = Field(min_length=1)
     change_request_id: UUID
     git_ref: str = Field(default="HEAD", min_length=1)
     state: WorkspaceState = WorkspaceState.ACTIVE
@@ -65,7 +66,12 @@ class WorkspaceRegistry:
         current = self._workspaces.get(workspace.id)
         if current is None:
             raise ValueError(f"workspace '{workspace.id}' does not exist")
-        if current.source_baseline_id != workspace.source_baseline_id or current.change_request_id != workspace.change_request_id or current.git_ref != workspace.git_ref:
+        if (
+            current.source_baseline_id != workspace.source_baseline_id
+            or current.source_git_commit != workspace.source_git_commit
+            or current.change_request_id != workspace.change_request_id
+            or current.git_ref != workspace.git_ref
+        ):
             raise ValueError("workspace origin and Git reference are immutable")
         WorkspaceGate.require_transition(current.state, workspace.state)
         self._workspaces[workspace.id] = workspace
