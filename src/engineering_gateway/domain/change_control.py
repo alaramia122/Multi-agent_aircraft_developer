@@ -49,8 +49,8 @@ class ChangeGate:
 
     @staticmethod
     def require_workspace_modification(level: AuthorizationLevel, workspace_id: UUID | None) -> None:
-        if level not in {AuthorizationLevel.L2_MODIFY_WORKSPACE, AuthorizationLevel.L3_APPROVE}:
-            raise ChangeGateError("actor is not authorized to modify a workspace")
+        if level != AuthorizationLevel.L2_MODIFY_WORKSPACE:
+            raise ChangeGateError("only L2 is authorized to modify a workspace")
         if workspace_id is None:
             raise ChangeGateError("workspace modification requires an active workspace")
 
