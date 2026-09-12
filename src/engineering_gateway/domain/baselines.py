@@ -23,6 +23,8 @@ class Baseline(BaseModel):
     git_commit: str = Field(min_length=1)
     git_tag: str | None = None
     external_versions: tuple[ExternalSystemVersion, ...] = ()
+    profile_id: str | None = Field(default=None, min_length=1)
+    profile_version: str | None = Field(default=None, min_length=1)
 
 
 class BaselineRegistry:
