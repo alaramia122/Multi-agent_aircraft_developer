@@ -9,16 +9,22 @@ from engineering_gateway.application.validation import DeterministicValidationEn
 from engineering_gateway.domain.adapters import GitAdapter, ReadAdapter
 from engineering_gateway.domain.audit import ActorType, AuditEvent, AuditResult
 from engineering_gateway.domain.baselines import Baseline, ExternalSystemVersion
-from engineering_gateway.domain.change_control import AuthorizationLevel, ChangeGate
+from engineering_gateway.domain.change_control import (
+    AuthorizationLevel,
+    ChangeGate,
+    ChangeRequest,
+    ChangeRequestState,
+)
 from engineering_gateway.domain.models import EngineeringElement, EngineeringRelation
 from engineering_gateway.domain.ports import (
     AuditSink,
     BaselineRegistryPort,
+    ChangeRequestRegistryPort,
     EngineeringRepository,
     StandardProfileRegistry,
     WorkspaceRegistryPort,
 )
-from engineering_gateway.domain.workspaces import Workspace, WorkspaceState
+from engineering_gateway.domain.workspaces import Workspace, WorkspaceGate, WorkspaceState
 
 
 class GatewayServiceError(RuntimeError):
@@ -61,6 +67,7 @@ class GatewayApplicationService:
         audit: AuditSink,
         validator: DeterministicValidationEngine | None = None,
         baselines: BaselineRegistryPort | None = None,
+        change_requests: ChangeRequestRegistryPort | None = None,
         workspaces: WorkspaceRegistryPort | None = None,
         git: GitAdapter | None = None,
         external_adapters: tuple[ReadAdapter, ...] = (),
@@ -70,6 +77,7 @@ class GatewayApplicationService:
         self._audit = audit
         self._validator = validator or DeterministicValidationEngine()
         self._baselines = baselines
+        self._change_requests = change_requests
         self._workspaces = workspaces
         self._git = git
         self._external_adapters = external_adapters
@@ -105,17 +113,40 @@ class GatewayApplicationService:
         return ValidationResult(profile_id, profile_version, issues)
 
     async def create_workspace(self, actor: Actor, baseline_id: UUID, change_request_id: UUID, git_ref: str = "HEAD") -> Workspace:
-        """Create a controlled workspace whose origin is an approved baseline."""
-        if self._baselines is None or self._workspaces is None:
-            raise GatewayServiceError("baseline/workspace registries are not configured")
+        """Create a workspace only for an existing change request and baseline."""
+        if self._baselines is None or self._change_requests is None or self._workspaces is None:
+            raise GatewayServiceError("baseline/change-request/workspace registries are not configured")
         self._require_modify(actor)
         baseline = await self._baselines.get(baseline_id)
+        change_request = await self._change_requests.get(change_request_id)
         if baseline is None:
-            await self._record(actor, action="create_workspace", target_type="baseline", target_id=baseline_id,
-                               result=AuditResult.FAILURE, reason="source baseline was not found")
             raise GatewayServiceError(f"baseline '{baseline_id}' was not found")
-        workspace = Workspace(source_baseline_id=baseline.id, change_request_id=change_request_id, git_ref=git_ref)
+        if change_request is None:
+            raise GatewayServiceError(f"change request '{change_request_id}' was not found")
+        if change_request.source_baseline_id not in (None, baseline.id):
+            raise GatewayServiceError("change request source baseline does not match workspace baseline")
+        if change_request.state not in (ChangeRequestState.OPEN, ChangeRequestState.IN_PROGRESS):
+            raise GatewayServiceError("change request is not open for workspace creation")
+
+        workspace = Workspace(
+            source_baseline_id=baseline.id,
+            source_git_commit=baseline.git_commit,
+            change_request_id=change_request.id,
+            git_ref=git_ref,
+        )
         try:
+            if change_request.state is ChangeRequestState.OPEN:
+                ChangeGate.require_transition(change_request.state, ChangeRequestState.IN_PROGRESS)
+                change_request = change_request.model_copy(update={
+                    "state": ChangeRequestState.IN_PROGRESS,
+                    "source_baseline_id": baseline.id,
+                    "workspace_id": workspace.id,
+                })
+            elif change_request.workspace_id not in (None, workspace.id):
+                raise GatewayServiceError("change request is already linked to another workspace")
+            else:
+                change_request = change_request.model_copy(update={"workspace_id": workspace.id, "source_baseline_id": baseline.id})
+            await self._change_requests.update(change_request) if change_request.state is ChangeRequestState.IN_PROGRESS else None
             created = await self._workspaces.create(workspace)
         except ValueError as exc:
             await self._record(actor, action="create_workspace", target_type="workspace", target_id=workspace.id,
@@ -123,7 +154,8 @@ class GatewayApplicationService:
             raise GatewayServiceError(str(exc)) from exc
         await self._record(actor, action="create_workspace", target_type="workspace", target_id=created.id,
                            result=AuditResult.SUCCESS,
-                           metadata={"source_baseline_id": str(baseline.id), "change_request_id": str(change_request_id), "git_ref": git_ref})
+                           metadata={"source_baseline_id": str(baseline.id), "source_git_commit": baseline.git_commit,
+                                     "change_request_id": str(change_request.id), "git_ref": git_ref})
         return created
 
     async def prepare_for_approval(
@@ -131,23 +163,32 @@ class GatewayApplicationService:
         elements: list[EngineeringElement], relations: list[EngineeringRelation],
         profile_id: str, profile_version: str,
     ) -> ValidationResult:
-        """Validate an active workspace and mark it ready only when validation is clean."""
-        if self._workspaces is None:
-            raise GatewayServiceError("workspace registry is not configured")
+        """Validate an active workspace and its change request before approval."""
+        if self._workspaces is None or self._change_requests is None:
+            raise GatewayServiceError("workspace/change-request registries are not configured")
         self._require_modify(actor)
         workspace = await self._workspaces.get(workspace_id)
         if workspace is None:
             raise GatewayServiceError(f"workspace '{workspace_id}' was not found")
+        change_request = await self._change_requests.get(workspace.change_request_id)
+        if change_request is None:
+            raise GatewayServiceError("workspace change request was not found")
         if workspace.state is not WorkspaceState.ACTIVE:
             raise GatewayServiceError("only an active workspace can be prepared for approval")
+        if change_request.state is not ChangeRequestState.IN_PROGRESS:
+            raise GatewayServiceError("change request must be in progress before approval preparation")
         result = await self.validate(actor, elements, relations, profile_id, profile_version)
         if not result.valid:
             await self._record(actor, action="prepare_for_approval", target_type="workspace", target_id=workspace_id,
                                result=AuditResult.FAILURE, reason=f"validation found {len(result.issues)} issue(s)")
             return result
+        WorkspaceGate.require_transition(workspace.state, WorkspaceState.READY_FOR_APPROVAL)
+        ChangeGate.require_transition(change_request.state, ChangeRequestState.READY_FOR_APPROVAL)
         await self._workspaces.update(workspace.model_copy(update={"state": WorkspaceState.READY_FOR_APPROVAL}))
+        await self._change_requests.update(change_request.model_copy(update={"state": ChangeRequestState.READY_FOR_APPROVAL}))
         await self._record(actor, action="prepare_for_approval", target_type="workspace", target_id=workspace_id,
-                           result=AuditResult.SUCCESS)
+                           result=AuditResult.SUCCESS,
+                           metadata={"profile_id": profile_id, "profile_version": profile_version})
         return result
 
     async def save_workspace_element(self, actor: Actor, element: EngineeringElement, workspace_id: UUID) -> EngineeringElement:
@@ -165,19 +206,19 @@ class GatewayApplicationService:
         return saved
 
     async def approve(self, actor: Actor, baseline_id: UUID) -> None:
-        """Enforce the human-only approval boundary without mutating a baseline."""
+        """Legacy boundary retained only for compatibility; it cannot create a baseline."""
         try:
             ChangeGate.require_approval(actor.authorization_level, actor_is_ai=actor.is_ai)
         except ValueError as exc:
             await self._record(actor, action="approve_baseline", target_type="baseline", target_id=baseline_id,
                                result=AuditResult.DENIED, reason=str(exc))
             raise GatewayServiceError(str(exc)) from exc
-        await self._record(actor, action="approve_baseline", target_type="baseline", target_id=baseline_id, result=AuditResult.SUCCESS)
+        raise GatewayServiceError("direct baseline approval is disabled; approve a ready workspace instead")
 
     async def approve_workspace(self, actor: Actor, workspace_id: UUID) -> Baseline:
         """Approve a ready workspace by deriving a baseline from authoritative snapshots."""
-        if self._workspaces is None or self._baselines is None or self._git is None:
-            raise GatewayServiceError("baseline/workspace/Git services are not configured")
+        if self._workspaces is None or self._change_requests is None or self._baselines is None or self._git is None:
+            raise GatewayServiceError("baseline/change-request/workspace/Git services are not configured")
         try:
             ChangeGate.require_approval(actor.authorization_level, actor_is_ai=actor.is_ai)
         except ValueError as exc:
@@ -187,11 +228,16 @@ class GatewayApplicationService:
         workspace = await self._workspaces.get(workspace_id)
         if workspace is None:
             raise GatewayServiceError(f"workspace '{workspace_id}' was not found")
-        if workspace.state is not WorkspaceState.READY_FOR_APPROVAL:
-            raise GatewayServiceError("workspace must be ready for approval")
+        change_request = await self._change_requests.get(workspace.change_request_id)
+        if change_request is None:
+            raise GatewayServiceError("workspace change request was not found")
+        if workspace.state is not WorkspaceState.READY_FOR_APPROVAL or change_request.state is not ChangeRequestState.READY_FOR_APPROVAL:
+            raise GatewayServiceError("workspace and change request must both be ready for approval")
         source = await self._baselines.get(workspace.source_baseline_id)
         if source is None:
             raise GatewayServiceError("workspace source baseline was not found")
+        if workspace.source_git_commit != source.git_commit:
+            raise GatewayServiceError("workspace provenance no longer matches its source baseline")
 
         try:
             snapshot = await self._git.get_snapshot(source.git_repository, workspace.git_ref)
@@ -209,7 +255,10 @@ class GatewayApplicationService:
                 external_versions=versions,
             )
             registered = await self._baselines.register(baseline)
+            WorkspaceGate.require_transition(workspace.state, WorkspaceState.APPROVED)
+            ChangeGate.require_transition(change_request.state, ChangeRequestState.APPROVED)
             await self._workspaces.update(workspace.model_copy(update={"state": WorkspaceState.APPROVED}))
+            await self._change_requests.update(change_request.model_copy(update={"state": ChangeRequestState.APPROVED}))
         except Exception as exc:
             await self._record(actor, action="approve_workspace", target_type="workspace", target_id=workspace_id,
                                result=AuditResult.FAILURE, reason=str(exc))
@@ -219,7 +268,8 @@ class GatewayApplicationService:
 
         await self._record(actor, action="approve_workspace", target_type="baseline", target_id=registered.id,
                            result=AuditResult.SUCCESS,
-                           metadata={"workspace_id": str(workspace_id), "source_baseline_id": str(source.id),
+                           metadata={"workspace_id": str(workspace_id), "change_request_id": str(change_request.id),
+                                     "source_baseline_id": str(source.id), "source_git_commit": workspace.source_git_commit,
                                      "git_commit": registered.git_commit, "git_tag": registered.git_tag})
         return registered
 
@@ -236,10 +286,11 @@ class GatewayApplicationService:
             await self._record(actor, action="workspace_write", target_type="workspace", target_id=workspace_id,
                                result=AuditResult.DENIED, reason=str(exc))
             raise GatewayServiceError(str(exc)) from exc
-        if self._workspaces is not None:
-            workspace = await self._workspaces.get(workspace_id)
-            if workspace is None or workspace.state is not WorkspaceState.ACTIVE:
-                raise GatewayServiceError("workspace is not active")
+        if self._workspaces is None:
+            raise GatewayServiceError("workspace registry is not configured")
+        workspace = await self._workspaces.get(workspace_id)
+        if workspace is None or workspace.state is not WorkspaceState.ACTIVE:
+            raise GatewayServiceError("workspace is not active")
 
     @staticmethod
     def _require_modify(actor: Actor) -> None:
