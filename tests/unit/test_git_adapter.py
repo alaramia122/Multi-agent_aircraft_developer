@@ -31,19 +31,23 @@ def git_repository(tmp_path: Path) -> Path:
 
 
 @pytest.mark.asyncio
-async def test_get_commit_resolves_existing_commit(git_repository: Path) -> None:
+async def test_get_snapshot_resolves_existing_ref(git_repository: Path) -> None:
     adapter = LocalGitAdapter()
     commit = _git(git_repository, "rev-parse", "HEAD")
 
-    assert await adapter.get_commit(str(git_repository), "HEAD") == commit
-    assert await adapter.get_commit(str(git_repository), commit) == commit
+    snapshot = await adapter.get_snapshot(str(git_repository), "HEAD")
+
+    assert snapshot.commit == commit
+    assert snapshot.repository == str(git_repository.resolve())
+    assert snapshot.tag is None
 
 
 @pytest.mark.asyncio
-async def test_get_commit_returns_none_for_unknown_commit(git_repository: Path) -> None:
+async def test_get_snapshot_rejects_unknown_ref(git_repository: Path) -> None:
     adapter = LocalGitAdapter()
 
-    assert await adapter.get_commit(str(git_repository), str(uuid4())) is None
+    with pytest.raises(RuntimeError, match="Git command failed"):
+        await adapter.get_snapshot(str(git_repository), str(uuid4()))
 
 
 @pytest.mark.asyncio
@@ -51,11 +55,13 @@ async def test_create_tag_creates_immutable_reference(git_repository: Path) -> N
     adapter = LocalGitAdapter()
     commit = _git(git_repository, "rev-parse", "HEAD")
 
-    await adapter.create_tag(str(git_repository), commit, "baseline-001")
+    snapshot = await adapter.create_tag(str(git_repository), "baseline-001", commit)
 
+    assert snapshot.commit == commit
+    assert snapshot.tag == "baseline-001"
     assert _git(git_repository, "rev-parse", "baseline-001") == commit
     with pytest.raises(RuntimeError, match="Git command failed"):
-        await adapter.create_tag(str(git_repository), commit, "baseline-001")
+        await adapter.create_tag(str(git_repository), "baseline-001", commit)
 
 
 @pytest.mark.asyncio
@@ -63,4 +69,4 @@ async def test_create_tag_rejects_unknown_commit(git_repository: Path) -> None:
     adapter = LocalGitAdapter()
 
     with pytest.raises(ValueError, match="does not exist"):
-        await adapter.create_tag(str(git_repository), str(uuid4()), "baseline-002")
+        await adapter.create_tag(str(git_repository), "baseline-002", str(uuid4()))
