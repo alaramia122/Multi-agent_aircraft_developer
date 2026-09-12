@@ -5,9 +5,9 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-from pathlib import Path
 import subprocess
 import tempfile
+from pathlib import Path
 from typing import Any
 
 from engineering_gateway.domain.adapters import ExternalVersion
