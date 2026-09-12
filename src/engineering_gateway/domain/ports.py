@@ -3,6 +3,7 @@
 from typing import Protocol
 from uuid import UUID
 
+from engineering_gateway.domain.audit import AuditEvent
 from engineering_gateway.domain.models import EngineeringElement, EngineeringRelation
 from engineering_gateway.domain.profiles import StandardProfile
 
@@ -30,7 +31,7 @@ class StandardProfileRegistry(Protocol):
 
 
 class EngineeringSystemAdapter(Protocol):
-    """Common boundary for StrictDoc, Capella, OpenProject and Git adapters."""
+    """Read boundary for authoritative external engineering systems."""
 
     system_name: str
 
@@ -38,6 +39,6 @@ class EngineeringSystemAdapter(Protocol):
 
 
 class AuditSink(Protocol):
-    """Sink for immutable audit events."""
+    """Append-only sink for immutable audit events."""
 
-    async def record(self, event: object) -> None: ...
+    async def record(self, event: AuditEvent) -> None: ...
