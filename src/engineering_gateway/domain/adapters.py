@@ -1,57 +1,82 @@
 """Ports for authoritative external engineering-system adapters."""
 
+from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
-from engineering_gateway.domain.models import EngineeringElement
+from engineering_gateway.domain.models import EngineeringElement, EngineeringRelation
+
+
+@dataclass(frozen=True)
+class ExternalVersion:
+    """Version or revision identifier of an authoritative external system."""
+
+    system: str
+    version: str
+
+
+@dataclass(frozen=True)
+class GitSnapshot:
+    """Reproducible Git repository state used by a Gateway baseline."""
+
+    repository: str
+    commit: str
+    tag: str | None = None
+
+
+class ReadAdapter(Protocol):
+    """Read-only access to an authoritative engineering system."""
+
+    system_name: str
+
+    async def get_element(self, external_id: str) -> EngineeringElement | None: ...
+
+    async def get_version(self) -> ExternalVersion: ...
+
+
+class WorkspaceAdapter(ReadAdapter, Protocol):
+    """Adapter boundary for changes explicitly scoped to a workspace."""
+
+    async def create_workspace(self, workspace_id: UUID, source_version: str) -> None: ...
+
+    async def apply_element(self, workspace_id: UUID, element: EngineeringElement) -> None: ...
+
+    async def apply_relation(self, workspace_id: UUID, relation: EngineeringRelation) -> None: ...
 
 
 class GitAdapter(Protocol):
-    """Read repository state and create reproducible source references."""
+    """Git operations required for reproducible Gateway baselines."""
 
     system_name: str
 
-    async def get_commit(self, repository: str, commit: str) -> str | None: ...
+    async def get_snapshot(self, repository: str, ref: str = "HEAD") -> GitSnapshot: ...
 
-    async def create_tag(self, repository: str, commit: str, tag: str) -> None: ...
-
-
-class StrictDocAdapter(Protocol):
-    """Read authoritative requirements and verification objects from StrictDoc."""
-
-    system_name: str
-
-    async def get_element(self, external_id: str) -> EngineeringElement | None: ...
+    async def create_tag(self, repository: str, tag: str, commit: str) -> GitSnapshot: ...
 
 
-class CapellaAdapter(Protocol):
-    """Read authoritative architecture objects from Capella."""
-
-    system_name: str
-
-    async def get_element(self, external_id: str) -> EngineeringElement | None: ...
+class StrictDocAdapter(WorkspaceAdapter, Protocol):
+    """StrictDoc requirements and traceability integration boundary."""
 
 
-class OpenProjectAdapter(Protocol):
-    """Read and reference change-management objects in OpenProject."""
-
-    system_name: str
-
-    async def get_element(self, external_id: str) -> EngineeringElement | None: ...
+class CapellaAdapter(WorkspaceAdapter, Protocol):
+    """Capella architecture-model integration boundary."""
 
 
-class WorkspaceAdapter(Protocol):
-    """Controlled workspace boundary used by L2 modifications."""
+class OpenProjectAdapter(ReadAdapter, Protocol):
+    """OpenProject change-management integration boundary."""
 
-    async def create_workspace(self, baseline_id: UUID) -> UUID: ...
+    async def create_change_request(self, title: str, description: str) -> str: ...
 
-    async def get_workspace_baseline(self, workspace_id: UUID) -> UUID | None: ...
+    async def update_change_request(self, external_id: str, status: str) -> None: ...
 
 
 __all__ = [
     "CapellaAdapter",
+    "ExternalVersion",
     "GitAdapter",
+    "GitSnapshot",
     "OpenProjectAdapter",
+    "ReadAdapter",
     "StrictDocAdapter",
     "WorkspaceAdapter",
 ]
