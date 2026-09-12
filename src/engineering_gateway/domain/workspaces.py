@@ -26,6 +26,7 @@ class Workspace(BaseModel):
     git_ref: str = Field(default="HEAD", min_length=1)
     profile_id: str | None = Field(default=None, min_length=1)
     profile_version: str | None = Field(default=None, min_length=1)
+    reconciled: bool = False
     state: WorkspaceState = WorkspaceState.ACTIVE
 
     def bind_profile(self, profile_id: str, profile_version: str) -> "Workspace":
@@ -35,6 +36,17 @@ class Workspace(BaseModel):
         if self.profile_version is not None and self.profile_version != profile_version:
             raise ValueError("workspace validation profile is immutable once bound")
         return self.model_copy(update={"profile_id": profile_id, "profile_version": profile_version})
+
+    def mark_reconciled(self) -> "Workspace":
+        """Record that the current staged change-set was published to authoritative systems."""
+        if self.state is not WorkspaceState.READY_FOR_APPROVAL:
+            raise ValueError("only a ready workspace can be marked reconciled")
+        return self.model_copy(update={"reconciled": True})
+
+    def require_reconciled(self) -> None:
+        """Reject approval if the staged changes were not reconciled."""
+        if not self.reconciled:
+            raise ValueError("workspace must be reconciled before approval")
 
 
 class WorkspaceGateError(ValueError):
@@ -89,6 +101,8 @@ class WorkspaceRegistry:
             raise ValueError("workspace validation profile is immutable once bound")
         if current.profile_version is not None and current.profile_version != workspace.profile_version:
             raise ValueError("workspace validation profile is immutable once bound")
+        if current.reconciled and not workspace.reconciled:
+            raise ValueError("workspace reconciliation evidence is immutable")
         WorkspaceGate.require_transition(current.state, workspace.state)
         self._workspaces[workspace.id] = workspace
         return workspace
