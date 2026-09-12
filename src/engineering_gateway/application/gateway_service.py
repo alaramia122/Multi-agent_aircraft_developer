@@ -9,7 +9,7 @@ from engineering_gateway.application.validation import DeterministicValidationEn
 from engineering_gateway.domain.adapters import GitAdapter, ReadAdapter
 from engineering_gateway.domain.audit import ActorType, AuditEvent, AuditResult
 from engineering_gateway.domain.baselines import Baseline, ExternalSystemVersion
-from engineering_gateway.domain.change_control import AuthorizationLevel, ChangeGate, ChangeRequestState
+from engineering_gateway.domain.change_control import AuthorizationLevel, ChangeGate, ChangeRequest, ChangeRequestState
 from engineering_gateway.domain.models import EngineeringElement, EngineeringRelation
 from engineering_gateway.domain.ports import (
     AuditSink,
@@ -132,7 +132,8 @@ class GatewayApplicationService:
             git_ref=git_ref,
         )
         try:
-            ChangeGate.require_transition(change_request.state, ChangeRequestState.IN_PROGRESS)
+            if change_request.state is ChangeRequestState.OPEN:
+                ChangeGate.require_transition(change_request.state, ChangeRequestState.IN_PROGRESS)
             change_request = change_request.model_copy(update={
                 "state": ChangeRequestState.IN_PROGRESS,
                 "source_baseline_id": baseline.id,
@@ -314,7 +315,7 @@ class GatewayApplicationService:
                                      "profile_id": workspace.profile_id, "profile_version": workspace.profile_version})
         return registered
 
-    async def _load_workflow(self, workspace_id: UUID) -> tuple[Workspace, object]:
+    async def _load_workflow(self, workspace_id: UUID) -> tuple[Workspace, ChangeRequest]:
         if self._workspaces is None or self._change_requests is None:
             raise GatewayServiceError("workspace/change-request registries are not configured")
         workspace = await self._workspaces.get(workspace_id)
