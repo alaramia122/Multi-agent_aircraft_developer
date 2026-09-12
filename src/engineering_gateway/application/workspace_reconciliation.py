@@ -3,13 +3,13 @@
 from dataclasses import dataclass
 from uuid import UUID
 
+from engineering_gateway.application.gateway_service import Actor, GatewayServiceError
 from engineering_gateway.domain.adapters import ExternalVersion
 from engineering_gateway.domain.audit import AuditEvent, AuditResult
 from engineering_gateway.domain.change_control import AuthorizationLevel, ChangeRequestState
 from engineering_gateway.domain.ports import AuditSink, ChangeRequestRegistryPort, WorkspaceChangeSetRepository, WorkspaceRegistryPort
 from engineering_gateway.domain.reconciliation import WorkspaceReconciler
 from engineering_gateway.domain.workspaces import WorkspaceState
-from engineering_gateway.application.gateway_service import Actor, GatewayServiceError
 
 
 @dataclass(frozen=True)
@@ -21,12 +21,7 @@ class ReconciliationResult:
 
 
 class WorkspaceReconciliationService:
-    """Govern reconciliation without changing the canonical Gateway model.
-
-    Reconciliation is deliberately a separate step between approval preparation and
-    human approval. The workspace remains READY_FOR_APPROVAL after a successful run;
-    the subsequent approval captures the authoritative versions into the new baseline.
-    """
+    """Govern reconciliation without changing the canonical Gateway model."""
 
     def __init__(
         self,
@@ -60,6 +55,7 @@ class WorkspaceReconciliationService:
         changes = await self._changes.get_changes(workspace_id)
         try:
             versions = await self._reconciler.reconcile(workspace, changes)
+            await self._workspaces.update(workspace.mark_reconciled())
         except Exception as exc:
             await self._audit.record(AuditEvent(
                 actor_id=actor.actor_id,
