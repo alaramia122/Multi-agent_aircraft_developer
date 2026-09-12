@@ -3,6 +3,8 @@
 from pathlib import Path
 import subprocess
 
+from engineering_gateway.domain.adapters import GitSnapshot
+
 
 class LocalGitAdapter:
     """Git adapter backed by the local Git CLI.
@@ -18,22 +20,25 @@ class LocalGitAdapter:
             raise ValueError("timeout_seconds must be positive")
         self._timeout_seconds = timeout_seconds
 
-    async def get_commit(self, repository: str, commit: str) -> str | None:
-        """Return the resolved commit SHA when the object exists in the repository."""
-        output = self._run(repository, "rev-parse", "--verify", f"{commit}^{{commit}}")
-        return output if output is not None else None
+    async def get_snapshot(self, repository: str, ref: str = "HEAD") -> GitSnapshot:
+        """Resolve a repository ref to a reproducible commit snapshot."""
+        commit = self._run_required(repository, "rev-parse", "--verify", f"{ref}^{{commit}}")
+        tag = self._run(repository, "describe", "--exact-match", "--tags", commit)
+        return GitSnapshot(repository=str(Path(repository).resolve()), commit=commit, tag=tag)
 
-    async def create_tag(self, repository: str, commit: str, tag: str) -> None:
-        """Create a lightweight tag for an existing commit.
-
-        Existing tags are never moved implicitly. Git itself rejects an already existing
-        tag, preserving baseline immutability at the repository boundary.
-        """
+    async def create_tag(self, repository: str, tag: str, commit: str) -> GitSnapshot:
+        """Create a lightweight tag without moving an existing reference."""
         if not tag or tag.startswith("-"):
             raise ValueError("tag must be a non-empty Git reference name")
-        if self._run(repository, "rev-parse", "--verify", f"{commit}^{{commit}}") is None:
+        resolved_commit = self._run(repository, "rev-parse", "--verify", f"{commit}^{{commit}}")
+        if resolved_commit is None:
             raise ValueError(f"commit '{commit}' does not exist")
-        self._run_required(repository, "tag", tag, commit)
+        self._run_required(repository, "tag", tag, resolved_commit)
+        return GitSnapshot(
+            repository=str(Path(repository).resolve()),
+            commit=resolved_commit,
+            tag=tag,
+        )
 
     def _run(self, repository: str, *args: str) -> str | None:
         try:
