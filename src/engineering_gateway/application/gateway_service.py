@@ -46,6 +46,7 @@ class ValidationResult:
 
     profile_id: str
     profile_version: str
+    graph_hash: str
     issues: tuple[ValidationIssue, ...]
 
     @property
@@ -97,18 +98,14 @@ class GatewayApplicationService:
         relations: list[EngineeringRelation], profile_id: str, profile_version: str,
     ) -> ValidationResult:
         self._require_read(actor)
-        profile = await self._profiles.get(profile_id, profile_version)
-        if profile is None:
-            await self._record(actor, action="validate", target_type="standard_profile", result=AuditResult.FAILURE,
-                               reason=f"profile '{profile_id}@{profile_version}' was not found")
-            raise GatewayServiceError(f"profile '{profile_id}@{profile_version}' was not found")
-        issues = tuple(self._validator.validate(elements, relations, profile))
+        profile = await self._get_active_profile(profile_id, profile_version, actor=actor, action="validate")
+        result = self._validator.validate(elements, relations, profile)
         await self._record(
             actor, action="validate", target_type="standard_profile", result=AuditResult.SUCCESS,
-            reason="validation passed" if not issues else f"validation found {len(issues)} issue(s)",
-            metadata={"issue_count": len(issues)},
+            reason="validation passed" if result.valid else f"validation found {len(result.issues)} issue(s)",
+            metadata={"issue_count": len(result.issues), "graph_hash": result.graph_hash},
         )
-        return ValidationResult(profile_id, profile_version, issues)
+        return ValidationResult(profile_id, profile_version, result.graph_hash, result.issues)
 
     async def create_workspace(self, actor: Actor, baseline_id: UUID, change_request_id: UUID, git_ref: str = "HEAD") -> Workspace:
         """Create a workspace only for an existing, unbound change request."""
@@ -176,18 +173,19 @@ class GatewayApplicationService:
             raise GatewayServiceError("change request must be in progress before approval preparation")
         if workspace.profile_id is not None and (workspace.profile_id != profile_id or workspace.profile_version != profile_version):
             raise GatewayServiceError("workspace is already bound to a different validation profile")
-        profile = await self._profiles.get(profile_id, profile_version)
-        if profile is None:
-            raise GatewayServiceError(f"profile '{profile_id}@{profile_version}' was not found")
+        profile = await self._get_active_profile(profile_id, profile_version, actor=actor, action="prepare_for_approval")
         graph = await self._workspace_changes.get_graph(workspace_id)
+        validation = self._validator.validate(graph.elements, graph.relations, profile)
         result = ValidationResult(
             profile_id=profile_id,
             profile_version=profile_version,
-            issues=tuple(self._validator.validate(graph.elements, graph.relations, profile)),
+            graph_hash=validation.graph_hash,
+            issues=validation.issues,
         )
         if not result.valid:
             await self._record(actor, action="prepare_for_approval", target_type="workspace", target_id=workspace_id,
-                               result=AuditResult.FAILURE, reason=f"validation found {len(result.issues)} issue(s)")
+                               result=AuditResult.FAILURE, reason=f"validation found {len(result.issues)} issue(s)",
+                               metadata={"graph_hash": result.graph_hash})
             return result
         WorkspaceGate.require_transition(workspace.state, WorkspaceState.READY_FOR_APPROVAL)
         ChangeGate.require_transition(change_request.state, ChangeRequestState.READY_FOR_APPROVAL)
@@ -196,7 +194,7 @@ class GatewayApplicationService:
         await self._change_requests.update(change_request.model_copy(update={"state": ChangeRequestState.READY_FOR_APPROVAL}))
         await self._record(actor, action="prepare_for_approval", target_type="workspace", target_id=workspace_id,
                            result=AuditResult.SUCCESS,
-                           metadata={"profile_id": profile_id, "profile_version": profile_version})
+                           metadata={"profile_id": profile_id, "profile_version": profile_version, "graph_hash": result.graph_hash})
         return result
 
     async def reject_workspace(self, actor: Actor, workspace_id: UUID, reason: str) -> None:
@@ -212,7 +210,7 @@ class GatewayApplicationService:
             raise GatewayServiceError("rejection requires a non-empty reason")
         WorkspaceGate.require_transition(workspace.state, WorkspaceState.ACTIVE)
         ChangeGate.require_transition(change_request.state, ChangeRequestState.REJECTED)
-        await self._workspaces.update(workspace.model_copy(update={"state": WorkspaceState.ACTIVE}))
+        await self._workspaces.update(workspace.model_copy(update={"state": WorkspaceState.ACTIVE, "reconciled": False}))
         await self._change_requests.update(change_request.model_copy(update={"state": ChangeRequestState.REJECTED}))
         await self._record(actor, action="reject_workspace", target_type="workspace", target_id=workspace_id,
                            result=AuditResult.SUCCESS, reason=reason)
@@ -328,6 +326,18 @@ class GatewayApplicationService:
                                      "git_commit": registered.git_commit, "git_tag": registered.git_tag,
                                      "profile_id": workspace.profile_id, "profile_version": workspace.profile_version})
         return registered
+
+    async def _get_active_profile(self, profile_id: str, profile_version: str, *, actor: Actor, action: str):
+        profile = await self._profiles.get(profile_id, profile_version)
+        if profile is None:
+            await self._record(actor, action=action, target_type="standard_profile", result=AuditResult.FAILURE,
+                               reason=f"profile '{profile_id}@{profile_version}' was not found")
+            raise GatewayServiceError(f"profile '{profile_id}@{profile_version}' was not found")
+        if not await self._profiles.is_active(profile_id, profile_version):
+            await self._record(actor, action=action, target_type="standard_profile", result=AuditResult.FAILURE,
+                               reason=f"profile '{profile_id}@{profile_version}' is not active")
+            raise GatewayServiceError(f"profile '{profile_id}@{profile_version}' is not active")
+        return profile
 
     async def _load_workflow(self, workspace_id: UUID) -> tuple[Workspace, ChangeRequest]:
         if self._workspaces is None or self._change_requests is None:
