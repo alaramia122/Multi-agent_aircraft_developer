@@ -9,12 +9,12 @@ from engineering_gateway.domain.profiles import (
     StandardProfile,
     TraceabilityRule,
 )
-from engineering_gateway.domain.traceability import TraceabilityGraph
+from engineering_gateway.domain.traceability import TraceabilityGapType, TraceabilityGraph
 
 
-def element(type_id: str) -> EngineeringElement:
+def element(type_id: str, kind: ElementKind = ElementKind.REQUIREMENT) -> EngineeringElement:
     return EngineeringElement(
-        kind=ElementKind.REQUIREMENT,
+        kind=kind,
         type_id=type_id,
         name=type_id,
         external_system="test",
@@ -30,6 +30,7 @@ def profile() -> StandardProfile:
         element_types=[
             ElementTypeDefinition(id="system_req", kind=ElementKind.REQUIREMENT),
             ElementTypeDefinition(id="system_arch", kind=ElementKind.ARCHITECTURE),
+            ElementTypeDefinition(id="software_req", kind=ElementKind.REQUIREMENT),
         ],
         relations=[
             RelationDefinition(
@@ -50,67 +51,108 @@ def profile() -> StandardProfile:
     )
 
 
+def relation(source: EngineeringElement, target: EngineeringElement, relation_type: RelationType) -> EngineeringRelation:
+    return EngineeringRelation(source_id=source.id, relation_type=relation_type, target_id=target.id)
+
+
 def test_required_traceability_gap_is_detected() -> None:
     source = element("system_req")
-    graph = TraceabilityGraph([source], [])
-
-    gaps = graph.missing_required(profile())
+    gaps = TraceabilityGraph([source], []).missing_required(profile())
 
     assert len(gaps) == 1
     assert gaps[0].rule_id == "req-to-arch"
     assert gaps[0].source_id == source.id
+    assert gaps[0].gap_type is TraceabilityGapType.MISSING_REQUIRED
 
 
 def test_existing_traceability_is_not_reported() -> None:
     source = element("system_req")
-    target = element("system_arch")
-    relation = EngineeringRelation(
-        source_id=source.id,
-        relation_type=RelationType.SATISFIES,
-        target_id=target.id,
-    )
-    graph = TraceabilityGraph([source, target], [relation])
+    target = element("system_arch", ElementKind.ARCHITECTURE)
+    graph = TraceabilityGraph([source, target], [relation(source, target, RelationType.SATISFIES)])
 
     assert graph.missing_required(profile()) == []
 
 
 def test_outgoing_and_incoming_queries_are_directional() -> None:
     source = element("system_req")
-    target = element("system_arch")
-    relation = EngineeringRelation(
-        source_id=source.id,
-        relation_type=RelationType.SATISFIES,
-        target_id=target.id,
-    )
-    graph = TraceabilityGraph([source, target], [relation])
+    target = element("system_arch", ElementKind.ARCHITECTURE)
+    edge = relation(source, target, RelationType.SATISFIES)
+    graph = TraceabilityGraph([source, target], [edge])
 
-    assert graph.outgoing(source.id) == [relation]
-    assert graph.incoming(target.id) == [relation]
+    assert graph.outgoing(source.id) == [edge]
+    assert graph.incoming(target.id) == [edge]
     assert graph.outgoing(target.id) == []
 
 
-@pytest.mark.parametrize("relation_type", [RelationType.DERIVES_FROM, RelationType.VERIFIED_BY])
-def test_wrong_relation_type_does_not_satisfy_rule(relation_type: RelationType) -> None:
+def test_reachable_and_ancestors_follow_directed_graph() -> None:
     source = element("system_req")
-    target = element("system_arch")
-    relation = EngineeringRelation(
+    middle = element("system_arch", ElementKind.ARCHITECTURE)
+    target = element("software_req")
+    graph = TraceabilityGraph(
+        [source, middle, target],
+        [relation(source, middle, RelationType.SATISFIES), relation(middle, target, RelationType.DERIVES_FROM)],
+    )
+
+    assert graph.reachable(source.id) == {middle.id, target.id}
+    assert graph.reachable(source.id, RelationType.SATISFIES) == {middle.id}
+    assert graph.ancestors(target.id) == {source.id, middle.id}
+
+
+@pytest.mark.parametrize(
+    ("relation_type", "expected"),
+    [
+        (RelationType.DERIVES_FROM, TraceabilityGapType.WRONG_RELATION_TYPE),
+        (RelationType.VERIFIED_BY, TraceabilityGapType.WRONG_RELATION_TYPE),
+    ],
+)
+def test_wrong_relation_type_is_diagnosed(relation_type: RelationType, expected: TraceabilityGapType) -> None:
+    source = element("system_req")
+    target = element("system_arch", ElementKind.ARCHITECTURE)
+    gaps = TraceabilityGraph([source, target], [relation(source, target, relation_type)]).traceability_violations(profile())
+
+    assert any(gap.gap_type is expected for gap in gaps)
+
+
+def test_wrong_target_type_is_diagnosed() -> None:
+    source = element("system_req")
+    wrong_target = element("software_req")
+    gaps = TraceabilityGraph(
+        [source, wrong_target], [relation(source, wrong_target, RelationType.SATISFIES)]
+    ).traceability_violations(profile())
+
+    assert any(gap.gap_type is TraceabilityGapType.WRONG_TARGET_TYPE for gap in gaps)
+
+
+def test_dangling_target_is_diagnosed() -> None:
+    source = element("system_req")
+    missing_target = uuid4()
+    edge = EngineeringRelation(
         source_id=source.id,
-        relation_type=relation_type,
+        relation_type=RelationType.SATISFIES,
+        target_id=missing_target,
+    )
+    gaps = TraceabilityGraph([source], [edge]).traceability_violations(profile())
+
+    assert any(gap.gap_type is TraceabilityGapType.DANGLING_TARGET for gap in gaps)
+
+
+def test_dangling_source_is_diagnosed() -> None:
+    source_id = uuid4()
+    target = element("system_arch", ElementKind.ARCHITECTURE)
+    edge = EngineeringRelation(
+        source_id=source_id,
+        relation_type=RelationType.SATISFIES,
         target_id=target.id,
     )
-    graph = TraceabilityGraph([source, target], [relation])
+    gaps = TraceabilityGraph([target], [edge]).traceability_violations(profile())
 
-    assert len(graph.missing_required(profile())) == 1
+    assert any(gap.gap_type is TraceabilityGapType.DANGLING_SOURCE for gap in gaps)
 
 
 def test_forbidden_traceability_is_reported() -> None:
     source = element("system_req")
-    target = element("system_arch")
-    relation = EngineeringRelation(
-        source_id=source.id,
-        relation_type=RelationType.SATISFIES,
-        target_id=target.id,
-    )
+    target = element("system_arch", ElementKind.ARCHITECTURE)
+    edge = relation(source, target, RelationType.SATISFIES)
     forbidden_profile = profile().model_copy(
         update={
             "traceability": [
@@ -125,9 +167,8 @@ def test_forbidden_traceability_is_reported() -> None:
         }
     )
 
-    gaps = TraceabilityGraph([source, target], [relation]).traceability_violations(
-        forbidden_profile
-    )
+    gaps = TraceabilityGraph([source, target], [edge]).traceability_violations(forbidden_profile)
 
     assert len(gaps) == 1
     assert gaps[0].forbidden is True
+    assert gaps[0].gap_type is TraceabilityGapType.FORBIDDEN_PRESENT
