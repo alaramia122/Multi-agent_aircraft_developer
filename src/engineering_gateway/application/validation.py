@@ -72,14 +72,7 @@ class DeterministicValidationEngine:
         lifecycle_states: dict[UUID, str] | None = None,
         lifecycle_transitions: dict[UUID, tuple[str, str]] | None = None,
     ) -> ValidationResult:
-        return self.validate_graph(
-            EngineeringGraph(elements=elements, relations=relations),
-            profile,
-            attributes=attributes,
-            artifact_evidence=artifact_evidence,
-            lifecycle_states=lifecycle_states,
-            lifecycle_transitions=lifecycle_transitions,
-        )
+        return self.validate_graph(EngineeringGraph(elements=elements, relations=relations), profile, attributes=attributes, artifact_evidence=artifact_evidence, lifecycle_states=lifecycle_states, lifecycle_transitions=lifecycle_transitions)
 
     def validate_graph(
         self,
@@ -115,7 +108,6 @@ class DeterministicValidationEngine:
                 issues.append(ValidationIssue(ValidationIssueCode.ELEMENT_KIND_MISMATCH, f"Element type '{element.type_id}' requires kind '{definition.kind}', got '{element.kind}'", element_id=element.id))
 
         self._validate_attributes(graph, type_definitions, attributes or {}, issues)
-
         allowed_pairs = {(relation.relation_type, source_type, target_type) for relation in profile.relations for source_type in relation.source_type_ids for target_type in relation.target_type_ids}
         seen_relations: set[tuple[UUID, RelationType, UUID]] = set()
         for relation in graph.relations:
@@ -134,7 +126,6 @@ class DeterministicValidationEngine:
         traceability = TraceabilityGraph(graph.elements, graph.relations)
         for gap in traceability.traceability_violations(profile):
             issues.append(ValidationIssue(ValidationIssueCode.FORBIDDEN_TRACEABILITY if gap.forbidden else ValidationIssueCode.MISSING_TRACEABILITY, f"Traceability rule '{gap.rule_id}' is violated for element {gap.source_id}", element_id=gap.source_id, rule_id=gap.rule_id))
-
         self._validate_verification(graph, profile, element_map, issues)
         self._validate_lifecycle(profile, graph, element_map, lifecycle_states, lifecycle_transitions, issues)
         self._validate_artifacts(profile, graph, artifact_evidence, issues)
@@ -175,10 +166,17 @@ class DeterministicValidationEngine:
 
     @staticmethod
     def _validate_lifecycle(profile: StandardProfile, graph: EngineeringGraph, element_map: dict[UUID, EngineeringElement], lifecycle_states: dict[UUID, str] | None, lifecycle_transitions: dict[UUID, tuple[str, str]] | None, issues: list[ValidationIssue]) -> None:
+        if profile.lifecycles and lifecycle_states is None:
+            for lifecycle in profile.lifecycles:
+                for element in graph.elements:
+                    if element.type_id == lifecycle.element_type_id:
+                        issues.append(ValidationIssue(ValidationIssueCode.INVALID_LIFECYCLE_STATE, f"Lifecycle '{lifecycle.id}' requires explicit state for element '{element.id}'", element_id=element.id, rule_id=lifecycle.id))
         if lifecycle_states is not None:
             for lifecycle in profile.lifecycles:
                 for element in graph.elements:
-                    if element.type_id == lifecycle.element_type_id and element.id in lifecycle_states and lifecycle_states[element.id] not in lifecycle.states:
+                    if element.type_id == lifecycle.element_type_id and element.id not in lifecycle_states:
+                        issues.append(ValidationIssue(ValidationIssueCode.INVALID_LIFECYCLE_STATE, f"Lifecycle '{lifecycle.id}' requires explicit state for element '{element.id}'", element_id=element.id, rule_id=lifecycle.id))
+                    elif element.type_id == lifecycle.element_type_id and element.id in lifecycle_states and lifecycle_states[element.id] not in lifecycle.states:
                         issues.append(ValidationIssue(ValidationIssueCode.INVALID_LIFECYCLE_STATE, f"Lifecycle '{lifecycle.id}' does not define state '{lifecycle_states[element.id]}'", element_id=element.id, rule_id=lifecycle.id))
         if lifecycle_transitions is not None:
             for lifecycle in profile.lifecycles:
