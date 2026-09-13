@@ -11,6 +11,13 @@ from engineering_gateway.domain.profiles import StandardProfile
 from engineering_gateway.domain.workspaces import Workspace
 
 
+class UnitOfWork(Protocol):
+    """Transaction boundary for an atomic Gateway application operation."""
+
+    async def commit(self) -> None: ...
+    async def rollback(self) -> None: ...
+
+
 class EngineeringRepository(Protocol):
     async def get(self, element_id: UUID) -> EngineeringElement | None: ...
     async def save(self, element: EngineeringElement) -> EngineeringElement: ...
