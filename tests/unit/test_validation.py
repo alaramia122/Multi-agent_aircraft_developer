@@ -2,7 +2,7 @@ from uuid import uuid4
 
 from engineering_gateway.application.validation import DeterministicValidationEngine, ValidationIssueCode, graph_hash
 from engineering_gateway.domain.models import ElementKind, EngineeringElement, EngineeringGraph, EngineeringRelation, RelationType
-from engineering_gateway.domain.profiles import ElementTypeDefinition, RelationDefinition, StandardProfile, TraceabilityRule
+from engineering_gateway.domain.profiles import ElementTypeDefinition, RelationDefinition, StandardProfile, TraceabilityRule, VerificationRule
 
 
 def make_element(type_id: str, kind: ElementKind) -> EngineeringElement:
@@ -100,6 +100,50 @@ def test_forbidden_traceability_is_reported() -> None:
     })
     result = DeterministicValidationEngine().validate([source, target], [relation], profile)
     assert any(issue.code == ValidationIssueCode.FORBIDDEN_TRACEABILITY for issue in result.issues)
+
+
+def test_missing_verification_is_reported() -> None:
+    profile = make_profile().model_copy(update={
+        "element_types": make_profile().element_types + [
+            ElementTypeDefinition(id="verification", kind=ElementKind.VERIFICATION),
+        ],
+        "relations": make_profile().relations + [RelationDefinition(
+            id="verified-by", relation_type=RelationType.VERIFIED_BY,
+            source_type_ids=["requirement"], target_type_ids=["verification"],
+        )],
+        "verification": [VerificationRule(
+            id="requirement-verification", element_type_id="requirement",
+            required_relation_type=RelationType.VERIFIED_BY, verification_type_id="verification",
+        )],
+    })
+    source = make_element("requirement", ElementKind.REQUIREMENT)
+    result = DeterministicValidationEngine().validate([source], [], profile)
+    assert any(issue.code == ValidationIssueCode.MISSING_VERIFICATION for issue in result.issues)
+
+
+def test_verification_relation_satisfies_rule() -> None:
+    profile = make_profile().model_copy(update={
+        "element_types": make_profile().element_types + [
+            ElementTypeDefinition(id="verification", kind=ElementKind.VERIFICATION),
+        ],
+        "relations": make_profile().relations + [RelationDefinition(
+            id="verified-by", relation_type=RelationType.VERIFIED_BY,
+            source_type_ids=["requirement"], target_type_ids=["verification"],
+        )],
+        "verification": [VerificationRule(
+            id="requirement-verification", element_type_id="requirement",
+            required_relation_type=RelationType.VERIFIED_BY, verification_type_id="verification",
+        )],
+    })
+    source = make_element("requirement", ElementKind.REQUIREMENT)
+    architecture = make_element("architecture", ElementKind.ARCHITECTURE)
+    verification = make_element("verification", ElementKind.VERIFICATION)
+    relations = [
+        EngineeringRelation(source_id=source.id, relation_type=RelationType.SATISFIES, target_id=architecture.id),
+        EngineeringRelation(source_id=source.id, relation_type=RelationType.VERIFIED_BY, target_id=verification.id),
+    ]
+    result = DeterministicValidationEngine().validate([source, architecture, verification], relations, profile)
+    assert not any(issue.code == ValidationIssueCode.MISSING_VERIFICATION for issue in result.issues)
 
 
 def test_graph_hash_is_stable_under_input_order() -> None:
