@@ -43,7 +43,7 @@ class GovernedGatewayApplicationService(GatewayApplicationService):
             )
 
     async def prepare_for_approval(self, actor: Actor, workspace_id: UUID, *args, **kwargs) -> ValidationResult:
-        """Prepare a workspace and invalidate any previous reconciliation evidence."""
+        """Prepare a workspace and invalidate stale reconciliation evidence."""
         workspace = await self._workspaces.get(workspace_id)
         if workspace is not None and workspace.reconciled:
             await self._workspaces.update(workspace.model_copy(update={"reconciled": False}))
