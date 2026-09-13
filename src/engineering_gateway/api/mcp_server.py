@@ -5,7 +5,7 @@ from __future__ import annotations
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 
-from engineering_gateway.application.gateway_service import Actor, GatewayApplicationService
+from engineering_gateway.application.gateway_service import Actor, GatewayApplicationService, GatewayServiceError
 from engineering_gateway.application.governed_gateway_service import GovernedGatewayApplicationService
 from engineering_gateway.domain.models import EngineeringElement, EngineeringRelation
 
@@ -37,6 +37,37 @@ def create_mcp_server(service: GatewayApplicationService, actor: Actor) -> MCPSe
         from uuid import UUID
 
         return await service.get_relations(actor, UUID(element_id))
+
+    @server.tool(
+        name="validate_engineering_graph",
+        title="Validate engineering graph",
+        annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False),
+        structured_output=True,
+    )
+    async def validate_engineering_graph(
+        elements: list[EngineeringElement],
+        relations: list[EngineeringRelation],
+        profile_id: str,
+        profile_version: str,
+    ) -> dict[str, object]:
+        """Run deterministic validation against an activated Standard Profile."""
+        result = await service.validate(actor, elements, relations, profile_id, profile_version)
+        return {
+            "profile_id": result.profile_id,
+            "profile_version": result.profile_version,
+            "graph_hash": result.graph_hash,
+            "valid": result.valid,
+            "issues": [
+                {
+                    "code": issue.code,
+                    "message": issue.message,
+                    "element_id": str(issue.element_id) if issue.element_id else None,
+                    "relation_id": str(issue.relation_id) if issue.relation_id else None,
+                    "rule_id": issue.rule_id,
+                }
+                for issue in result.issues
+            ],
+        }
 
     if isinstance(service, GovernedGatewayApplicationService):
         @server.tool(
