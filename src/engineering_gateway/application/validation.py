@@ -7,7 +7,7 @@ from hashlib import sha256
 import json
 from uuid import UUID
 
-from engineering_gateway.domain.models import EngineeringElement, EngineeringGraph, EngineeringRelation
+from engineering_gateway.domain.models import EngineeringElement, EngineeringGraph, EngineeringRelation, RelationType
 from engineering_gateway.domain.profiles import StandardProfile
 from engineering_gateway.domain.traceability import TraceabilityGraph
 
@@ -24,6 +24,7 @@ class ValidationIssueCode:
     DUPLICATE_RELATION = "DUPLICATE_RELATION"
     MISSING_TRACEABILITY = "MISSING_TRACEABILITY"
     FORBIDDEN_TRACEABILITY = "FORBIDDEN_TRACEABILITY"
+    MISSING_VERIFICATION = "MISSING_VERIFICATION"
     INVALID_LIFECYCLE_STATE = "INVALID_LIFECYCLE_STATE"
 
 
@@ -110,7 +111,7 @@ class DeterministicValidationEngine:
             for source_type in relation.source_type_ids
             for target_type in relation.target_type_ids
         }
-        seen_relations: set[tuple[UUID, object, UUID]] = set()
+        seen_relations: set[tuple[UUID, RelationType, UUID]] = set()
         for relation in graph.relations:
             key = (relation.source_id, relation.relation_type, relation.target_id)
             if key in seen_relations:
@@ -144,6 +145,25 @@ class DeterministicValidationEngine:
                 element_id=gap.source_id,
                 rule_id=gap.rule_id,
             ))
+
+        for rule in profile.verification:
+            for element in graph.elements:
+                if element.type_id != rule.element_type_id:
+                    continue
+                verified = any(
+                    relation.source_id == element.id
+                    and relation.relation_type is rule.required_relation_type
+                    and (target := element_map.get(relation.target_id)) is not None
+                    and target.type_id == rule.verification_type_id
+                    for relation in graph.relations
+                )
+                if not verified:
+                    issues.append(ValidationIssue(
+                        ValidationIssueCode.MISSING_VERIFICATION,
+                        f"Verification rule '{rule.id}' requires relation '{rule.required_relation_type}' to '{rule.verification_type_id}'",
+                        element_id=element.id,
+                        rule_id=rule.id,
+                    ))
 
         # Lifecycle state is intentionally not guessed from EngineeringElement: the
         # canonical model contains no lifecycle-state attribute. Lifecycle validation
