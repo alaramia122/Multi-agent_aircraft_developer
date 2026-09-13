@@ -20,11 +20,25 @@ from engineering_gateway.infrastructure.metadata_models import (
 )
 
 
-class SqlAlchemyStandardProfileRegistry:
+class _TransactionAware:
+    """Shared commit policy for repositories participating in Gateway transactions."""
+
+    def __init__(self, session: AsyncSession, *, autocommit: bool = True) -> None:
+        self._session = session
+        self._autocommit = autocommit
+
+    async def _persist(self) -> None:
+        if self._autocommit:
+            await self._session.commit()
+        else:
+            await self._session.flush()
+
+
+class SqlAlchemyStandardProfileRegistry(_TransactionAware):
     """Durable Standard Profile registry with explicit activation state."""
 
-    def __init__(self, session: AsyncSession) -> None:
-        self._session = session
+    def __init__(self, session: AsyncSession, *, autocommit: bool = True) -> None:
+        super().__init__(session, autocommit=autocommit)
 
     async def register(self, profile: StandardProfile) -> None:
         StandardProfileEngine.validate_profile(profile)
@@ -35,7 +49,7 @@ class SqlAlchemyStandardProfileRegistry:
                 raise ValueError(f"profile '{profile.id}@{profile.version}' already exists")
             return
         self._session.add(StandardProfileRecord(id=uuid4(), profile_id=profile.id, version=profile.version, name=profile.name, definition=definition, active=False))
-        await self._session.commit()
+        await self._persist()
 
     async def activate(self, profile_id: str, version: str) -> StandardProfile:
         record = await self._session.scalar(select(StandardProfileRecord).where(StandardProfileRecord.profile_id == profile_id, StandardProfileRecord.version == version))
@@ -44,7 +58,7 @@ class SqlAlchemyStandardProfileRegistry:
         profile = StandardProfile.model_validate(record.definition)
         StandardProfileEngine.validate_profile(profile)
         record.active = True
-        await self._session.commit()
+        await self._persist()
         return profile
 
     async def deactivate(self, profile_id: str, version: str) -> None:
@@ -52,7 +66,7 @@ class SqlAlchemyStandardProfileRegistry:
         if record is None:
             raise ValueError(f"profile '{profile_id}@{version}' was not found")
         record.active = False
-        await self._session.commit()
+        await self._persist()
 
     async def is_active(self, profile_id: str, version: str) -> bool:
         record = await self._session.scalar(select(StandardProfileRecord).where(StandardProfileRecord.profile_id == profile_id, StandardProfileRecord.version == version))
@@ -71,11 +85,11 @@ class SqlAlchemyStandardProfileRegistry:
         return [StandardProfile.model_validate(record.definition) for record in result]
 
 
-class SqlAlchemyBaselineRegistry:
+class SqlAlchemyBaselineRegistry(_TransactionAware):
     """Durable immutable baseline registry."""
 
-    def __init__(self, session: AsyncSession) -> None:
-        self._session = session
+    def __init__(self, session: AsyncSession, *, autocommit: bool = True) -> None:
+        super().__init__(session, autocommit=autocommit)
 
     async def register(self, baseline: Baseline) -> Baseline:
         existing = await self._session.get(BaselineRecord, baseline.id)
@@ -85,7 +99,7 @@ class SqlAlchemyBaselineRegistry:
                 raise ValueError(f"baseline '{baseline.id}' already exists and is immutable")
             return baseline
         self._session.add(BaselineRecord(id=baseline.id, name=baseline.name, git_repository=baseline.git_repository, git_commit=baseline.git_commit, git_tag=baseline.git_tag, external_versions=[item.model_dump(mode="json") for item in baseline.external_versions]))
-        await self._session.commit()
+        await self._persist()
         return baseline
 
     async def get(self, baseline_id: UUID) -> Baseline | None:
@@ -97,11 +111,11 @@ class SqlAlchemyBaselineRegistry:
         return [_to_baseline(record) for record in result]
 
 
-class SqlAlchemyChangeRequestRepository:
+class SqlAlchemyChangeRequestRepository(_TransactionAware):
     """Durable Gateway reference store for controlled change requests."""
 
-    def __init__(self, session: AsyncSession) -> None:
-        self._session = session
+    def __init__(self, session: AsyncSession, *, autocommit: bool = True) -> None:
+        super().__init__(session, autocommit=autocommit)
 
     async def create(self, change_request: ChangeRequest) -> ChangeRequest:
         if await self.get(change_request.id) is not None:
@@ -112,7 +126,7 @@ class SqlAlchemyChangeRequestRepository:
             state=change_request.state.value, source_baseline_id=change_request.source_baseline_id,
             workspace_id=change_request.workspace_id,
         ))
-        await self._session.commit()
+        await self._persist()
         return change_request
 
     async def get(self, change_request_id: UUID) -> ChangeRequest | None:
@@ -126,15 +140,15 @@ class SqlAlchemyChangeRequestRepository:
         record.state = change_request.state.value
         record.source_baseline_id = change_request.source_baseline_id
         record.workspace_id = change_request.workspace_id
-        await self._session.commit()
+        await self._persist()
         return change_request
 
 
-class SqlAlchemyWorkspaceRegistry:
+class SqlAlchemyWorkspaceRegistry(_TransactionAware):
     """Durable Gateway-owned controlled workspace state."""
 
-    def __init__(self, session: AsyncSession) -> None:
-        self._session = session
+    def __init__(self, session: AsyncSession, *, autocommit: bool = True) -> None:
+        super().__init__(session, autocommit=autocommit)
 
     async def create(self, workspace: Workspace) -> Workspace:
         if await self.get(workspace.id) is not None:
@@ -147,7 +161,7 @@ class SqlAlchemyWorkspaceRegistry:
                                           profile_version=workspace.profile_version,
                                           reconciled=workspace.reconciled,
                                           state=workspace.state.value))
-        await self._session.commit()
+        await self._persist()
         return workspace
 
     async def get(self, workspace_id: UUID) -> Workspace | None:
@@ -170,7 +184,8 @@ class SqlAlchemyWorkspaceRegistry:
         if record.profile_version is not None and record.profile_version != workspace.profile_version:
             raise ValueError("workspace validation profile is immutable once bound")
         if record.reconciled and not workspace.reconciled:
-            raise ValueError("workspace reconciliation evidence is immutable")
+            if WorkspaceState(record.state) is not WorkspaceState.ACTIVE:
+                raise ValueError("workspace reconciliation evidence can only be reset while workspace is active")
         current = WorkspaceState(record.state)
         if current is not workspace.state:
             from engineering_gateway.domain.workspaces import WorkspaceGate
@@ -179,7 +194,7 @@ class SqlAlchemyWorkspaceRegistry:
         record.profile_version = workspace.profile_version
         record.reconciled = workspace.reconciled
         record.state = workspace.state.value
-        await self._session.commit()
+        await self._persist()
         return workspace
 
 
@@ -202,11 +217,11 @@ def _to_workspace(record: WorkspaceRecord) -> Workspace:
                      reconciled=record.reconciled, state=WorkspaceState(record.state))
 
 
-class SqlAlchemyAuditSink:
+class SqlAlchemyAuditSink(_TransactionAware):
     """Append-only durable audit sink."""
 
-    def __init__(self, session: AsyncSession) -> None:
-        self._session = session
+    def __init__(self, session: AsyncSession, *, autocommit: bool = True) -> None:
+        super().__init__(session, autocommit=autocommit)
 
     async def record(self, event: AuditEvent) -> None:
         self._session.add(AuditEventRecord(id=event.id, timestamp=event.timestamp, actor_id=event.actor_id,
@@ -214,4 +229,4 @@ class SqlAlchemyAuditSink:
                                            action=event.action, target_type=event.target_type, target_id=event.target_id,
                                            correlation_id=event.correlation_id, result=event.result.value,
                                            reason=event.reason, metadata=event.metadata))
-        await self._session.commit()
+        await self._persist()
