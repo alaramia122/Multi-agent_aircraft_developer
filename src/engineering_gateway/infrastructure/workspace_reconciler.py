@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from engineering_gateway.domain.adapters import ExternalVersion, WorkspaceAdapter
-from engineering_gateway.domain.models import EngineeringGraph
+from engineering_gateway.domain.models import EngineeringElement, EngineeringGraph
 from engineering_gateway.domain.ports import EngineeringRepository
 from engineering_gateway.domain.reconciliation import WorkspaceReconciliationError
 from engineering_gateway.domain.workspaces import Workspace
@@ -29,8 +31,8 @@ class AdapterWorkspaceReconciler:
     ) -> tuple[ExternalVersion, ...]:
         """Publish staged elements and relations without requiring unchanged endpoints to be restaged."""
         elements_by_id = {element.id: element for element in changes.elements}
-        relation_sources: dict[object, object] = {}
-        relation_targets: dict[object, object] = {}
+        relation_sources: dict[UUID, EngineeringElement] = {}
+        relation_targets: dict[UUID, EngineeringElement] = {}
 
         for relation in changes.relations:
             source = elements_by_id.get(relation.source_id)
