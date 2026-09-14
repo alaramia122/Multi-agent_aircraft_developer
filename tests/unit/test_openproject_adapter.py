@@ -88,13 +88,39 @@ async def test_create_change_request_sends_project_and_type_links(
 
 
 @pytest.mark.asyncio
-async def test_create_change_request_embeds_idempotency_key(
+async def test_create_change_request_returns_existing_id_for_idempotency_key(
     adapter: LocalOpenProjectAdapter, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    captured: dict[str, object] = {}
+    calls: list[str] = []
 
     def fake_urlopen(request: Request, timeout: float) -> _Response:
-        captured["body"] = json.loads(request.data.decode("utf-8"))
+        calls.append(request.method)
+        if request.method == "GET":
+            return _response({"_embedded": {"elements": [{"id": 321}]}})
+        return _response({"id": 999})
+
+    monkeypatch.setattr(
+        "engineering_gateway.infrastructure.openproject_adapter.urlopen", fake_urlopen
+    )
+
+    identifier = await adapter.create_change_request(
+        "Change title", "Change details", idempotency_key="CR-123"
+    )
+
+    assert identifier == "321"
+    assert calls == ["GET"]
+
+
+@pytest.mark.asyncio
+async def test_create_change_request_uses_idempotency_marker_when_missing(
+    adapter: LocalOpenProjectAdapter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: list[tuple[str, object]] = []
+
+    def fake_urlopen(request: Request, timeout: float) -> _Response:
+        captured.append((request.method, request.data))
+        if request.method == "GET":
+            return _response({"_embedded": {"elements": []}})
         return _response({"id": 322})
 
     monkeypatch.setattr(
@@ -106,7 +132,9 @@ async def test_create_change_request_embeds_idempotency_key(
     )
 
     assert identifier == "322"
-    assert captured["body"]["subject"] == "[CR-123] Change title"
+    assert [method for method, _ in captured] == ["GET", "POST"]
+    body = json.loads(captured[1][1].decode("utf-8"))
+    assert body["subject"] == "[CR-123] Change title"
 
 
 @pytest.mark.asyncio
