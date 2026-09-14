@@ -27,39 +27,54 @@ class LocalGitAdapter:
         return GitSnapshot(repository=str(Path(repository).resolve()), commit=commit, tag=tag)
 
     async def is_ancestor(self, repository: str, ancestor_commit: str, descendant_ref: str) -> bool:
-        """Return whether the working ref descends from the workspace source commit."""
-        result = self._run(repository, "merge-base", "--is-ancestor", ancestor_commit, descendant_ref)
-        if result is not None:
+        """Return whether ``ancestor_commit`` is an ancestor of ``descendant_ref``.
+
+        Git's ``merge-base --is-ancestor`` uses exit status 1 for a valid negative
+        answer, so the status must be handled separately from command failures.
+        """
+        returncode, stderr = self._run_status(
+            repository,
+            "merge-base",
+            "--is-ancestor",
+            ancestor_commit,
+            descendant_ref,
+        )
+        if returncode == 0:
             return True
-        # `--is-ancestor` communicates false through exit status 1 and therefore
-        # cannot be distinguished from an operational failure by `_run` alone.
-        try:
-            completed = subprocess.run(
-                [
-                    "git", "-C", str(Path(repository)), "merge-base", "--is-ancestor",
-                    ancestor_commit, descendant_ref,
-                ],
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=self._timeout_seconds,
-            )
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            raise RuntimeError("Git ancestry check failed") from exc
-        if completed.returncode == 0:
-            return True
-        if completed.returncode == 1:
+        if returncode == 1:
             return False
-        detail = completed.stderr.strip() or "unknown Git error"
+        detail = stderr.strip() or "unknown Git error"
         raise RuntimeError(f"Git ancestry check failed: {detail}")
 
     async def create_tag(self, repository: str, tag: str, commit: str) -> GitSnapshot:
-        """Create a lightweight tag without moving an existing reference."""
+        """Create an immutable lightweight tag, idempotently.
+
+        Repeating the operation for the same tag and commit succeeds. An existing
+        tag pointing elsewhere is never moved and is rejected explicitly.
+        """
         if not tag or tag.startswith("-"):
             raise ValueError("tag must be a non-empty Git reference name")
         resolved_commit = self._run(repository, "rev-parse", "--verify", f"{commit}^{{commit}}")
         if resolved_commit is None:
             raise ValueError(f"commit '{commit}' does not exist")
+
+        existing_commit = self._run(
+            repository,
+            "rev-parse",
+            "--verify",
+            f"refs/tags/{tag}^{{commit}}",
+        )
+        if existing_commit is not None:
+            if existing_commit != resolved_commit:
+                raise RuntimeError(
+                    f"Git tag '{tag}' already exists at a different commit"
+                )
+            return GitSnapshot(
+                repository=str(Path(repository).resolve()),
+                commit=resolved_commit,
+                tag=tag,
+            )
+
         self._run_required(repository, "tag", tag, resolved_commit)
         return GitSnapshot(
             repository=str(Path(repository).resolve()),
@@ -81,6 +96,21 @@ class LocalGitAdapter:
         if result.returncode != 0:
             return None
         return result.stdout.strip()
+
+    def _run_status(self, repository: str, *args: str) -> tuple[int, str]:
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(Path(repository)), *args],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=self._timeout_seconds,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("Git command timed out") from exc
+        except OSError as exc:
+            raise RuntimeError("Git executable could not be started") from exc
+        return result.returncode, result.stderr
 
     def _run_required(self, repository: str, *args: str) -> str:
         try:
