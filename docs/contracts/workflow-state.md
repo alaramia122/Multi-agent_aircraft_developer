@@ -28,9 +28,9 @@ Reconciliation is an operation/evidence state, not a separate Workspace lifecycl
 READY_FOR_APPROVAL --reconcile--> READY_FOR_APPROVAL(reconciled)
 ```
 
-The `reconciled` flag records that the current staged change-set was successfully published to the authoritative engineering systems. Any subsequent return to active engineering invalidates that evidence and requires reconciliation again before approval.
+The `reconciled` flag is bound to a deterministic SHA-256 hash of the exact staged change-set. Any subsequent change produces a different hash, so old reconciliation evidence cannot authorize approval of a modified change-set. Returning to active engineering clears the evidence.
 
-A rejection is a human L3 decision. It returns the Workspace to `ACTIVE` while moving the Change Request to `REJECTED`. An L2 engineer may then reopen the rejected Change Request, moving it to `IN_PROGRESS`. This makes rejection an explicit workflow outcome rather than an implicit validation failure.
+A rejection is a human L3 decision. It returns the Workspace to `ACTIVE` while moving the Change Request to `REJECTED`. An L2 engineer may then reopen the rejected Change Request, moving it to `IN_PROGRESS`.
 
 ## Baseline provenance
 
@@ -41,29 +41,19 @@ A workspace stores:
 - its working Git reference;
 - the linked Change Request;
 - the exact Standard Profile ID and version used for approval preparation;
-- reconciliation evidence for the current staged change-set.
+- reconciliation evidence for the exact staged change-set.
 
 The source commit is immutable. The working reference is also immutable in Gateway metadata; changing the working reference requires a new workspace.
 
 Approval resolves the working Git reference through the Git adapter and creates a new immutable baseline from that authoritative snapshot. The new baseline is registered before the workflow is marked approved.
 
-## Change Request binding
+## Reconciliation and retry semantics
 
-Workspace creation requires:
+Reconciliation is explicitly separated from human approval. It publishes only the staged Workspace change-set to authoritative external systems through `WorkspaceAdapter` implementations. It does **not** copy the change-set into the PostgreSQL canonical engineering model.
 
-1. an existing source baseline;
-2. an existing Change Request;
-3. a Change Request in `OPEN` or `IN_PROGRESS`;
-4. a matching source baseline when the Change Request already declares one;
-5. no existing Workspace bound to the Change Request.
+The reconciliation contract is idempotent for `(workspace.id, change_set_hash)`. A retry after a Gateway/database failure must reuse the same workspace and desired change-set and must not create duplicate external workspaces or duplicate external engineering objects/relations. Adapters are responsible for implementing this idempotency at their authoritative system boundary.
 
-Creating a workspace moves an `OPEN` Change Request to `IN_PROGRESS` and binds the workspace ID to it.
-
-Preparing a workspace for approval requires deterministic validation to pass. The Gateway binds the exact Standard Profile ID/version used by that validation to the Workspace. A different profile cannot subsequently be used for the same approval attempt.
-
-## Reconciliation
-
-Reconciliation is explicitly separated from human approval. It publishes only the staged Workspace change-set to authoritative external systems through `WorkspaceAdapter` implementations. It does **not** copy the change-set into the PostgreSQL canonical engineering model and does not make PostgreSQL a second engineering source of truth.
+The PostgreSQL transaction covers Gateway metadata and audit evidence only. External side effects are not part of the database transaction and therefore are not rolled back by a PostgreSQL rollback. If an external operation succeeds but the Gateway transaction fails, the same reconciliation operation can be retried safely using the same idempotency key.
 
 Reconciliation requires:
 
@@ -72,9 +62,9 @@ Reconciliation requires:
 - a human L2 actor;
 - a configured writable adapter for every affected authoritative system.
 
-Successful reconciliation records `reconciled=true` and captures the authoritative external versions returned by the adapters. A reconciliation failure leaves the Workspace unapproved and records an audit failure.
+Successful reconciliation records `reconciled=true` and the exact `change_set_hash`, together with authoritative external versions in audit evidence. A reconciliation failure does not mark the Workspace reconciled.
 
-Human L3 approval is permitted only after fresh reconciliation evidence exists. Approval then captures authoritative Git/external snapshots into the new immutable Baseline. AI actors are never allowed to perform reconciliation or approval.
+Human L3 approval is permitted only after the stored hash matches the current staged change-set. Approval then captures authoritative Git/external snapshots into the new immutable Baseline. AI actors are never allowed to perform reconciliation or approval.
 
 ## Closure
 
