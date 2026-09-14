@@ -20,10 +20,14 @@ class AdapterWorkspaceReconciler:
     workspace for the same desired state.
     """
 
+    _WORKSPACE_METHODS = ("create_workspace", "apply_element", "apply_relation", "get_version")
+
     def __init__(self, adapters: tuple[WorkspaceAdapter, ...], canonical: EngineeringRepository | None = None) -> None:
         self._adapters = {adapter.system_name: adapter for adapter in adapters}
         if len(self._adapters) != len(adapters):
             raise ValueError("workspace adapter system names must be unique")
+        if any(not system.strip() for system in self._adapters):
+            raise ValueError("workspace adapter system names must be non-empty")
         self._canonical = canonical
 
     async def reconcile(self, workspace: Workspace, changes: EngineeringGraph) -> tuple[ExternalVersion, ...]:
@@ -59,6 +63,14 @@ class AdapterWorkspaceReconciler:
             )
 
         used = sorted(systems)
+        for system in used:
+            adapter = self._adapters[system]
+            missing_methods = [name for name in self._WORKSPACE_METHODS if not callable(getattr(adapter, name, None))]
+            if missing_methods:
+                raise WorkspaceReconciliationError(
+                    f"workspace adapter '{system}' does not implement required operations: {', '.join(missing_methods)}"
+                )
+
         for system in used:
             await self._adapters[system].create_workspace(
                 workspace.id,
