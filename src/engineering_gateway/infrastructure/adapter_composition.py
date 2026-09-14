@@ -27,10 +27,9 @@ class AdapterCompositionError(ValueError):
 class ExternalAdapterSet:
     """Explicit collection of adapters supplied to the Gateway composition root.
 
-    A system may have separate read and workspace adapters, but there must be only
-    one effective adapter per system for each capability. This prevents ambiguous
-    routing while still allowing StrictDoc's read-only CLI adapter to be replaced by
-    its workspace-capable bridge adapter.
+    Workspace adapters are also read-capable by contract, so they automatically
+    participate in the read-adapter view. A separate read adapter for the same
+    system is rejected rather than allowing ambiguous external-system reads.
     """
 
     read_adapters: tuple[ReadAdapter, ...] = ()
@@ -39,6 +38,15 @@ class ExternalAdapterSet:
     def __post_init__(self) -> None:
         self._validate_unique(self.read_adapters, "read")
         self._validate_unique(self.workspace_adapters, "workspace")
+        read_names = {getattr(adapter, "system_name", "") for adapter in self.read_adapters}
+        for adapter in self.workspace_adapters:
+            name = getattr(adapter, "system_name", "")
+            if name in read_names and not any(
+                existing is adapter for existing in self.read_adapters
+            ):
+                raise AdapterCompositionError(
+                    f"system '{name}' has separate read and workspace adapters"
+                )
 
     @staticmethod
     def _validate_unique(adapters: tuple[object, ...], capability: str) -> None:
@@ -56,8 +64,12 @@ class ExternalAdapterSet:
             names.append(name)
 
     def as_read_adapters(self) -> tuple[ReadAdapter, ...]:
-        """Return adapters for application-level external reads."""
-        return self.read_adapters
+        """Return the complete read-capable adapter view without duplicates."""
+        result = list(self.read_adapters)
+        for adapter in self.workspace_adapters:
+            if not any(existing is adapter for existing in result):
+                result.append(adapter)
+        return tuple(result)
 
     def as_workspace_adapters(self) -> tuple[WorkspaceAdapter, ...]:
         """Return adapters capable of workspace reconciliation."""
