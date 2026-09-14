@@ -381,7 +381,7 @@ class SqlAlchemyAuditSink(_TransactionAware):
             correlation_id=event.correlation_id,
             result=event.result.value,
             reason=event.reason,
-            metadata=event.metadata,
+            event_metadata=event.metadata,
         )
 
     async def record(self, event: AuditEvent) -> None:
