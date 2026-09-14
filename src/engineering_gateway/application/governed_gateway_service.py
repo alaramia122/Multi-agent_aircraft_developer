@@ -5,14 +5,15 @@ from __future__ import annotations
 from uuid import UUID
 
 from engineering_gateway.application.gateway_service import Actor, GatewayApplicationService, GatewayServiceError, ValidationResult
+from engineering_gateway.application.transactional_service import TransactionalApplicationServiceMixin
 from engineering_gateway.application.workspace_reconciliation import ReconciliationResult, WorkspaceReconciliationService
 from engineering_gateway.domain.baselines import Baseline
 from engineering_gateway.domain.ports import AuditSink, ChangeRequestRegistryPort, WorkspaceChangeSetRepository, WorkspaceRegistryPort
 from engineering_gateway.domain.reconciliation import WorkspaceReconciler
 
 
-class GovernedGatewayApplicationService(GatewayApplicationService):
-    """Gateway service with explicit reconciliation and approval preconditions."""
+class GovernedGatewayApplicationService(TransactionalApplicationServiceMixin, GatewayApplicationService):
+    """Gateway service with explicit reconciliation, approval and transaction boundaries."""
 
     def __init__(
         self,
