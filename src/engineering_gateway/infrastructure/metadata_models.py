@@ -58,6 +58,7 @@ class WorkspaceRecord(Base):
     validation_evidence: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     reconciled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     reconciled_change_set_hash: Mapped[str | None] = mapped_column(String(64))
+    reconciliation_external_versions: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     state: Mapped[str] = mapped_column(String(64), nullable=False)
 
 
