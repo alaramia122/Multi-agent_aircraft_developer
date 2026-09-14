@@ -51,6 +51,14 @@ class GovernedGatewayApplicationService(
         audit: AuditSink | None = None,
         **kwargs: Any,
     ) -> None:
+        if workspace_registry is not None:
+            kwargs.setdefault("workspaces", workspace_registry)
+        if change_request_registry is not None:
+            kwargs.setdefault("change_requests", change_request_registry)
+        if workspace_changes is not None:
+            kwargs.setdefault("workspace_changes", workspace_changes)
+        if audit is not None:
+            kwargs.setdefault("audit", audit)
         super().__init__(*args, **kwargs)
         if workspace_reconciler is None:
             self._workspace_reconciliation = None
