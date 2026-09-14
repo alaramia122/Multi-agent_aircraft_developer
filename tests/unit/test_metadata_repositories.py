@@ -1,12 +1,17 @@
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from engineering_gateway.domain.audit import AuditActorType, AuditEvent, AuditResult, AuthorizationLevel
 from engineering_gateway.domain.change_control import ChangeRequest, ChangeRequestState
 from engineering_gateway.domain.workspaces import Workspace, WorkspaceState
 from engineering_gateway.infrastructure.db import Base
+from engineering_gateway.infrastructure.metadata_models import AuditEventRecord
 from engineering_gateway.infrastructure.metadata_repositories import (
+    SqlAlchemyAuditSink,
     SqlAlchemyChangeRequestRepository,
     SqlAlchemyWorkspaceRegistry,
 )
@@ -109,3 +114,56 @@ async def test_workspace_repository_rejects_validation_evidence_replacement(sess
                 }
             )
         )
+
+
+@pytest.mark.asyncio
+async def test_audit_sink_persists_mapped_metadata_attribute(session) -> None:
+    event = AuditEvent(
+        actor_id="actor-1",
+        actor_type=AuditActorType.HUMAN,
+        authorization_level=AuthorizationLevel.L3,
+        action="approve_workspace",
+        target_type="workspace",
+        target_id=uuid4(),
+        correlation_id=uuid4(),
+        result=AuditResult.SUCCESS,
+        timestamp=datetime.now(UTC),
+        metadata={"reason_code": "manual_approval"},
+    )
+    sink = SqlAlchemyAuditSink(session)
+
+    await sink.record(event)
+
+    record = await session.scalar(select(AuditEventRecord).where(AuditEventRecord.id == event.id))
+    assert record is not None
+    assert record.event_metadata == {"reason_code": "manual_approval"}
+
+
+@pytest.mark.asyncio
+async def test_audit_sink_uses_independent_transaction_for_failure(session) -> None:
+    engine = session.bind
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    event = AuditEvent(
+        actor_id="actor-2",
+        actor_type=AuditActorType.AI,
+        authorization_level=AuthorizationLevel.L2,
+        action="approve_workspace",
+        target_type="workspace",
+        target_id=uuid4(),
+        correlation_id=uuid4(),
+        result=AuditResult.DENIED,
+        timestamp=datetime.now(UTC),
+        reason="AI actors cannot approve",
+    )
+    sink = SqlAlchemyAuditSink(session, autocommit=False, independent_session_factory=factory)
+
+    await sink.record(event)
+    await session.rollback()
+
+    async with factory() as verification_session:
+        record = await verification_session.scalar(
+            select(AuditEventRecord).where(AuditEventRecord.id == event.id)
+        )
+        assert record is not None
+        assert record.result == AuditResult.DENIED.value
+        assert record.reason == "AI actors cannot approve"
