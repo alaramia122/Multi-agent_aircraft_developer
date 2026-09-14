@@ -1,0 +1,71 @@
+{
+  "id": "arp4754a",
+  "version": "1.0",
+  "name": "ARP4754A development assurance vertical slice",
+  "description": "Minimal executable profile for the Gateway ARP4754A vertical slice. It defines Gateway semantics and traceability; it is not a reproduction of the copyrighted standard text.",
+  "element_types": [
+    {
+      "id": "system_requirement",
+      "kind": "requirement",
+      "attributes": []
+    },
+    {
+      "id": "system_architecture",
+      "kind": "architecture",
+      "attributes": []
+    },
+    {
+      "id": "verification_activity",
+      "kind": "verification",
+      "attributes": []
+    }
+  ],
+  "relations": [
+    {
+      "id": "requirement_allocated_to_architecture",
+      "relation_type": "allocated_to",
+      "source_type_ids": ["system_requirement"],
+      "target_type_ids": ["system_architecture"]
+    },
+    {
+      "id": "requirement_verified_by_activity",
+      "relation_type": "verified_by",
+      "source_type_ids": ["system_requirement"],
+      "target_type_ids": ["verification_activity"]
+    }
+  ],
+  "lifecycles": [
+    {
+      "id": "system_requirement_lifecycle",
+      "element_type_id": "system_requirement",
+      "states": ["draft", "approved"],
+      "transitions": {
+        "draft": ["approved"],
+        "approved": []
+      }
+    }
+  ],
+  "artifacts": [],
+  "traceability": [
+    {
+      "id": "requirement-to-architecture",
+      "source_type_id": "system_requirement",
+      "relation_type": "allocated_to",
+      "target_type_id": "system_architecture",
+      "required": true
+    }
+  ],
+  "verification": [
+    {
+      "id": "requirement-verification",
+      "element_type_id": "system_requirement",
+      "required_relation_type": "verified_by",
+      "verification_type_id": "verification_activity"
+    }
+  ],
+  "metadata": {
+    "standard": "SAE ARP4754A",
+    "profile_role": "executable_gateway_vertical_slice",
+    "normative_text_included": false
+  }
+}
