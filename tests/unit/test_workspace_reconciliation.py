@@ -5,7 +5,7 @@ import pytest
 from engineering_gateway.application.gateway_service import Actor, GatewayServiceError
 from engineering_gateway.application.workspace_reconciliation import WorkspaceReconciliationService
 from engineering_gateway.domain.adapters import ExternalVersion
-from engineering_gateway.domain.audit import ActorType, InMemoryAuditSink
+from engineering_gateway.domain.audit import ActorType, AuditResult, InMemoryAuditSink
 from engineering_gateway.domain.change_control import (
     AuthorizationLevel,
     ChangeRequest,
@@ -105,12 +105,12 @@ def build_service():
     service = WorkspaceReconciliationService(
         workspaces, change_requests, changes, reconciler, audit
     )
-    return service, workspaces, workspace, changes, element, reconciler, canonical
+    return service, workspaces, workspace, changes, element, reconciler, canonical, audit
 
 
 @pytest.mark.asyncio
 async def test_reconcile_keeps_workspace_ready_and_does_not_touch_canonical():
-    service, workspaces, workspace, changes, element, reconciler, canonical = build_service()
+    service, workspaces, workspace, changes, element, reconciler, canonical, _ = build_service()
     await changes.save_element(workspace.id, element)
 
     result = await service.reconcile(
@@ -126,7 +126,7 @@ async def test_reconcile_keeps_workspace_ready_and_does_not_touch_canonical():
 
 @pytest.mark.asyncio
 async def test_ai_l2_can_reconcile():
-    service, _, workspace, changes, element, reconciler, _ = build_service()
+    service, _, workspace, changes, element, reconciler, _, _ = build_service()
     await changes.save_element(workspace.id, element)
 
     result = await service.reconcile(
@@ -139,11 +139,32 @@ async def test_ai_l2_can_reconcile():
 
 
 @pytest.mark.asyncio
-async def test_l1_cannot_reconcile():
-    service, _, workspace, _, _, _, _ = build_service()
+async def test_l1_cannot_reconcile_and_attempt_is_audited_as_denied():
+    service, _, workspace, _, _, _, _, audit = build_service()
 
     with pytest.raises(GatewayServiceError, match="requires L2"):
         await service.reconcile(
             Actor("agent", ActorType.AI, AuthorizationLevel.L1_PROPOSE),
             workspace.id,
         )
+
+    events = await audit.list()
+    assert len(events) == 1
+    assert events[0].action == "reconcile_workspace"
+    assert events[0].result is AuditResult.DENIED
+    assert events[0].authorization_level is AuthorizationLevel.L1_PROPOSE
+    assert events[0].actor_type is ActorType.AI
+
+
+@pytest.mark.asyncio
+async def test_reconcile_requires_ready_workflow():
+    service, _, workspace, _, _, _, _, audit = build_service()
+    workspace = workspace.model_copy(update={"state": WorkspaceState.ACTIVE})
+
+    with pytest.raises(GatewayServiceError, match="ready for approval"):
+        await service.reconcile(
+            Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE),
+            workspace.id,
+        )
+
+    assert await audit.list() == []
