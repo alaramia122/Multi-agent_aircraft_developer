@@ -140,15 +140,15 @@ class StandardProfile(BaseModel):
 
     @model_validator(mode="after")
     def validate_unique_ids(self) -> "StandardProfile":
-        collections = {
-            "element_types": self.element_types,
-            "relations": self.relations,
-            "lifecycles": self.lifecycles,
-            "artifacts": self.artifacts,
-            "traceability": self.traceability,
-            "verification": self.verification,
-        }
-        for name, definitions in collections.items():
+        for name in (
+            "element_types",
+            "relations",
+            "lifecycles",
+            "artifacts",
+            "traceability",
+            "verification",
+        ):
+            definitions = getattr(self, name)
             ids = [item.id for item in definitions]
             if len(ids) != len(set(ids)):
                 raise ValueError(f"duplicate ids in profile {name}")
