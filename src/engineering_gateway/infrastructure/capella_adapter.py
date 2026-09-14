@@ -62,10 +62,14 @@ class LocalCapellaAdapter:
             raise CapellaAdapterError("Capella bridge returned no version")
         return ExternalVersion(system=self.system_name, version=version)
 
-    async def create_workspace(self, workspace_id: UUID, source_version: str) -> None:
+    async def create_workspace(self, workspace_id: UUID, source_version: str, change_set_hash: str) -> None:
         await self._run(
             "create_workspace",
-            {"workspace_id": str(workspace_id), "source_version": source_version},
+            {
+                "workspace_id": str(workspace_id),
+                "source_version": source_version,
+                "change_set_hash": change_set_hash,
+            },
         )
 
     async def apply_element(self, workspace_id: UUID, element: EngineeringElement) -> None:
