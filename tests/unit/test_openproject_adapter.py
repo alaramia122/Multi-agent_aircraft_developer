@@ -88,16 +88,47 @@ async def test_create_change_request_sends_project_and_type_links(
 
 
 @pytest.mark.asyncio
-async def test_update_change_request_uses_lock_version(
+async def test_create_change_request_embeds_idempotency_key(
     adapter: LocalOpenProjectAdapter, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    calls: list[tuple[str, dict[str, object] | None]] = []
+    captured: dict[str, object] = {}
+
+    def fake_urlopen(request: Request, timeout: float) -> _Response:
+        captured["body"] = json.loads(request.data.decode("utf-8"))
+        return _response({"id": 322})
+
+    monkeypatch.setattr(
+        "engineering_gateway.infrastructure.openproject_adapter.urlopen", fake_urlopen
+    )
+
+    identifier = await adapter.create_change_request(
+        "Change title", "Change details", idempotency_key="CR-123"
+    )
+
+    assert identifier == "322"
+    assert captured["body"]["subject"] == "[CR-123] Change title"
+
+
+@pytest.mark.asyncio
+async def test_update_change_request_uses_lock_version_and_hypermedia_update_link(
+    adapter: LocalOpenProjectAdapter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[tuple[str, str, dict[str, object] | None]] = []
 
     def fake_urlopen(request: Request, timeout: float) -> _Response:
         payload = json.loads(request.data.decode("utf-8")) if request.data else None
-        calls.append((request.method, payload))
+        calls.append((request.method, request.full_url, payload))
         if request.method == "GET":
-            return _response({"id": 9, "lockVersion": 12})
+            return _response(
+                {
+                    "id": 9,
+                    "lockVersion": 12,
+                    "_links": {
+                        "status": {"href": "/api/v3/statuses/2"},
+                        "update": {"href": "/api/v3/work_packages/9", "method": "patch"},
+                    },
+                }
+            )
         return _response({"id": 9, "lockVersion": 13})
 
     monkeypatch.setattr(
@@ -106,11 +137,49 @@ async def test_update_change_request_uses_lock_version(
 
     await adapter.update_change_request("9", "/api/v3/statuses/3")
 
-    assert calls[0] == ("GET", None)
+    assert calls[0] == (
+        "GET",
+        "https://openproject.example/api/v3/work_packages/9",
+        None,
+    )
     assert calls[1] == (
         "PATCH",
+        "https://openproject.example/api/v3/work_packages/9",
         {"lockVersion": 12, "_links": {"status": {"href": "/api/v3/statuses/3"}}},
     )
+
+
+@pytest.mark.asyncio
+async def test_update_change_request_is_idempotent_when_status_already_matches(
+    adapter: LocalOpenProjectAdapter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[str] = []
+
+    def fake_urlopen(request: Request, timeout: float) -> _Response:
+        calls.append(request.method)
+        return _response(
+            {
+                "id": 9,
+                "lockVersion": 12,
+                "_links": {"status": {"href": "/api/v3/statuses/3"}},
+            }
+        )
+
+    monkeypatch.setattr(
+        "engineering_gateway.infrastructure.openproject_adapter.urlopen", fake_urlopen
+    )
+
+    await adapter.update_change_request("9", "/api/v3/statuses/3")
+
+    assert calls == ["GET"]
+
+
+@pytest.mark.asyncio
+async def test_update_change_request_rejects_status_name_instead_of_href(
+    adapter: LocalOpenProjectAdapter,
+) -> None:
+    with pytest.raises(ValueError, match="status_href"):
+        await adapter.update_change_request("9", "Approved")
 
 
 @pytest.mark.asyncio
