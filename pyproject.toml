@@ -36,7 +36,7 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 
 [tool.ruff]
-line-length = 140
+line-length = 180
 target-version = "py312"
 src = ["src", "tests"]
 
