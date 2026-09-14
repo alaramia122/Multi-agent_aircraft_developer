@@ -1,23 +1,22 @@
-"""End-to-end ARP4754A governance scenario at the application boundary."""
+"""Executable ARP4754A validation scenario."""
 
-from uuid import uuid4
+from pathlib import Path
 
 import pytest
 
-from engineering_gateway.application.gateway_service import Actor
-from engineering_gateway.application.profile_loader import load_profile
-from engineering_gateway.domain.audit import ActorType, InMemoryAuditSink
-from engineering_gateway.domain.baselines import Baseline
-from engineering_gateway.domain.change_control import AuthorizationLevel, ChangeRequest
-from engineering_gateway.domain.models import EngineeringElement, EngineeringRelation, ElementKind, RelationType
-from engineering_gateway.domain.profiles import StandardProfile
-from engineering_gateway.domain.workspaces import WorkspaceState
+from engineering_gateway.application.validation import DeterministicValidationEngine
+from engineering_gateway.domain.models import ElementKind, EngineeringElement, EngineeringRelation, RelationType
+from engineering_gateway.infrastructure.profile_loader import load_standard_profile
 from engineering_gateway.infrastructure.profile_registry import InMemoryStandardProfileRegistry
 
 
+ROOT = Path(__file__).resolve().parents[2]
+PROFILE = ROOT / "profiles" / "arp4754a" / "1.0" / "profile.json"
+
+
 @pytest.mark.asyncio
-async def test_arp4754a_profile_accepts_requirement_architecture_and_verification_graph(tmp_path):
-    profile = load_profile("profiles/arp4754a/1.0/profile.json")
+async def test_arp4754a_profile_accepts_requirement_architecture_and_verification_graph():
+    profile = load_standard_profile(PROFILE)
     registry = InMemoryStandardProfileRegistry()
     await registry.register(profile)
     await registry.activate(profile.id, profile.version)
@@ -59,10 +58,10 @@ async def test_arp4754a_profile_accepts_requirement_architecture_and_verificatio
         ),
     ]
 
-    from engineering_gateway.application.validation import DeterministicValidationEngine
-
     result = DeterministicValidationEngine().validate(
-        [requirement, architecture, verification], relations, profile,
+        [requirement, architecture, verification],
+        relations,
+        profile,
         lifecycle_states={requirement.id: "draft"},
     )
 
