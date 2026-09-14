@@ -5,6 +5,8 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from engineering_gateway.domain.adapters import ExternalVersion
+
 
 class WorkspaceState(StrEnum):
     """Lifecycle states of a baseline-derived modification workspace."""
@@ -28,6 +30,7 @@ class Workspace(BaseModel):
     validation_evidence: dict[str, object] = Field(default_factory=dict)
     reconciled: bool = False
     reconciled_change_set_hash: str | None = Field(default=None, min_length=64, max_length=64)
+    reconciliation_external_versions: tuple[ExternalVersion, ...] = ()
     state: WorkspaceState = WorkspaceState.ACTIVE
 
     def bind_profile(self, profile_id: str, profile_version: str) -> "Workspace":
@@ -44,17 +47,17 @@ class Workspace(BaseModel):
             raise ValueError("validation graph hash must be a SHA-256 hexadecimal digest")
         return self.model_copy(update={"validation_graph_hash": graph_hash, "validation_evidence": evidence})
 
-    def mark_reconciled(self, change_set_hash: str) -> "Workspace":
+    def mark_reconciled(self, change_set_hash: str, external_versions: tuple[ExternalVersion, ...] = ()) -> "Workspace":
         if self.state is not WorkspaceState.READY_FOR_APPROVAL:
             raise ValueError("only a ready workspace can be marked reconciled")
         if len(change_set_hash) != 64:
             raise ValueError("reconciliation change-set hash must be a SHA-256 hexadecimal digest")
-        return self.model_copy(update={"reconciled": True, "reconciled_change_set_hash": change_set_hash})
+        return self.model_copy(update={"reconciled": True, "reconciled_change_set_hash": change_set_hash, "reconciliation_external_versions": external_versions})
 
     def clear_reconciliation(self) -> "Workspace":
         if self.state is not WorkspaceState.ACTIVE:
             raise ValueError("reconciliation evidence can only be cleared for an active workspace")
-        return self.model_copy(update={"reconciled": False, "reconciled_change_set_hash": None})
+        return self.model_copy(update={"reconciled": False, "reconciled_change_set_hash": None, "reconciliation_external_versions": ()})
 
     def require_reconciled(self, current_change_set_hash: str | None = None) -> None:
         if not self.reconciled or not self.reconciled_change_set_hash:
@@ -114,10 +117,10 @@ class WorkspaceRegistry:
             raise ValueError("validation evidence is immutable once bound")
         if current.reconciled and not workspace.reconciled and current.state is not WorkspaceState.ACTIVE:
             raise ValueError("workspace reconciliation evidence is immutable outside active engineering")
-        if current.reconciled and workspace.reconciled and current.reconciled_change_set_hash != workspace.reconciled_change_set_hash:
+        if current.reconciled and workspace.reconciled and (current.reconciled_change_set_hash != workspace.reconciled_change_set_hash or current.reconciliation_external_versions != workspace.reconciliation_external_versions):
             raise ValueError("reconciliation evidence cannot be replaced without returning to active engineering")
-        if not workspace.reconciled and workspace.reconciled_change_set_hash is not None:
-            raise ValueError("reconciliation hash must be cleared when reconciliation evidence is cleared")
+        if not workspace.reconciled and (workspace.reconciled_change_set_hash is not None or workspace.reconciliation_external_versions):
+            raise ValueError("reconciliation evidence must be cleared together")
         WorkspaceGate.require_transition(current.state, workspace.state)
         self._workspaces[workspace.id] = workspace
         return workspace
