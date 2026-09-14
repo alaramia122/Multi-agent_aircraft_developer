@@ -5,8 +5,8 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from engineering_gateway.domain.audit import AuditActorType, AuditEvent, AuditResult, AuthorizationLevel
-from engineering_gateway.domain.change_control import ChangeRequest, ChangeRequestState
+from engineering_gateway.domain.audit import ActorType, AuditEvent, AuditResult
+from engineering_gateway.domain.change_control import AuthorizationLevel, ChangeRequest, ChangeRequestState
 from engineering_gateway.domain.workspaces import Workspace, WorkspaceState
 from engineering_gateway.infrastructure.db import Base
 from engineering_gateway.infrastructure.metadata_models import AuditEventRecord
@@ -120,7 +120,7 @@ async def test_workspace_repository_rejects_validation_evidence_replacement(sess
 async def test_audit_sink_persists_mapped_metadata_attribute(session) -> None:
     event = AuditEvent(
         actor_id="actor-1",
-        actor_type=AuditActorType.HUMAN,
+        actor_type=ActorType.HUMAN,
         authorization_level=AuthorizationLevel.L3,
         action="approve_workspace",
         target_type="workspace",
@@ -145,7 +145,7 @@ async def test_audit_sink_uses_independent_transaction_for_failure(session) -> N
     factory = async_sessionmaker(engine, expire_on_commit=False)
     event = AuditEvent(
         actor_id="actor-2",
-        actor_type=AuditActorType.AI,
+        actor_type=ActorType.AI,
         authorization_level=AuthorizationLevel.L2,
         action="approve_workspace",
         target_type="workspace",
