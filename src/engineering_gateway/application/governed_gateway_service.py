@@ -33,9 +33,6 @@ class GovernedGatewayApplicationService(TransactionalApplicationServiceMixin, Ga
 
     async def prepare_for_approval(self, actor: Actor, workspace_id: UUID, elements=None, relations=None, profile_id: str = "", profile_version: str = "", *, validation_attributes: dict[UUID, dict[str, object]] | None = None, artifact_evidence: set[tuple[UUID, str]] | frozenset[tuple[UUID, str]] = frozenset(), lifecycle_states: dict[UUID, str] | None = None, lifecycle_transitions: dict[UUID, tuple[str, str]] | None = None) -> ValidationResult:
         workspace = await self._workspaces.get(workspace_id)
-        if workspace is not None and workspace.reconciled:
-            await self._workspaces.update(workspace.clear_reconciliation())
-            workspace = await self._workspaces.get(workspace_id)
         if workspace is None:
             raise GatewayServiceError(f"workspace '{workspace_id}' was not found")
         self._require_modify(actor)
@@ -87,7 +84,7 @@ class GovernedGatewayApplicationService(TransactionalApplicationServiceMixin, Ga
             raise GatewayServiceError("rejection requires a non-empty reason")
         WorkspaceGate.require_transition(workspace.state, WorkspaceState.ACTIVE)
         ChangeGate.require_transition(change_request.state, ChangeRequestState.REJECTED)
-        reset = workspace.clear_reconciliation().clear_validation_evidence().model_copy(update={"state": WorkspaceState.ACTIVE})
+        reset = workspace.model_copy(update={"state": WorkspaceState.ACTIVE}).clear_reconciliation().clear_validation_evidence()
         await self._workspaces.update(reset)
         await self._change_requests.update(change_request.model_copy(update={"state": ChangeRequestState.REJECTED}))
         await self._record(actor, action="reject_workspace", target_type="workspace", target_id=workspace_id, result=AuditResult.SUCCESS, reason=reason)
