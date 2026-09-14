@@ -11,7 +11,7 @@ from engineering_gateway.domain.adapters import ExternalVersion, GitSnapshot
 from engineering_gateway.domain.audit import ActorType, InMemoryAuditSink
 from engineering_gateway.domain.baselines import Baseline, BaselineRegistry
 from engineering_gateway.domain.change_control import AuthorizationLevel
-from engineering_gateway.domain.models import ElementKind, EngineeringElement, EngineeringRelation, RelationType
+from engineering_gateway.domain.models import ElementKind, EngineeringElement, EngineeringRelation, EngineeringGraph, RelationType
 from engineering_gateway.domain.reconciliation import compute_change_set_hash
 from engineering_gateway.domain.workspaces import WorkspaceRegistry, WorkspaceState
 from engineering_gateway.infrastructure.profile_loader import load_standard_profile
@@ -43,7 +43,7 @@ class CanonicalRepository:
         return [r for r in self.relations.values() if r.source_id == element_id or r.target_id == element_id]
 
     async def list_graph(self):
-        return None
+        return EngineeringGraph(elements=list(self.elements.values()), relations=list(self.relations.values()))
 
 
 class FakeGit:
