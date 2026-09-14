@@ -9,7 +9,7 @@ from engineering_gateway.application.transactional_service import TransactionalA
 from engineering_gateway.application.workspace_reconciliation import ReconciliationResult, WorkspaceReconciliationService
 from engineering_gateway.domain.audit import AuditResult
 from engineering_gateway.domain.baselines import Baseline
-from engineering_gateway.domain.change_control import ChangeRequestState
+from engineering_gateway.domain.change_control import AuthorizationLevel, ChangeRequestState, ChangeGate
 from engineering_gateway.domain.ports import AuditSink, ChangeRequestRegistryPort, WorkspaceChangeSetRepository, WorkspaceRegistryPort
 from engineering_gateway.domain.reconciliation import WorkspaceReconciler, compute_change_set_hash
 from engineering_gateway.domain.workspaces import WorkspaceGate, WorkspaceState
@@ -74,6 +74,23 @@ class GovernedGatewayApplicationService(TransactionalApplicationServiceMixin, Ga
         if self._workspace_reconciliation is None:
             raise GatewayServiceError("workspace reconciliation is not configured")
         return await self._workspace_reconciliation.reconcile(actor, workspace_id)
+
+    async def reject_workspace(self, actor: Actor, workspace_id: UUID, reason: str) -> None:
+        if self._workspaces is None or self._change_requests is None:
+            raise GatewayServiceError("workspace/change-request registries are not configured")
+        if actor.is_ai or actor.authorization_level != AuthorizationLevel.L3_APPROVE:
+            raise GatewayServiceError("workspace rejection requires a human L3 approver")
+        workspace, change_request = await self._load_workflow(workspace_id)
+        if workspace.state is not WorkspaceState.READY_FOR_APPROVAL or change_request.state is not ChangeRequestState.READY_FOR_APPROVAL:
+            raise GatewayServiceError("workspace and change request must both be ready for rejection")
+        if not reason.strip():
+            raise GatewayServiceError("rejection requires a non-empty reason")
+        WorkspaceGate.require_transition(workspace.state, WorkspaceState.ACTIVE)
+        ChangeGate.require_transition(change_request.state, ChangeRequestState.REJECTED)
+        reset = workspace.clear_reconciliation().clear_validation_evidence().model_copy(update={"state": WorkspaceState.ACTIVE})
+        await self._workspaces.update(reset)
+        await self._change_requests.update(change_request.model_copy(update={"state": ChangeRequestState.REJECTED}))
+        await self._record(actor, action="reject_workspace", target_type="workspace", target_id=workspace_id, result=AuditResult.SUCCESS, reason=reason)
 
     async def approve_workspace(self, actor: Actor, workspace_id: UUID) -> Baseline:
         workspace = await self._workspaces.get(workspace_id)
