@@ -62,7 +62,9 @@ class LocalCapellaAdapter:
             raise CapellaAdapterError("Capella bridge returned no version")
         return ExternalVersion(system=self.system_name, version=version)
 
-    async def create_workspace(self, workspace_id: UUID, source_version: str, change_set_hash: str) -> None:
+    async def create_workspace(
+        self, workspace_id: UUID, source_version: str, change_set_hash: str
+    ) -> None:
         await self._run(
             "create_workspace",
             {
@@ -103,7 +105,9 @@ class LocalCapellaAdapter:
                 text=True,
                 timeout=self._config.timeout_seconds,
             )
-        except (OSError, subprocess.TimeoutExpired) as exc:
+        except subprocess.TimeoutExpired as exc:
+            raise CapellaAdapterError("Capella bridge timed out") from exc
+        except OSError as exc:
             raise CapellaAdapterError("Capella bridge could not be executed") from exc
         if result.returncode != 0:
             detail = result.stderr.strip() or result.stdout.strip() or "unknown bridge error"
@@ -116,6 +120,11 @@ class LocalCapellaAdapter:
             raise CapellaAdapterError("Capella bridge returned a non-object JSON response")
         if response.get("protocol") != 1:
             raise CapellaAdapterError("unsupported Capella bridge protocol")
+        response_operation = response.get("operation")
+        if response_operation is not None and response_operation != operation:
+            raise CapellaAdapterError(
+                f"Capella bridge returned unexpected operation: {response_operation!r}"
+            )
         if response.get("ok") is not True:
             message = response.get("error") or "unknown Capella bridge error"
             raise CapellaAdapterError(str(message))
