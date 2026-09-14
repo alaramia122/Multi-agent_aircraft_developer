@@ -27,6 +27,7 @@ class Workspace(BaseModel):
     profile_id: str | None = Field(default=None, min_length=1)
     profile_version: str | None = Field(default=None, min_length=1)
     reconciled: bool = False
+    reconciled_change_set_hash: str | None = Field(default=None, min_length=64, max_length=64)
     state: WorkspaceState = WorkspaceState.ACTIVE
 
     def bind_profile(self, profile_id: str, profile_version: str) -> "Workspace":
@@ -37,16 +38,26 @@ class Workspace(BaseModel):
             raise ValueError("workspace validation profile is immutable once bound")
         return self.model_copy(update={"profile_id": profile_id, "profile_version": profile_version})
 
-    def mark_reconciled(self) -> "Workspace":
-        """Record that the current staged change-set was published to authoritative systems."""
+    def mark_reconciled(self, change_set_hash: str) -> "Workspace":
+        """Record publication evidence for the exact staged change-set."""
         if self.state is not WorkspaceState.READY_FOR_APPROVAL:
             raise ValueError("only a ready workspace can be marked reconciled")
-        return self.model_copy(update={"reconciled": True})
+        if len(change_set_hash) != 64:
+            raise ValueError("reconciliation change-set hash must be a SHA-256 hexadecimal digest")
+        return self.model_copy(update={"reconciled": True, "reconciled_change_set_hash": change_set_hash})
 
-    def require_reconciled(self) -> None:
-        """Reject approval if the staged changes were not reconciled."""
-        if not self.reconciled:
+    def clear_reconciliation(self) -> "Workspace":
+        """Invalidate publication evidence while the workspace is back in engineering."""
+        if self.state is not WorkspaceState.ACTIVE:
+            raise ValueError("reconciliation evidence can only be cleared for an active workspace")
+        return self.model_copy(update={"reconciled": False, "reconciled_change_set_hash": None})
+
+    def require_reconciled(self, current_change_set_hash: str | None = None) -> None:
+        """Reject approval unless evidence covers the exact current staged change-set."""
+        if not self.reconciled or not self.reconciled_change_set_hash:
             raise ValueError("workspace must be reconciled before approval")
+        if current_change_set_hash is not None and self.reconciled_change_set_hash != current_change_set_hash:
+            raise ValueError("workspace reconciliation evidence is stale for the current change-set")
 
 
 class WorkspaceGateError(ValueError):
@@ -103,6 +114,10 @@ class WorkspaceRegistry:
             raise ValueError("workspace validation profile is immutable once bound")
         if current.reconciled and not workspace.reconciled and current.state is not WorkspaceState.ACTIVE:
             raise ValueError("workspace reconciliation evidence is immutable outside active engineering")
+        if current.reconciled and workspace.reconciled and current.reconciled_change_set_hash != workspace.reconciled_change_set_hash:
+            raise ValueError("reconciliation evidence cannot be replaced without returning to active engineering")
+        if not workspace.reconciled and workspace.reconciled_change_set_hash is not None:
+            raise ValueError("reconciliation hash must be cleared when reconciliation evidence is cleared")
         WorkspaceGate.require_transition(current.state, workspace.state)
         self._workspaces[workspace.id] = workspace
         return workspace
