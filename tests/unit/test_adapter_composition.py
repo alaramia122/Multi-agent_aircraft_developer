@@ -28,6 +28,34 @@ def test_external_adapter_set_rejects_missing_system_name() -> None:
         ExternalAdapterSet(read_adapters=(_adapter(""),))
 
 
+def test_external_adapter_set_rejects_ambiguous_read_and_workspace_systems() -> None:
+    read = _adapter("capella")
+    workspace = _adapter("capella")
+
+    with pytest.raises(AdapterCompositionError, match="separate read and workspace adapters"):
+        ExternalAdapterSet(read_adapters=(read,), workspace_adapters=(workspace,))
+
+
+def test_workspace_adapter_is_also_exposed_as_read_adapter() -> None:
+    workspace = _adapter("capella")
+
+    composed = ExternalAdapterSet(workspace_adapters=(workspace,))
+
+    assert composed.as_read_adapters() == (workspace,)
+    assert composed.as_workspace_adapters() == (workspace,)
+
+
+def test_same_adapter_can_be_declared_in_both_capability_views() -> None:
+    adapter = _adapter("capella")
+
+    composed = ExternalAdapterSet(
+        read_adapters=(adapter,), workspace_adapters=(adapter,)
+    )
+
+    assert composed.as_read_adapters() == (adapter,)
+    assert composed.as_workspace_adapters() == (adapter,)
+
+
 def test_composition_keeps_read_and_workspace_capabilities_separate() -> None:
     strictdoc = _adapter("strictdoc")
     capella = _adapter("capella")
@@ -41,7 +69,7 @@ def test_composition_keeps_read_and_workspace_capabilities_separate() -> None:
     composed = compose_external_adapters(config)
 
     assert composed.as_read_adapters() == (strictdoc, capella, openproject)
-    assert composed.as_workspace_adapters() == ()
+    assert composed.as_workspace_adapters() == (capella,)
 
 
 def test_context_composition_rejects_both_adapter_inputs() -> None:
