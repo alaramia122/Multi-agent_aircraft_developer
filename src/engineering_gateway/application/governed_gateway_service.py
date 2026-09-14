@@ -9,7 +9,7 @@ from engineering_gateway.application.transactional_service import TransactionalA
 from engineering_gateway.application.workspace_reconciliation import ReconciliationResult, WorkspaceReconciliationService
 from engineering_gateway.domain.audit import AuditResult
 from engineering_gateway.domain.baselines import Baseline
-from engineering_gateway.domain.change_control import AuthorizationLevel, ChangeRequestState, ChangeGate
+from engineering_gateway.domain.change_control import AuthorizationLevel, ChangeGate, ChangeRequestState
 from engineering_gateway.domain.ports import AuditSink, ChangeRequestRegistryPort, WorkspaceChangeSetRepository, WorkspaceRegistryPort
 from engineering_gateway.domain.reconciliation import WorkspaceReconciler, compute_change_set_hash
 from engineering_gateway.domain.workspaces import WorkspaceGate, WorkspaceState
@@ -90,6 +90,8 @@ class GovernedGatewayApplicationService(TransactionalApplicationServiceMixin, Ga
         await self._record(actor, action="reject_workspace", target_type="workspace", target_id=workspace_id, result=AuditResult.SUCCESS, reason=reason)
 
     async def approve_workspace(self, actor: Actor, workspace_id: UUID) -> Baseline:
+        if self._workspaces is None or self._workspace_changes is None:
+            raise GatewayServiceError("workspace/change-set services are not configured")
         workspace = await self._workspaces.get(workspace_id)
         if workspace is None:
             raise GatewayServiceError(f"workspace '{workspace_id}' was not found")
