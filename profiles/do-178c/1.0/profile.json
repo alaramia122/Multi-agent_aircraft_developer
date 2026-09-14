@@ -1,0 +1,53 @@
+{
+  "id": "do-178c",
+  "version": "1.0",
+  "name": "DO-178C software lifecycle vertical slice",
+  "description": "Minimal executable profile for the Gateway DO-178C vertical slice. It models lifecycle and traceability semantics without reproducing copyrighted standard text.",
+  "element_types": [
+    {"id": "high_level_requirement", "kind": "requirement", "attributes": []},
+    {"id": "low_level_requirement", "kind": "requirement", "attributes": []},
+    {"id": "software_design", "kind": "architecture", "attributes": []},
+    {"id": "source_code", "kind": "configuration", "attributes": []},
+    {"id": "verification_case", "kind": "verification", "attributes": []}
+  ],
+  "relations": [
+    {"id": "hlr-to-llr", "relation_type": "refines", "source_type_ids": ["low_level_requirement"], "target_type_ids": ["high_level_requirement"]},
+    {"id": "llr-to-design", "relation_type": "allocated_to", "source_type_ids": ["low_level_requirement"], "target_type_ids": ["software_design"]},
+    {"id": "design-to-code", "relation_type": "implements", "source_type_ids": ["software_design"], "target_type_ids": ["source_code"]},
+    {"id": "llr-to-verification", "relation_type": "verified_by", "source_type_ids": ["low_level_requirement"], "target_type_ids": ["verification_case"]}
+  ],
+  "lifecycles": [
+    {
+      "id": "software_requirement_lifecycle",
+      "element_type_id": "high_level_requirement",
+      "states": ["draft", "reviewed", "approved"],
+      "transitions": {"draft": ["reviewed"], "reviewed": ["approved"], "approved": []}
+    },
+    {
+      "id": "low_level_requirement_lifecycle",
+      "element_type_id": "low_level_requirement",
+      "states": ["draft", "reviewed", "approved"],
+      "transitions": {"draft": ["reviewed"], "reviewed": ["approved"], "approved": []}
+    },
+    {
+      "id": "verification_case_lifecycle",
+      "element_type_id": "verification_case",
+      "states": ["draft", "executed", "accepted"],
+      "transitions": {"draft": ["executed"], "executed": ["accepted"], "accepted": []}
+    }
+  ],
+  "artifacts": [],
+  "traceability": [
+    {"id": "llr-refines-hlr", "source_type_id": "low_level_requirement", "relation_type": "refines", "target_type_id": "high_level_requirement", "required": true},
+    {"id": "llr-allocated-to-design", "source_type_id": "low_level_requirement", "relation_type": "allocated_to", "target_type_id": "software_design", "required": true},
+    {"id": "design-implements-code", "source_type_id": "software_design", "relation_type": "implements", "target_type_id": "source_code", "required": true}
+  ],
+  "verification": [
+    {"id": "llr-verification", "element_type_id": "low_level_requirement", "required_relation_type": "verified_by", "verification_type_id": "verification_case"}
+  ],
+  "metadata": {
+    "standard": "RTCA DO-178C",
+    "profile_role": "executable_gateway_vertical_slice",
+    "normative_text_included": false
+  }
+}
