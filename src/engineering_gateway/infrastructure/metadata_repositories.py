@@ -1,12 +1,13 @@
 """Persistence implementations for Gateway metadata."""
 
+from collections.abc import Callable
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from engineering_gateway.application.profile_engine import StandardProfileEngine
-from engineering_gateway.domain.audit import AuditEvent
+from engineering_gateway.domain.audit import AuditEvent, AuditResult
 from engineering_gateway.domain.baselines import Baseline, ExternalSystemVersion
 from engineering_gateway.domain.change_control import ChangeRequest, ChangeRequestState
 from engineering_gateway.domain.profiles import StandardProfile
@@ -223,15 +224,41 @@ def _to_workspace(record: WorkspaceRecord) -> Workspace:
 
 
 class SqlAlchemyAuditSink(_TransactionAware):
-    """Append-only durable audit sink."""
+    """Append-only durable audit sink with rollback-independent failure recording."""
 
-    def __init__(self, session: AsyncSession, *, autocommit: bool = True) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        *,
+        autocommit: bool = True,
+        independent_session_factory: Callable[[], object] | None = None,
+    ) -> None:
         super().__init__(session, autocommit=autocommit)
+        self._independent_session_factory = independent_session_factory
+
+    @staticmethod
+    def _record_model(event: AuditEvent) -> AuditEventRecord:
+        return AuditEventRecord(
+            id=event.id,
+            timestamp=event.timestamp,
+            actor_id=event.actor_id,
+            actor_type=event.actor_type.value,
+            authorization_level=event.authorization_level.value,
+            action=event.action,
+            target_type=event.target_type,
+            target_id=event.target_id,
+            correlation_id=event.correlation_id,
+            result=event.result.value,
+            reason=event.reason,
+            metadata=event.metadata,
+        )
 
     async def record(self, event: AuditEvent) -> None:
-        self._session.add(AuditEventRecord(id=event.id, timestamp=event.timestamp, actor_id=event.actor_id,
-                                           actor_type=event.actor_type.value, authorization_level=event.authorization_level.value,
-                                           action=event.action, target_type=event.target_type, target_id=event.target_id,
-                                           correlation_id=event.correlation_id, result=event.result.value,
-                                           reason=event.reason, metadata=event.metadata))
+        if event.result in (AuditResult.FAILURE, AuditResult.DENIED) and self._independent_session_factory is not None:
+            session_context = self._independent_session_factory()
+            async with session_context as independent_session:
+                independent_session.add(self._record_model(event))
+                await independent_session.commit()
+            return
+        self._session.add(self._record_model(event))
         await self._persist()
