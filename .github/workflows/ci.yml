@@ -33,6 +33,71 @@ jobs:
           git add -- '*.py'
           git commit -m "style: apply Ruff fixes"
           git push
+      - name: Apply temporary mypy cleanup
+        if: github.event_name == 'push' && github.ref == 'refs/heads/infrastructure/canonical-persistence'
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f"expected text not found in {path}: {old!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          replace(
+              "src/engineering_gateway/application/validation.py",
+              "from engineering_gateway.domain.profiles import AttributeType, StandardProfile",
+              "from engineering_gateway.domain.profiles import (\n    AttributeType,\n    ElementTypeDefinition,\n    StandardProfile,\n)",
+          )
+          replace(
+              "src/engineering_gateway/application/validation.py",
+              "type_definitions: dict[str, object],",
+              "type_definitions: dict[str, ElementTypeDefinition],",
+          )
+          replace(
+              "src/engineering_gateway/infrastructure/metadata_repositories.py",
+              "from engineering_gateway.domain.baselines import Baseline, ExternalSystemVersion",
+              "from engineering_gateway.domain.adapters import ExternalVersion\nfrom engineering_gateway.domain.baselines import Baseline, ExternalSystemVersion",
+          )
+          replace(
+              "src/engineering_gateway/infrastructure/metadata_repositories.py",
+              "ExternalSystemVersion.model_validate(item)\n            for item in (record.reconciliation_external_versions or [])",
+              "ExternalVersion.model_validate(item)\n            for item in (record.reconciliation_external_versions or [])",
+          )
+          replace(
+              "src/engineering_gateway/application/governed_gateway_service.py",
+              "            if not all((workspaces, change_requests, changes, audit_sink)):\n                raise ValueError(\n                    \"workspace reconciliation requires workspace, change-request, change-set and audit services\"\n                )\n            self._workspace_reconciliation = WorkspaceReconciliationService(",
+              "            if (\n                workspaces is None\n                or change_requests is None\n                or changes is None\n                or audit_sink is None\n            ):\n                raise ValueError(\n                    \"workspace reconciliation requires workspace, change-request, change-set and audit services\"\n                )\n            self._workspace_reconciliation = WorkspaceReconciliationService(",
+          )
+          replace(
+              "src/engineering_gateway/application/governed_gateway_service.py",
+              "    ) -> ValidationResult:\n        workspace = await self._workspaces.get(workspace_id)",
+              "    ) -> ValidationResult:\n        if self._workspaces is None or self._workspace_changes is None or self._change_requests is None:\n            raise GatewayServiceError(\"workspace/change-set services are not configured\")\n        workspace = await self._workspaces.get(workspace_id)",
+          )
+          replace(
+              "src/engineering_gateway/application/governed_gateway_service.py",
+              "        evidence = {\n",
+              "        evidence: dict[str, object] = {\n",
+          )
+
+          changed = [
+              "src/engineering_gateway/application/validation.py",
+              "src/engineering_gateway/infrastructure/metadata_repositories.py",
+              "src/engineering_gateway/application/governed_gateway_service.py",
+          ]
+          if not any(Path(p).stat().st_mtime for p in changed):
+              raise SystemExit("temporary cleanup did not run")
+          PY
+          ruff format .
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- '*.py'
+          if ! git diff --cached --quiet; then
+            git commit -m "fix: resolve remaining mypy errors"
+            git push
+          fi
       - name: Lint
         run: ruff check .
       - name: Type check
