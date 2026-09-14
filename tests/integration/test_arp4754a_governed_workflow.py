@@ -17,6 +17,7 @@ from engineering_gateway.domain.workspaces import WorkspaceRegistry, WorkspaceSt
 from engineering_gateway.infrastructure.profile_loader import load_standard_profile
 from engineering_gateway.infrastructure.profile_registry import InMemoryStandardProfileRegistry
 from engineering_gateway.infrastructure.workspace_changes import InMemoryWorkspaceChangeSetRepository
+from engineering_gateway.infrastructure.workspace_reconciler import AdapterWorkspaceReconciler
 
 ROOT = Path(__file__).resolve().parents[2]
 PROFILE = ROOT / "profiles" / "arp4754a" / "1.0" / "profile.json"
@@ -74,12 +75,27 @@ class FakeOpenProject:
         return ExternalVersion(system=self.system_name, version="openproject-1")
 
 
-class FakeReconciler:
-    async def reconcile(self, workspace, changes):
-        return (
-            ExternalVersion(system="strictdoc", version="strictdoc-1"),
-            ExternalVersion(system="capella", version="capella-1"),
-        )
+class FakeWorkspaceAdapter:
+    def __init__(self, system_name: str) -> None:
+        self.system_name = system_name
+        self.created = []
+        self.elements = []
+        self.relations = []
+
+    async def get_element(self, external_id: str):
+        return None
+
+    async def get_version(self) -> ExternalVersion:
+        return ExternalVersion(system=self.system_name, version=f"{self.system_name}-rev-1")
+
+    async def create_workspace(self, workspace_id, source_version, change_set_hash):
+        self.created.append((workspace_id, source_version, change_set_hash))
+
+    async def apply_element(self, workspace_id, element):
+        self.elements.append(element)
+
+    async def apply_relation(self, workspace_id, relation):
+        self.relations.append(relation)
 
 
 class InMemoryChangeRequests:
@@ -117,11 +133,15 @@ async def test_arp4754a_full_governed_workflow():
 
     source = await baselines.register(Baseline(name="B0", git_repository="repo", git_commit="abc123"))
     cr = await change_service.create_change_request(engineer, "Navigation change", "Controlled ARP4754A change", source)
+
+    strictdoc = FakeWorkspaceAdapter("strictdoc")
+    capella = FakeWorkspaceAdapter("capella")
+    reconciler = AdapterWorkspaceReconciler((strictdoc, capella), canonical)
     gateway = GovernedGatewayApplicationService(
         canonical, profiles, audit,
         baselines=baselines, change_requests=change_requests, workspaces=workspaces,
         workspace_changes=workspace_changes, git=FakeGit(), external_adapters=(FakeOpenProject(),),
-        workspace_reconciler=FakeReconciler(),
+        workspace_reconciler=reconciler,
     )
     workspace = await gateway.create_workspace(engineer, source.id, cr.id, git_ref="feature/navigation")
 
@@ -130,10 +150,15 @@ async def test_arp4754a_full_governed_workflow():
     verification = EngineeringElement(kind=ElementKind.VERIFICATION, type_id="verification_activity", name="Verify navigation", external_system="strictdoc", external_id="VER-001")
     for element in (requirement, architecture, verification):
         await gateway.save_workspace_element(engineer, element, workspace.id)
-    await gateway.add_workspace_relation(engineer, EngineeringRelation(source_id=requirement.id, relation_type=RelationType.ALLOCATED_TO, target_id=architecture.id), workspace.id)
-    await gateway.add_workspace_relation(engineer, EngineeringRelation(source_id=requirement.id, relation_type=RelationType.VERIFIED_BY, target_id=verification.id), workspace.id)
+    allocation = EngineeringRelation(source_id=requirement.id, relation_type=RelationType.ALLOCATED_TO, target_id=architecture.id)
+    verification_relation = EngineeringRelation(source_id=requirement.id, relation_type=RelationType.VERIFIED_BY, target_id=verification.id)
+    await gateway.add_workspace_relation(engineer, allocation, workspace.id)
+    await gateway.add_workspace_relation(engineer, verification_relation, workspace.id)
 
-    validation = await gateway.prepare_for_approval(engineer, workspace.id, profile_id="arp4754a", profile_version="1.0", lifecycle_states={requirement.id: "draft"})
+    validation = await gateway.prepare_for_approval(
+        engineer, workspace.id, profile_id="arp4754a", profile_version="1.0",
+        lifecycle_states={requirement.id: "draft"},
+    )
     assert validation.valid
     stored = await workspaces.get(workspace.id)
     assert stored is not None and stored.state is WorkspaceState.READY_FOR_APPROVAL
@@ -141,8 +166,15 @@ async def test_arp4754a_full_governed_workflow():
     assert stored.validation_evidence["lifecycle_states"][str(requirement.id)] == "draft"
 
     reconciliation = await gateway.reconcile_workspace(engineer, workspace.id)
-    assert reconciliation.change_set_hash == compute_change_set_hash(await workspace_changes.get_changes(workspace.id))
-    assert (await workspaces.get(workspace.id)).reconciled
+    expected_hash = compute_change_set_hash(await workspace_changes.get_changes(workspace.id))
+    assert reconciliation.change_set_hash == expected_hash
+    assert set(version.system for version in reconciliation.external_versions) == {"strictdoc", "capella"}
+    assert strictdoc.created == [(workspace.id, "abc123", expected_hash)]
+    assert capella.created == [(workspace.id, "abc123", expected_hash)]
+    assert strictdoc.elements == [requirement, verification]
+    assert capella.elements == [architecture]
+    assert strictdoc.relations == [verification_relation]
+    assert capella.relations == [allocation]
 
     baseline = await gateway.approve_workspace(reviewer, workspace.id)
     assert baseline.git_commit == "def456"
