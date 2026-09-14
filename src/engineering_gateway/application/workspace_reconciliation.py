@@ -45,9 +45,20 @@ class WorkspaceReconciliationService:
 
     async def reconcile(self, actor: Actor, workspace_id: UUID) -> ReconciliationResult:
         if actor.authorization_level != AuthorizationLevel.L2_MODIFY_WORKSPACE:
-            raise GatewayServiceError(
-                "workspace reconciliation requires L2 workspace modification authority"
+            reason = "workspace reconciliation requires L2 workspace modification authority"
+            await self._audit.record(
+                AuditEvent(
+                    actor_id=actor.actor_id,
+                    actor_type=actor.actor_type,
+                    authorization_level=actor.authorization_level,
+                    action="reconcile_workspace",
+                    target_type="workspace",
+                    target_id=workspace_id,
+                    result=AuditResult.DENIED,
+                    reason=reason,
+                )
             )
+            raise GatewayServiceError(reason)
         workspace = await self._workspaces.get(workspace_id)
         if workspace is None:
             raise GatewayServiceError(f"workspace '{workspace_id}' was not found")
