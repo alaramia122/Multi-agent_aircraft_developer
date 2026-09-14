@@ -7,7 +7,7 @@ from uuid import UUID
 from engineering_gateway.domain.adapters import ExternalVersion, WorkspaceAdapter
 from engineering_gateway.domain.models import EngineeringElement, EngineeringGraph
 from engineering_gateway.domain.ports import EngineeringRepository
-from engineering_gateway.domain.reconciliation import WorkspaceReconciliationError
+from engineering_gateway.domain.reconciliation import WorkspaceReconciliationError, compute_change_set_hash
 from engineering_gateway.domain.workspaces import Workspace
 
 
@@ -15,7 +15,9 @@ class AdapterWorkspaceReconciler:
     """Route staged changes to authoritative adapters by external system.
 
     The coordinator contains no engineering semantics and never writes the Gateway
-    canonical model. Each external system remains authoritative for its own data.
+    canonical model. The deterministic change-set hash is passed to each adapter so
+    an interrupted operation can be retried without creating a second external
+    workspace for the same desired state.
     """
 
     def __init__(self, adapters: tuple[WorkspaceAdapter, ...], canonical: EngineeringRepository | None = None) -> None:
@@ -29,7 +31,8 @@ class AdapterWorkspaceReconciler:
         workspace: Workspace,
         changes: EngineeringGraph,
     ) -> tuple[ExternalVersion, ...]:
-        """Publish staged elements and relations without requiring unchanged endpoints to be restaged."""
+        """Publish staged elements and relations using an idempotency key."""
+        change_set_hash = compute_change_set_hash(changes)
         elements_by_id = {element.id: element for element in changes.elements}
         relation_sources: dict[UUID, EngineeringElement] = {}
         relation_targets: dict[UUID, EngineeringElement] = {}
@@ -66,7 +69,7 @@ class AdapterWorkspaceReconciler:
         used: set[str] = set()
         for system in sorted(systems):
             adapter = self._adapters[system]
-            await adapter.create_workspace(workspace.id, workspace.source_git_commit)
+            await adapter.create_workspace(workspace.id, workspace.source_git_commit, change_set_hash)
             used.add(system)
 
         for element in changes.elements:
