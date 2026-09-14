@@ -96,19 +96,13 @@ def build_service():
     )
     audit = InMemoryAuditSink()
     reconciler = FakeReconciler()
-    return (
-        WorkspaceReconciliationService(workspaces, change_requests, changes, reconciler, audit),
-        workspace,
-        changes,
-        element,
-        reconciler,
-        canonical,
-    )
+    service = WorkspaceReconciliationService(workspaces, change_requests, changes, reconciler, audit)
+    return service, workspaces, workspace, changes, element, reconciler, canonical
 
 
 @pytest.mark.asyncio
 async def test_reconcile_keeps_workspace_ready_and_does_not_touch_canonical():
-    service, workspace, changes, element, reconciler, canonical = build_service()
+    service, workspaces, workspace, changes, element, reconciler, canonical = build_service()
     await changes.save_element(workspace.id, element)
 
     result = await service.reconcile(
@@ -118,13 +112,13 @@ async def test_reconcile_keeps_workspace_ready_and_does_not_touch_canonical():
 
     assert result.external_versions[0].version == "rev-2"
     assert reconciler.received[1].elements == [element]
-    assert (await service._workspaces.get(workspace.id)).state is WorkspaceState.READY_FOR_APPROVAL
+    assert (await workspaces.get(workspace.id)).state is WorkspaceState.READY_FOR_APPROVAL
     assert await canonical.get(element.id) is None
 
 
 @pytest.mark.asyncio
 async def test_ai_l2_can_reconcile():
-    service, workspace, changes, element, reconciler, _ = build_service()
+    service, _, workspace, changes, element, reconciler, _ = build_service()
     await changes.save_element(workspace.id, element)
 
     result = await service.reconcile(
@@ -138,7 +132,7 @@ async def test_ai_l2_can_reconcile():
 
 @pytest.mark.asyncio
 async def test_l1_cannot_reconcile():
-    service, workspace, _, _, _, _ = build_service()
+    service, _, workspace, _, _, _, _ = build_service()
 
     with pytest.raises(GatewayServiceError, match="requires L2"):
         await service.reconcile(
