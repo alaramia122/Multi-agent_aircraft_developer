@@ -44,6 +44,7 @@ class ValidationResult:
 
 class GatewayApplicationService:
     """Single application boundary for governed Gateway operations."""
+
     def __init__(self, repository: EngineeringRepository, profiles: StandardProfileRegistry, audit: AuditSink, validator: DeterministicValidationEngine | None = None, baselines: BaselineRegistryPort | None = None, change_requests: ChangeRequestRegistryPort | None = None, workspaces: WorkspaceRegistryPort | None = None, workspace_changes: WorkspaceChangeSetRepository | None = None, git: GitAdapter | None = None, external_adapters: tuple[ReadAdapter, ...] = ()) -> None:
         self._repository = repository
         self._profiles = profiles
@@ -116,7 +117,8 @@ class GatewayApplicationService:
             raise GatewayServiceError("rejection requires a non-empty reason")
         WorkspaceGate.require_transition(workspace.state, WorkspaceState.ACTIVE)
         ChangeGate.require_transition(change_request.state, ChangeRequestState.REJECTED)
-        await self._workspaces.update(workspace.clear_reconciliation().model_copy(update={"state": WorkspaceState.ACTIVE}))
+        reset = workspace.model_copy(update={"state": WorkspaceState.ACTIVE}).clear_reconciliation().clear_validation_evidence()
+        await self._workspaces.update(reset)
         await self._change_requests.update(change_request.model_copy(update={"state": ChangeRequestState.REJECTED}))
         await self._record(actor, action="reject_workspace", target_type="workspace", target_id=workspace_id, result=AuditResult.SUCCESS, reason=reason)
 
@@ -237,31 +239,3 @@ class GatewayApplicationService:
 
     async def _read_external_versions(self):
         return [await adapter.get_version() for adapter in self._external_adapters]
-
-    async def _require_workspace(self, actor: Actor, workspace_id: UUID) -> None:
-        try:
-            ChangeGate.require_workspace_modification(actor.authorization_level, workspace_id)
-        except ValueError as exc:
-            await self._record(actor, action="workspace_write", target_type="workspace", target_id=workspace_id, result=AuditResult.DENIED, reason=str(exc))
-            raise GatewayServiceError(str(exc)) from exc
-        if self._workspaces is None:
-            raise GatewayServiceError("workspace registry is not configured")
-        workspace = await self._workspaces.get(workspace_id)
-        if workspace is None or workspace.state is not WorkspaceState.ACTIVE:
-            raise GatewayServiceError("workspace is not active")
-
-    @staticmethod
-    def _require_modify(actor: Actor) -> None:
-        if actor.authorization_level != AuthorizationLevel.L2_MODIFY_WORKSPACE:
-            raise GatewayServiceError("only L2 is authorized for workspace workflow operations")
-
-    @staticmethod
-    def _require_read(actor: Actor) -> None:
-        if actor.authorization_level not in tuple(AuthorizationLevel):
-            raise GatewayServiceError("actor has no Gateway authorization level")
-
-    async def _record(self, actor: Actor, *, action: str, target_type: str, result: AuditResult, target_id: UUID | None = None, reason: str | None = None, metadata: dict[str, object] | None = None) -> None:
-        await self._audit.record(AuditEvent(actor_id=actor.actor_id, actor_type=actor.actor_type, authorization_level=actor.authorization_level, action=action, target_type=target_type, target_id=target_id, result=result, reason=reason, metadata=metadata or {}, correlation_id=uuid4()))
-
-
-__all__ = ["Actor", "GatewayApplicationService", "GatewayServiceError", "ValidationResult"]
