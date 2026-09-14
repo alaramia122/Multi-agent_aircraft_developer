@@ -95,8 +95,8 @@ class AdapterWorkspaceReconciler:
             await self._adapters[element.external_system].apply_element(workspace.id, element)
 
         for relation in changes.relations:
-            source = relation_sources[relation.id]
-            await self._adapters[source.external_system].apply_relation(workspace.id, relation)
+            target = relation_targets[relation.id]
+            await self._adapters[target.external_system].apply_relation(workspace.id, relation)
 
         versions = [await self._adapters[system].get_version() for system in used]
         return tuple(versions)
