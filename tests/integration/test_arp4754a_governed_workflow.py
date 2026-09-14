@@ -155,10 +155,7 @@ async def test_arp4754a_full_governed_workflow():
     await gateway.add_workspace_relation(engineer, allocation, workspace.id)
     await gateway.add_workspace_relation(engineer, verification_relation, workspace.id)
 
-    validation = await gateway.prepare_for_approval(
-        engineer, workspace.id, profile_id="arp4754a", profile_version="1.0",
-        lifecycle_states={requirement.id: "draft"},
-    )
+    validation = await gateway.prepare_for_approval(engineer, workspace.id, profile_id="arp4754a", profile_version="1.0", lifecycle_states={requirement.id: "draft"})
     assert validation.valid
     stored = await workspaces.get(workspace.id)
     assert stored is not None and stored.state is WorkspaceState.READY_FOR_APPROVAL
@@ -179,7 +176,9 @@ async def test_arp4754a_full_governed_workflow():
     baseline = await gateway.approve_workspace(reviewer, workspace.id)
     assert baseline.git_commit == "def456"
     assert baseline.git_tag == f"baseline-{workspace.id}"
-    assert (await workspaces.get(workspace.id)).state is WorkspaceState.APPROVED
+    assert {v.system for v in baseline.external_versions} == {"strictdoc", "capella"}
+    stored = await workspaces.get(workspace.id)
+    assert stored is not None and stored.state is WorkspaceState.APPROVED
 
     with pytest.raises(GatewayServiceError, match="workspace is not active"):
         await gateway.save_workspace_element(engineer, requirement, workspace.id)
