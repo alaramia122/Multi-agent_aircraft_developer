@@ -35,9 +35,13 @@ class ReadAdapter(Protocol):
 
 
 class WorkspaceAdapter(ReadAdapter, Protocol):
-    """Adapter boundary for changes explicitly scoped to a workspace."""
+    """Adapter boundary for changes explicitly scoped to a workspace.
 
-    async def create_workspace(self, workspace_id: UUID, source_version: str) -> None: ...
+    ``change_set_hash`` is the deterministic idempotency key. Implementations must
+    treat repeated calls for the same workspace and hash as the same desired state.
+    """
+
+    async def create_workspace(self, workspace_id: UUID, source_version: str, change_set_hash: str) -> None: ...
 
     async def apply_element(self, workspace_id: UUID, element: EngineeringElement) -> None: ...
 
