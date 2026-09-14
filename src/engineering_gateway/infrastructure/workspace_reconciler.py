@@ -26,12 +26,7 @@ class AdapterWorkspaceReconciler:
             raise ValueError("workspace adapter system names must be unique")
         self._canonical = canonical
 
-    async def reconcile(
-        self,
-        workspace: Workspace,
-        changes: EngineeringGraph,
-    ) -> tuple[ExternalVersion, ...]:
-        """Publish staged elements and relations using an idempotency key."""
+    async def reconcile(self, workspace: Workspace, changes: EngineeringGraph) -> tuple[ExternalVersion, ...]:
         change_set_hash = compute_change_set_hash(changes)
         elements_by_id = {element.id: element for element in changes.elements}
         relation_sources: dict[UUID, EngineeringElement] = {}
@@ -50,27 +45,26 @@ class AdapterWorkspaceReconciler:
                 if target is None:
                     target = await self._canonical.get(relation.target_id)
             if source is None or target is None:
-                raise WorkspaceReconciliationError(
-                    f"workspace relation '{relation.id}' references an unknown endpoint"
-                )
+                raise WorkspaceReconciliationError(f"workspace relation '{relation.id}' references an unknown endpoint")
             relation_sources[relation.id] = source
             relation_targets[relation.id] = target
 
         systems = {element.external_system for element in changes.elements}
         systems.update(source.external_system for source in relation_sources.values())
         systems.update(target.external_system for target in relation_targets.values())
-
         missing = sorted(system for system in systems if system not in self._adapters)
         if missing:
             raise WorkspaceReconciliationError(
                 f"no workspace adapter configured for authoritative systems: {', '.join(missing)}"
             )
 
-        used: set[str] = set()
-        for system in sorted(systems):
-            adapter = self._adapters[system]
-            await adapter.create_workspace(workspace.id, workspace.source_git_commit, change_set_hash)
-            used.add(system)
+        used = sorted(systems)
+        for system in used:
+            await self._adapters[system].create_workspace(
+                workspace.id,
+                workspace.source_git_commit,
+                change_set_hash,
+            )
 
         for element in changes.elements:
             await self._adapters[element.external_system].apply_element(workspace.id, element)
@@ -79,9 +73,7 @@ class AdapterWorkspaceReconciler:
             source = relation_sources[relation.id]
             await self._adapters[source.external_system].apply_relation(workspace.id, relation)
 
-        versions: list[ExternalVersion] = []
-        for system in sorted(used):
-            versions.append(await self._adapters[system].get_version())
+        versions = [await self._adapters[system].get_version() for system in used]
         return tuple(versions)
 
 
