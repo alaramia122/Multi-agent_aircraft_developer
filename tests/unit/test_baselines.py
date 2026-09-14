@@ -26,6 +26,13 @@ def test_baseline_is_immutable() -> None:
         baseline.name = "changed"
 
 
+def test_baseline_external_provenance_is_immutable() -> None:
+    baseline = make_baseline()
+
+    with pytest.raises(ValidationError):
+        baseline.external_versions[0].version = "changed"
+
+
 @pytest.mark.asyncio
 async def test_registry_round_trip_and_deterministic_listing() -> None:
     registry = BaselineRegistry()
