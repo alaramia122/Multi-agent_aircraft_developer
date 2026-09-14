@@ -18,16 +18,7 @@ from engineering_gateway.domain.workspaces import WorkspaceGate, WorkspaceState
 class GovernedGatewayApplicationService(TransactionalApplicationServiceMixin, GatewayApplicationService):
     """Gateway service with explicit reconciliation, approval and transaction boundaries."""
 
-    def __init__(
-        self,
-        *args,
-        workspace_reconciler: WorkspaceReconciler | None = None,
-        workspace_registry: WorkspaceRegistryPort | None = None,
-        change_request_registry: ChangeRequestRegistryPort | None = None,
-        workspace_changes: WorkspaceChangeSetRepository | None = None,
-        audit: AuditSink | None = None,
-        **kwargs,
-    ) -> None:
+    def __init__(self, *args, workspace_reconciler: WorkspaceReconciler | None = None, workspace_registry: WorkspaceRegistryPort | None = None, change_request_registry: ChangeRequestRegistryPort | None = None, workspace_changes: WorkspaceChangeSetRepository | None = None, audit: AuditSink | None = None, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         if workspace_reconciler is None:
             self._workspace_reconciliation = None
@@ -40,24 +31,10 @@ class GovernedGatewayApplicationService(TransactionalApplicationServiceMixin, Ga
                 raise ValueError("workspace reconciliation requires workspace, change-request, change-set and audit services")
             self._workspace_reconciliation = WorkspaceReconciliationService(workspaces=workspaces, change_requests=change_requests, changes=changes, reconciler=workspace_reconciler, audit=audit_sink)
 
-    async def prepare_for_approval(
-        self,
-        actor: Actor,
-        workspace_id: UUID,
-        elements=None,
-        relations=None,
-        profile_id: str = "",
-        profile_version: str = "",
-        *,
-        validation_attributes: dict[UUID, dict[str, object]] | None = None,
-        artifact_evidence: set[tuple[UUID, str]] | frozenset[tuple[UUID, str]] = frozenset(),
-        lifecycle_states: dict[UUID, str] | None = None,
-        lifecycle_transitions: dict[UUID, tuple[str, str]] | None = None,
-    ) -> ValidationResult:
-        """Validate and persist the exact evidence used to make a workspace ready."""
+    async def prepare_for_approval(self, actor: Actor, workspace_id: UUID, elements=None, relations=None, profile_id: str = "", profile_version: str = "", *, validation_attributes: dict[UUID, dict[str, object]] | None = None, artifact_evidence: set[tuple[UUID, str]] | frozenset[tuple[UUID, str]] = frozenset(), lifecycle_states: dict[UUID, str] | None = None, lifecycle_transitions: dict[UUID, tuple[str, str]] | None = None) -> ValidationResult:
         workspace = await self._workspaces.get(workspace_id)
         if workspace is not None and workspace.reconciled:
-            await self._workspaces.update(workspace.model_copy(update={"reconciled": False, "reconciled_change_set_hash": None}))
+            await self._workspaces.update(workspace.clear_reconciliation())
             workspace = await self._workspaces.get(workspace_id)
         if workspace is None:
             raise GatewayServiceError(f"workspace '{workspace_id}' was not found")
@@ -94,13 +71,11 @@ class GovernedGatewayApplicationService(TransactionalApplicationServiceMixin, Ga
         return result
 
     async def reconcile_workspace(self, actor: Actor, workspace_id: UUID) -> ReconciliationResult:
-        """Publish the staged workspace change-set to authoritative systems."""
         if self._workspace_reconciliation is None:
             raise GatewayServiceError("workspace reconciliation is not configured")
         return await self._workspace_reconciliation.reconcile(actor, workspace_id)
 
     async def approve_workspace(self, actor: Actor, workspace_id: UUID) -> Baseline:
-        """Require fresh reconciliation evidence for the exact current change-set and validation evidence."""
         workspace = await self._workspaces.get(workspace_id)
         if workspace is None:
             raise GatewayServiceError(f"workspace '{workspace_id}' was not found")
