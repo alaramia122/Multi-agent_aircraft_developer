@@ -70,8 +70,7 @@ class FakeReconciler:
         return (ExternalVersion(system="capella", version="rev-2"),)
 
 
-@pytest.mark.asyncio
-async def test_reconcile_keeps_workspace_ready_and_does_not_touch_canonical():
+def build_service():
     change_request = ChangeRequest(
         external_system="openproject",
         external_id="CR-1",
@@ -95,12 +94,22 @@ async def test_reconcile_keeps_workspace_ready_and_does_not_touch_canonical():
         external_system="capella",
         external_id="COMP-1",
     )
-    await changes.save_element(workspace.id, element)
-    reconciler = FakeReconciler()
     audit = InMemoryAuditSink()
-    service = WorkspaceReconciliationService(
-        workspaces, change_requests, changes, reconciler, audit
+    reconciler = FakeReconciler()
+    return (
+        WorkspaceReconciliationService(workspaces, change_requests, changes, reconciler, audit),
+        workspace,
+        changes,
+        element,
+        reconciler,
+        canonical,
     )
+
+
+@pytest.mark.asyncio
+async def test_reconcile_keeps_workspace_ready_and_does_not_touch_canonical():
+    service, workspace, changes, element, reconciler, canonical = build_service()
+    await changes.save_element(workspace.id, element)
 
     result = await service.reconcile(
         Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE),
@@ -109,34 +118,30 @@ async def test_reconcile_keeps_workspace_ready_and_does_not_touch_canonical():
 
     assert result.external_versions[0].version == "rev-2"
     assert reconciler.received[1].elements == [element]
-    assert (await workspaces.get(workspace.id)).state is WorkspaceState.READY_FOR_APPROVAL
+    assert (await service._workspaces.get(workspace.id)).state is WorkspaceState.READY_FOR_APPROVAL
     assert await canonical.get(element.id) is None
 
 
 @pytest.mark.asyncio
-async def test_ai_cannot_reconcile():
-    change_request = ChangeRequest(
-        external_system="openproject",
-        external_id="CR-2",
-        title="Change",
-        state=ChangeRequestState.READY_FOR_APPROVAL,
-    )
-    workspace = Workspace(
-        source_baseline_id=uuid4(),
-        source_git_commit="abc123",
-        change_request_id=change_request.id,
-        state=WorkspaceState.READY_FOR_APPROVAL,
-    )
-    service = WorkspaceReconciliationService(
-        FakeWorkspaceRegistry(workspace),
-        FakeChangeRequestRegistry(change_request),
-        InMemoryWorkspaceChangeSetRepository(FakeCanonical()),
-        FakeReconciler(),
-        InMemoryAuditSink(),
+async def test_ai_l2_can_reconcile():
+    service, workspace, changes, element, reconciler, _ = build_service()
+    await changes.save_element(workspace.id, element)
+
+    result = await service.reconcile(
+        Actor("agent", ActorType.AI, AuthorizationLevel.L2_MODIFY_WORKSPACE),
+        workspace.id,
     )
 
-    with pytest.raises(GatewayServiceError, match="human L2"):
+    assert result.change_set_hash
+    assert reconciler.received[1].elements == [element]
+
+
+@pytest.mark.asyncio
+async def test_l1_cannot_reconcile():
+    service, workspace, _, _, _, _ = build_service()
+
+    with pytest.raises(GatewayServiceError, match="requires L2"):
         await service.reconcile(
-            Actor("agent", ActorType.AI, AuthorizationLevel.L2_MODIFY_WORKSPACE),
+            Actor("agent", ActorType.AI, AuthorizationLevel.L1_PROPOSE),
             workspace.id,
         )
