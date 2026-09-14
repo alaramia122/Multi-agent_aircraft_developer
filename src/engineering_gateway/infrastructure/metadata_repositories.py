@@ -11,7 +11,7 @@ from engineering_gateway.domain.audit import AuditEvent, AuditResult
 from engineering_gateway.domain.baselines import Baseline, ExternalSystemVersion
 from engineering_gateway.domain.change_control import ChangeGate, ChangeRequest, ChangeRequestState
 from engineering_gateway.domain.profiles import StandardProfile
-from engineering_gateway.domain.workspaces import Workspace, WorkspaceState
+from engineering_gateway.domain.workspaces import Workspace, WorkspaceGate, WorkspaceState
 from engineering_gateway.infrastructure.metadata_models import AuditEventRecord, BaselineRecord, ChangeRequestRecord, StandardProfileRecord, WorkspaceRecord
 
 
@@ -168,7 +168,6 @@ class SqlAlchemyWorkspaceRegistry(_TransactionAware):
         if not workspace.reconciled and (workspace.reconciled_change_set_hash is not None or workspace.reconciliation_external_versions):
             raise ValueError("reconciliation evidence must be cleared together")
         if current_state is not workspace.state:
-            from engineering_gateway.domain.workspaces import WorkspaceGate
             WorkspaceGate.require_transition(current_state, workspace.state)
         record.profile_id = workspace.profile_id
         record.profile_version = workspace.profile_version
@@ -195,7 +194,7 @@ def _to_workspace(record: WorkspaceRecord) -> Workspace:
 
 
 class SqlAlchemyAuditSink(_TransactionAware):
-    def __init__(self, session: AsyncSession, *, autocommit: bool = True, independent_session_factory: Callable[[], object] | None = None) -> None:
+    def __init__(self, session: AsyncSession, *, autocommit: bool = True, independent_session_factory: Callable[[], AsyncSession] | None = None) -> None:
         super().__init__(session, autocommit=autocommit)
         self._independent_session_factory = independent_session_factory
 
