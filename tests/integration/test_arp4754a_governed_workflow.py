@@ -1,13 +1,12 @@
 """End-to-end in-memory ARP4754A governed workflow."""
 
 from pathlib import Path
-from uuid import uuid4
 
 import pytest
 
 from engineering_gateway.application.change_request_service import ChangeRequestApplicationService
 from engineering_gateway.application.governed_gateway_service import GovernedGatewayApplicationService
-from engineering_gateway.application.gateway_service import Actor
+from engineering_gateway.application.gateway_service import Actor, GatewayServiceError
 from engineering_gateway.domain.adapters import ExternalVersion, GitSnapshot
 from engineering_gateway.domain.audit import ActorType, InMemoryAuditSink
 from engineering_gateway.domain.baselines import Baseline, BaselineRegistry
@@ -18,7 +17,6 @@ from engineering_gateway.domain.workspaces import WorkspaceRegistry, WorkspaceSt
 from engineering_gateway.infrastructure.profile_loader import load_standard_profile
 from engineering_gateway.infrastructure.profile_registry import InMemoryStandardProfileRegistry
 from engineering_gateway.infrastructure.workspace_changes import InMemoryWorkspaceChangeSetRepository
-
 
 ROOT = Path(__file__).resolve().parents[2]
 PROFILE = ROOT / "profiles" / "arp4754a" / "1.0" / "profile.json"
@@ -78,7 +76,26 @@ class FakeOpenProject:
 
 class FakeReconciler:
     async def reconcile(self, workspace, changes):
-        return (ExternalVersion(system="strictdoc", version="strictdoc-1"), ExternalVersion(system="capella", version="capella-1"))
+        return (
+            ExternalVersion(system="strictdoc", version="strictdoc-1"),
+            ExternalVersion(system="capella", version="capella-1"),
+        )
+
+
+class InMemoryChangeRequests:
+    def __init__(self) -> None:
+        self.items = {}
+
+    async def create(self, item):
+        self.items[item.id] = item
+        return item
+
+    async def get(self, item_id):
+        return self.items.get(item_id)
+
+    async def update(self, item):
+        self.items[item.id] = item
+        return item
 
 
 @pytest.mark.asyncio
@@ -93,21 +110,7 @@ async def test_arp4754a_full_governed_workflow():
     workspace_changes = InMemoryWorkspaceChangeSetRepository(canonical)
     baselines = BaselineRegistry()
     workspaces = WorkspaceRegistry()
-    from engineering_gateway.domain.change_control import ChangeRequest
-
-    class Changes:
-        def __init__(self):
-            self.items = {}
-        async def create(self, item):
-            self.items[item.id] = item
-            return item
-        async def get(self, item_id):
-            return self.items.get(item_id)
-        async def update(self, item):
-            self.items[item.id] = item
-            return item
-
-    change_requests = Changes()
+    change_requests = InMemoryChangeRequests()
     change_service = ChangeRequestApplicationService(change_requests, FakeOpenProject(), audit)
     engineer = Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE)
     reviewer = Actor("reviewer", ActorType.HUMAN, AuthorizationLevel.L3_APPROVE)
@@ -115,15 +118,9 @@ async def test_arp4754a_full_governed_workflow():
     source = await baselines.register(Baseline(name="B0", git_repository="repo", git_commit="abc123"))
     cr = await change_service.create_change_request(engineer, "Navigation change", "Controlled ARP4754A change", source)
     gateway = GovernedGatewayApplicationService(
-        canonical,
-        profiles,
-        audit,
-        baselines=baselines,
-        change_requests=change_requests,
-        workspaces=workspaces,
-        workspace_changes=workspace_changes,
-        git=FakeGit(),
-        external_adapters=(FakeOpenProject(),),
+        canonical, profiles, audit,
+        baselines=baselines, change_requests=change_requests, workspaces=workspaces,
+        workspace_changes=workspace_changes, git=FakeGit(), external_adapters=(FakeOpenProject(),),
         workspace_reconciler=FakeReconciler(),
     )
     workspace = await gateway.create_workspace(engineer, source.id, cr.id, git_ref="feature/navigation")
@@ -138,8 +135,10 @@ async def test_arp4754a_full_governed_workflow():
 
     validation = await gateway.prepare_for_approval(engineer, workspace.id, profile_id="arp4754a", profile_version="1.0", lifecycle_states={requirement.id: "draft"})
     assert validation.valid
-    assert (await workspaces.get(workspace.id)).state is WorkspaceState.READY_FOR_APPROVAL
-    assert (await workspaces.get(workspace.id)).validation_graph_hash == validation.graph_hash
+    stored = await workspaces.get(workspace.id)
+    assert stored is not None and stored.state is WorkspaceState.READY_FOR_APPROVAL
+    assert stored.validation_graph_hash == validation.graph_hash
+    assert stored.validation_evidence["lifecycle_states"][str(requirement.id)] == "draft"
 
     reconciliation = await gateway.reconcile_workspace(engineer, workspace.id)
     assert reconciliation.change_set_hash == compute_change_set_hash(await workspace_changes.get_changes(workspace.id))
@@ -150,5 +149,5 @@ async def test_arp4754a_full_governed_workflow():
     assert baseline.git_tag == f"baseline-{workspace.id}"
     assert (await workspaces.get(workspace.id)).state is WorkspaceState.APPROVED
 
-    with pytest.raises(Exception):
+    with pytest.raises(GatewayServiceError, match="workspace is not active"):
         await gateway.save_workspace_element(engineer, requirement, workspace.id)
