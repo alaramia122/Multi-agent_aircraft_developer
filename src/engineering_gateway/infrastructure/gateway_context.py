@@ -32,9 +32,13 @@ async def governed_gateway_context(
     """Create a governed service whose repositories share one SQLAlchemy session.
 
     Each public async application operation is committed or rolled back by the
-    service's UnitOfWork. The context owns the session lifetime. External adapters
-    remain outside the database transaction and are handled by the reconciliation
-    protocol rather than pretending to participate in a distributed transaction.
+    service's UnitOfWork. External adapters remain outside the database transaction
+    and are handled by the reconciliation protocol rather than pretending to
+    participate in a distributed transaction.
+
+    Success audit events share the application transaction. Failure and denied audit
+    events use an independent session so the audit trail survives rollback of the
+    operation that produced the event.
     """
 
     async with database.session_factory() as session:
@@ -45,7 +49,11 @@ async def governed_gateway_context(
         change_requests = SqlAlchemyChangeRequestRepository(session, autocommit=False)
         workspaces = SqlAlchemyWorkspaceRegistry(session, autocommit=False)
         workspace_changes = SqlAlchemyWorkspaceChangeSetRepository(session, canonical)
-        audit = SqlAlchemyAuditSink(session, autocommit=False)
+        audit = SqlAlchemyAuditSink(
+            session,
+            autocommit=False,
+            independent_session_factory=database.session_factory,
+        )
 
         yield GovernedGatewayApplicationService(
             repository=canonical,
