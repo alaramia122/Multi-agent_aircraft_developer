@@ -34,7 +34,9 @@ async def test_change_request_repository_rejects_invalid_transition(session) -> 
     await repository.create(change_request)
 
     with pytest.raises(ValueError, match="invalid change-request transition"):
-        await repository.update(change_request.model_copy(update={"state": ChangeRequestState.APPROVED}))
+        await repository.update(
+            change_request.model_copy(update={"state": ChangeRequestState.APPROVED})
+        )
 
 
 @pytest.mark.asyncio

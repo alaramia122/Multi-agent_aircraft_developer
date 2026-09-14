@@ -10,7 +10,12 @@ from engineering_gateway.api.mcp_server import create_mcp_server
 from engineering_gateway.application.gateway_service import Actor, GatewayApplicationService
 from engineering_gateway.domain.audit import ActorType, InMemoryAuditSink
 from engineering_gateway.domain.change_control import AuthorizationLevel
-from engineering_gateway.domain.models import EngineeringElement, EngineeringRelation, ElementKind, RelationType
+from engineering_gateway.domain.models import (
+    ElementKind,
+    EngineeringElement,
+    EngineeringRelation,
+    RelationType,
+)
 from engineering_gateway.infrastructure.profile_registry import InMemoryStandardProfileRegistry
 
 

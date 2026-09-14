@@ -1,6 +1,8 @@
 """Tests for the application-service Unit-of-Work boundary."""
 
-from engineering_gateway.application.transactional_service import TransactionalApplicationServiceMixin
+from engineering_gateway.application.transactional_service import (
+    TransactionalApplicationServiceMixin,
+)
 
 
 class FakeUnitOfWork:

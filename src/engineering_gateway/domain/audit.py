@@ -1,6 +1,6 @@
 """Append-only audit event domain contract."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
@@ -32,7 +32,7 @@ class AuditEvent(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     id: UUID = Field(default_factory=uuid4)
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     actor_id: str = Field(min_length=1)
     actor_type: ActorType
     authorization_level: AuthorizationLevel

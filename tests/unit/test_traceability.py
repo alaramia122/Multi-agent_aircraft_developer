@@ -2,7 +2,12 @@ from uuid import uuid4
 
 import pytest
 
-from engineering_gateway.domain.models import ElementKind, EngineeringElement, EngineeringRelation, RelationType
+from engineering_gateway.domain.models import (
+    ElementKind,
+    EngineeringElement,
+    EngineeringRelation,
+    RelationType,
+)
 from engineering_gateway.domain.profiles import (
     ElementTypeDefinition,
     RelationDefinition,
@@ -51,8 +56,12 @@ def profile() -> StandardProfile:
     )
 
 
-def relation(source: EngineeringElement, target: EngineeringElement, relation_type: RelationType) -> EngineeringRelation:
-    return EngineeringRelation(source_id=source.id, relation_type=relation_type, target_id=target.id)
+def relation(
+    source: EngineeringElement, target: EngineeringElement, relation_type: RelationType
+) -> EngineeringRelation:
+    return EngineeringRelation(
+        source_id=source.id, relation_type=relation_type, target_id=target.id
+    )
 
 
 def test_required_traceability_gap_is_detected() -> None:
@@ -90,7 +99,10 @@ def test_reachable_and_ancestors_follow_directed_graph() -> None:
     target = element("software_req")
     graph = TraceabilityGraph(
         [source, middle, target],
-        [relation(source, middle, RelationType.SATISFIES), relation(middle, target, RelationType.DERIVES_FROM)],
+        [
+            relation(source, middle, RelationType.SATISFIES),
+            relation(middle, target, RelationType.DERIVES_FROM),
+        ],
     )
 
     assert graph.reachable(source.id) == {middle.id, target.id}
@@ -105,10 +117,14 @@ def test_reachable_and_ancestors_follow_directed_graph() -> None:
         (RelationType.VERIFIED_BY, TraceabilityGapType.WRONG_RELATION_TYPE),
     ],
 )
-def test_wrong_relation_type_is_diagnosed(relation_type: RelationType, expected: TraceabilityGapType) -> None:
+def test_wrong_relation_type_is_diagnosed(
+    relation_type: RelationType, expected: TraceabilityGapType
+) -> None:
     source = element("system_req")
     target = element("system_arch", ElementKind.ARCHITECTURE)
-    gaps = TraceabilityGraph([source, target], [relation(source, target, relation_type)]).traceability_violations(profile())
+    gaps = TraceabilityGraph(
+        [source, target], [relation(source, target, relation_type)]
+    ).traceability_violations(profile())
 
     assert any(gap.gap_type is expected for gap in gaps)
 

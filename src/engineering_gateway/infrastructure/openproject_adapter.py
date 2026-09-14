@@ -92,9 +92,7 @@ class LocalOpenProjectAdapter:
             "description": {"raw": description},
             "_links": {
                 "project": {"href": f"/api/v3/projects/{self._config.project_id}"},
-                "type": {
-                    "href": f"/api/v3/types/{self._config.change_request_type_id}"
-                },
+                "type": {"href": f"/api/v3/types/{self._config.change_request_type_id}"},
             },
         }
         response = await asyncio.to_thread(

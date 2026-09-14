@@ -39,7 +39,9 @@ class TraceabilityGap:
 class TraceabilityGraph:
     """Query and diagnose canonical graph relations without owning engineering data."""
 
-    def __init__(self, elements: list[EngineeringElement], relations: list[EngineeringRelation]) -> None:
+    def __init__(
+        self, elements: list[EngineeringElement], relations: list[EngineeringRelation]
+    ) -> None:
         self._elements = {element.id: element for element in elements}
         self._relations = list(relations)
 
@@ -126,7 +128,9 @@ class TraceabilityGraph:
                     if matching:
                         continue
                     same_relation = [
-                        relation for relation in outgoing if relation.relation_type == rule.relation_type
+                        relation
+                        for relation in outgoing
+                        if relation.relation_type == rule.relation_type
                     ]
                     if any(relation.target_id not in self._elements for relation in same_relation):
                         violations.extend(

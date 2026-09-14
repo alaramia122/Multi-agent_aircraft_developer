@@ -9,7 +9,6 @@ from typing import Any, TypeVar
 
 from engineering_gateway.domain.ports import UnitOfWork
 
-
 T = TypeVar("T")
 
 
@@ -29,7 +28,10 @@ class TransactionalApplicationServiceMixin:
         value = super().__getattribute__(name)
         if name.startswith("_") or not inspect.iscoroutinefunction(value):
             return value
-        return _transactional_method(value, lambda: super(TransactionalApplicationServiceMixin, self).__getattribute__("_uow"))
+        return _transactional_method(
+            value,
+            lambda: super(TransactionalApplicationServiceMixin, self).__getattribute__("_uow"),
+        )
 
 
 def _transactional_method(

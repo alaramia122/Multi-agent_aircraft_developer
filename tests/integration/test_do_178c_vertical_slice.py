@@ -5,8 +5,14 @@ from pathlib import Path
 import pytest
 
 from engineering_gateway.application.validation import DeterministicValidationEngine
+from engineering_gateway.domain.models import (
+    ElementKind,
+    EngineeringElement,
+    EngineeringGraph,
+    EngineeringRelation,
+    RelationType,
+)
 from engineering_gateway.infrastructure.profile_loader import load_standard_profile
-from engineering_gateway.domain.models import ElementKind, EngineeringElement, EngineeringGraph, EngineeringRelation, RelationType
 
 ROOT = Path(__file__).resolve().parents[2]
 PROFILE = ROOT / "profiles" / "do-178c" / "1.0" / "profile.json"
@@ -55,9 +61,15 @@ def test_do_178c_lifecycle_and_traceability(invalid: bool) -> None:
     elements = [hlr, llr, design, code, verification]
     relations = [
         EngineeringRelation(source_id=llr.id, relation_type=RelationType.REFINES, target_id=hlr.id),
-        EngineeringRelation(source_id=llr.id, relation_type=RelationType.ALLOCATED_TO, target_id=design.id),
-        EngineeringRelation(source_id=design.id, relation_type=RelationType.IMPLEMENTS, target_id=code.id),
-        EngineeringRelation(source_id=llr.id, relation_type=RelationType.VERIFIED_BY, target_id=verification.id),
+        EngineeringRelation(
+            source_id=llr.id, relation_type=RelationType.ALLOCATED_TO, target_id=design.id
+        ),
+        EngineeringRelation(
+            source_id=design.id, relation_type=RelationType.IMPLEMENTS, target_id=code.id
+        ),
+        EngineeringRelation(
+            source_id=llr.id, relation_type=RelationType.VERIFIED_BY, target_id=verification.id
+        ),
     ]
 
     lifecycle_states = {

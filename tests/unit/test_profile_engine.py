@@ -85,7 +85,9 @@ def test_composition_rejects_conflicting_definition() -> None:
     )
 
     try:
-        StandardProfileEngine.compose([first, second], id="combined", version="1.0", name="Combined")
+        StandardProfileEngine.compose(
+            [first, second], id="combined", version="1.0", name="Combined"
+        )
     except ProfileCompositionError as exc:
         assert "element_types" in str(exc)
         assert "requirement" in str(exc)

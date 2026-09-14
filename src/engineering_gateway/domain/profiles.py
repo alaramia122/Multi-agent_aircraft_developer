@@ -154,9 +154,13 @@ class StandardProfile(BaseModel):
                 raise ValueError(f"duplicate ids in profile {name}")
         element_type_ids = {item.id for item in self.element_types}
         for relation in self.relations:
-            unknown = (set(relation.source_type_ids) | set(relation.target_type_ids)) - element_type_ids
+            unknown = (
+                set(relation.source_type_ids) | set(relation.target_type_ids)
+            ) - element_type_ids
             if unknown:
-                raise ValueError(f"relation '{relation.id}' references unknown types: {sorted(unknown)}")
+                raise ValueError(
+                    f"relation '{relation.id}' references unknown types: {sorted(unknown)}"
+                )
         for definition in self.lifecycles:
             if definition.element_type_id not in element_type_ids:
                 raise ValueError(f"lifecycle '{definition.id}' references unknown element type")

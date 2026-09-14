@@ -48,7 +48,9 @@ class AdapterWorkspaceReconciler:
                     f"relation '{relation.id}' crosses systems or references unchanged elements; "
                     "explicit cross-system reconciliation is required"
                 )
-            await self._adapters[next(iter(systems_for_relation))].apply_relation(workspace.id, relation)
+            await self._adapters[next(iter(systems_for_relation))].apply_relation(
+                workspace.id, relation
+            )
 
         versions: list[ExternalVersion] = []
         for system in sorted(systems):

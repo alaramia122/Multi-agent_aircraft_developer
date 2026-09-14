@@ -135,7 +135,9 @@ class LocalStrictDocWorkspaceAdapter:
         if response.get("protocol") != 1:
             raise StrictDocWorkspaceAdapterError("unsupported StrictDoc bridge protocol")
         if response.get("operation") not in (None, operation):
-            raise StrictDocWorkspaceAdapterError("StrictDoc bridge returned an unexpected operation")
+            raise StrictDocWorkspaceAdapterError(
+                "StrictDoc bridge returned an unexpected operation"
+            )
         if response.get("ok") is not True:
             message = response.get("error") or "unknown StrictDoc bridge error"
             raise StrictDocWorkspaceAdapterError(str(message))

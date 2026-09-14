@@ -127,9 +127,7 @@ async def test_run_rejects_unexpected_operation(
             (),
             {
                 "returncode": 0,
-                "stdout": json.dumps(
-                    {"protocol": 1, "operation": "get_element", "ok": True}
-                ),
+                "stdout": json.dumps({"protocol": 1, "operation": "get_element", "ok": True}),
                 "stderr": "",
             },
         )(),

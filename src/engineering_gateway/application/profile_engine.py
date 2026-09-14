@@ -99,7 +99,9 @@ class StandardProfileEngine:
                 raise ProfileCompositionError(
                     f"relation '{relation.id}' must define source and target types"
                 )
-            unknown = (set(relation.source_type_ids) | set(relation.target_type_ids)) - set(element_types)
+            unknown = (set(relation.source_type_ids) | set(relation.target_type_ids)) - set(
+                element_types
+            )
             if unknown:
                 raise ProfileCompositionError(
                     f"relation '{relation.id}' references unknown types: {sorted(unknown)}"
@@ -143,7 +145,9 @@ class StandardProfileEngine:
                     f"artifact '{artifact.id}' references unknown element type"
                 )
             if not artifact.artifact_type.strip():
-                raise ProfileCompositionError(f"artifact '{artifact.id}' has an empty artifact type")
+                raise ProfileCompositionError(
+                    f"artifact '{artifact.id}' has an empty artifact type"
+                )
 
     @classmethod
     def _validate_traceability(

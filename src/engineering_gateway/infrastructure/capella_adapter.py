@@ -137,7 +137,9 @@ class LocalCapellaAdapter:
         try:
             return EngineeringElement.model_validate(value)
         except ValueError as exc:
-            raise CapellaAdapterError("Capella bridge returned an invalid canonical element") from exc
+            raise CapellaAdapterError(
+                "Capella bridge returned an invalid canonical element"
+            ) from exc
 
 
 __all__ = ["CapellaAdapterError", "CapellaBridgeConfig", "LocalCapellaAdapter"]

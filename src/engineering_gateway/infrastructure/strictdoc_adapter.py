@@ -90,9 +90,7 @@ class LocalStrictDocAdapter:
         return [document for document in documents if isinstance(document, dict)]
 
     @staticmethod
-    def _find_requirement(
-        document: dict[str, Any], external_id: str
-    ) -> dict[str, Any] | None:
+    def _find_requirement(document: dict[str, Any], external_id: str) -> dict[str, Any] | None:
         def visit(node: Any) -> dict[str, Any] | None:
             if not isinstance(node, dict):
                 return None

@@ -65,9 +65,13 @@ class WorkspaceChangeElementRecord(Base):
     """Workspace-local element overlay; never part of the canonical graph table."""
 
     __tablename__ = "workspace_change_elements"
-    __table_args__ = (Index("ix_workspace_change_elements_external", "external_system", "external_id"),)
+    __table_args__ = (
+        Index("ix_workspace_change_elements_external", "external_system", "external_id"),
+    )
 
-    workspace_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True)
+    workspace_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True
+    )
     element_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     kind: Mapped[str] = mapped_column(String(64), nullable=False)
     type_id: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -86,7 +90,9 @@ class WorkspaceChangeRelationRecord(Base):
         Index("ix_workspace_change_relations_target", "workspace_id", "target_id"),
     )
 
-    workspace_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True)
+    workspace_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True
+    )
     relation_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     source_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
     relation_type: Mapped[str] = mapped_column(String(64), nullable=False)

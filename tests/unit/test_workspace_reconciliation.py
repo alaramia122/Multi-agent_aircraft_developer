@@ -6,10 +6,16 @@ from engineering_gateway.application.gateway_service import Actor, GatewayServic
 from engineering_gateway.application.workspace_reconciliation import WorkspaceReconciliationService
 from engineering_gateway.domain.adapters import ExternalVersion
 from engineering_gateway.domain.audit import ActorType, InMemoryAuditSink
-from engineering_gateway.domain.change_control import AuthorizationLevel, ChangeRequest, ChangeRequestState
+from engineering_gateway.domain.change_control import (
+    AuthorizationLevel,
+    ChangeRequest,
+    ChangeRequestState,
+)
 from engineering_gateway.domain.models import EngineeringElement, EngineeringGraph
 from engineering_gateway.domain.workspaces import Workspace, WorkspaceState
-from engineering_gateway.infrastructure.workspace_changes import InMemoryWorkspaceChangeSetRepository
+from engineering_gateway.infrastructure.workspace_changes import (
+    InMemoryWorkspaceChangeSetRepository,
+)
 
 
 class FakeWorkspaceRegistry:
@@ -96,7 +102,9 @@ def build_service():
     )
     audit = InMemoryAuditSink()
     reconciler = FakeReconciler()
-    service = WorkspaceReconciliationService(workspaces, change_requests, changes, reconciler, audit)
+    service = WorkspaceReconciliationService(
+        workspaces, change_requests, changes, reconciler, audit
+    )
     return service, workspaces, workspace, changes, element, reconciler, canonical
 
 

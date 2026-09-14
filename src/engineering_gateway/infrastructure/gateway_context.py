@@ -5,7 +5,9 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from engineering_gateway.application.governed_gateway_service import GovernedGatewayApplicationService
+from engineering_gateway.application.governed_gateway_service import (
+    GovernedGatewayApplicationService,
+)
 from engineering_gateway.domain.adapters import GitAdapter, ReadAdapter
 from engineering_gateway.domain.reconciliation import WorkspaceReconciler
 from engineering_gateway.infrastructure.adapter_composition import ExternalAdapterSet
@@ -19,7 +21,9 @@ from engineering_gateway.infrastructure.metadata_repositories import (
 )
 from engineering_gateway.infrastructure.repositories import SqlAlchemyEngineeringRepository
 from engineering_gateway.infrastructure.transaction import SqlAlchemyUnitOfWork
-from engineering_gateway.infrastructure.workspace_changes import SqlAlchemyWorkspaceChangeSetRepository
+from engineering_gateway.infrastructure.workspace_changes import (
+    SqlAlchemyWorkspaceChangeSetRepository,
+)
 from engineering_gateway.infrastructure.workspace_reconciler import AdapterWorkspaceReconciler
 
 

@@ -50,14 +50,18 @@ class ChangeGate:
     _TRANSITIONS: dict[ChangeRequestState, frozenset[ChangeRequestState]] = {
         ChangeRequestState.OPEN: frozenset({ChangeRequestState.IN_PROGRESS}),
         ChangeRequestState.IN_PROGRESS: frozenset({ChangeRequestState.READY_FOR_APPROVAL}),
-        ChangeRequestState.READY_FOR_APPROVAL: frozenset({ChangeRequestState.APPROVED, ChangeRequestState.REJECTED}),
+        ChangeRequestState.READY_FOR_APPROVAL: frozenset(
+            {ChangeRequestState.APPROVED, ChangeRequestState.REJECTED}
+        ),
         ChangeRequestState.APPROVED: frozenset({ChangeRequestState.CLOSED}),
         ChangeRequestState.REJECTED: frozenset({ChangeRequestState.IN_PROGRESS}),
         ChangeRequestState.CLOSED: frozenset(),
     }
 
     @staticmethod
-    def require_workspace_modification(level: AuthorizationLevel, workspace_id: UUID | None) -> None:
+    def require_workspace_modification(
+        level: AuthorizationLevel, workspace_id: UUID | None
+    ) -> None:
         if level != AuthorizationLevel.L2_MODIFY_WORKSPACE:
             raise ChangeGateError("only L2 is authorized to modify a workspace")
         if workspace_id is None:
@@ -71,7 +75,9 @@ class ChangeGate:
     @classmethod
     def require_transition(cls, current: ChangeRequestState, target: ChangeRequestState) -> None:
         if target not in cls._TRANSITIONS[current]:
-            raise ChangeGateError(f"invalid change-request transition: {current.value} -> {target.value}")
+            raise ChangeGateError(
+                f"invalid change-request transition: {current.value} -> {target.value}"
+            )
 
     @staticmethod
     def require_new_workspace_for_baseline_change(

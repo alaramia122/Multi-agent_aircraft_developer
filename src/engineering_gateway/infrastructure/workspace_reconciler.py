@@ -7,7 +7,10 @@ from uuid import UUID
 from engineering_gateway.domain.adapters import ExternalVersion, WorkspaceAdapter
 from engineering_gateway.domain.models import EngineeringElement, EngineeringGraph
 from engineering_gateway.domain.ports import EngineeringRepository
-from engineering_gateway.domain.reconciliation import WorkspaceReconciliationError, compute_change_set_hash
+from engineering_gateway.domain.reconciliation import (
+    WorkspaceReconciliationError,
+    compute_change_set_hash,
+)
 from engineering_gateway.domain.workspaces import Workspace
 
 
@@ -22,7 +25,9 @@ class AdapterWorkspaceReconciler:
 
     _WORKSPACE_METHODS = ("create_workspace", "apply_element", "apply_relation", "get_version")
 
-    def __init__(self, adapters: tuple[WorkspaceAdapter, ...], canonical: EngineeringRepository | None = None) -> None:
+    def __init__(
+        self, adapters: tuple[WorkspaceAdapter, ...], canonical: EngineeringRepository | None = None
+    ) -> None:
         self._adapters = {adapter.system_name: adapter for adapter in adapters}
         if len(self._adapters) != len(adapters):
             raise ValueError("workspace adapter system names must be unique")
@@ -30,7 +35,9 @@ class AdapterWorkspaceReconciler:
             raise ValueError("workspace adapter system names must be non-empty")
         self._canonical = canonical
 
-    async def reconcile(self, workspace: Workspace, changes: EngineeringGraph) -> tuple[ExternalVersion, ...]:
+    async def reconcile(
+        self, workspace: Workspace, changes: EngineeringGraph
+    ) -> tuple[ExternalVersion, ...]:
         change_set_hash = compute_change_set_hash(changes)
         elements_by_id = {element.id: element for element in changes.elements}
         relation_sources: dict[UUID, EngineeringElement] = {}
@@ -49,7 +56,9 @@ class AdapterWorkspaceReconciler:
                 if target is None:
                     target = await self._canonical.get(relation.target_id)
             if source is None or target is None:
-                raise WorkspaceReconciliationError(f"workspace relation '{relation.id}' references an unknown endpoint")
+                raise WorkspaceReconciliationError(
+                    f"workspace relation '{relation.id}' references an unknown endpoint"
+                )
             relation_sources[relation.id] = source
             relation_targets[relation.id] = target
 
@@ -65,7 +74,11 @@ class AdapterWorkspaceReconciler:
         used = sorted(systems)
         for system in used:
             adapter = self._adapters[system]
-            missing_methods = [name for name in self._WORKSPACE_METHODS if not callable(getattr(adapter, name, None))]
+            missing_methods = [
+                name
+                for name in self._WORKSPACE_METHODS
+                if not callable(getattr(adapter, name, None))
+            ]
             if missing_methods:
                 raise WorkspaceReconciliationError(
                     f"workspace adapter '{system}' does not implement required operations: {', '.join(missing_methods)}"

@@ -4,11 +4,19 @@ from uuid import uuid4
 
 import pytest
 
-from engineering_gateway.application.gateway_service import Actor, GatewayApplicationService, GatewayServiceError
+from engineering_gateway.application.gateway_service import (
+    Actor,
+    GatewayApplicationService,
+    GatewayServiceError,
+)
 from engineering_gateway.domain.audit import ActorType, InMemoryAuditSink
-from engineering_gateway.domain.models import ElementKind, EngineeringElement, RelationType
-from engineering_gateway.domain.profiles import ElementTypeDefinition, RelationDefinition, StandardProfile
 from engineering_gateway.domain.change_control import AuthorizationLevel
+from engineering_gateway.domain.models import ElementKind, EngineeringElement, RelationType
+from engineering_gateway.domain.profiles import (
+    ElementTypeDefinition,
+    RelationDefinition,
+    StandardProfile,
+)
 from engineering_gateway.infrastructure.profile_registry import InMemoryStandardProfileRegistry
 
 

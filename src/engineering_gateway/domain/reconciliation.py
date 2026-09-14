@@ -1,9 +1,8 @@
 """Governed publication/reconciliation contracts for approved workspaces."""
 
-from hashlib import sha256
 import json
+from hashlib import sha256
 from typing import Protocol
-from uuid import UUID
 
 from engineering_gateway.domain.adapters import ExternalVersion
 from engineering_gateway.domain.models import EngineeringGraph
@@ -55,7 +54,9 @@ class WorkspaceReconciler(Protocol):
 class NoopWorkspaceReconciler:
     """Explicitly disabled reconciliation implementation for read-only deployments."""
 
-    async def reconcile(self, workspace: Workspace, changes: EngineeringGraph) -> tuple[ExternalVersion, ...]:
+    async def reconcile(
+        self, workspace: Workspace, changes: EngineeringGraph
+    ) -> tuple[ExternalVersion, ...]:
         if changes.elements or changes.relations:
             raise WorkspaceReconciliationError(
                 f"workspace '{workspace.id}' contains changes but no reconciliation adapter is configured"

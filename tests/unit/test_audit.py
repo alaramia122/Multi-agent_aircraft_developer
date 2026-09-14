@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -10,7 +10,7 @@ from engineering_gateway.domain.change_control import AuthorizationLevel
 
 def make_event(result: AuditResult = AuditResult.SUCCESS) -> AuditEvent:
     return AuditEvent(
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         actor_id="human-1",
         actor_type=ActorType.HUMAN,
         authorization_level=AuthorizationLevel.L3_APPROVE,
@@ -32,7 +32,7 @@ def test_audit_event_is_immutable() -> None:
 def test_audit_event_defaults_to_utc_timestamp_and_correlation_id() -> None:
     event = make_event()
 
-    assert event.timestamp.tzinfo == timezone.utc
+    assert event.timestamp.tzinfo == UTC
     assert event.correlation_id is not None
 
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from engineering_gateway.domain.adapters import GitAdapter, ReadAdapter, WorkspaceAdapter
+from engineering_gateway.domain.adapters import ReadAdapter, WorkspaceAdapter
 from engineering_gateway.infrastructure.capella_adapter import LocalCapellaAdapter
 from engineering_gateway.infrastructure.git_adapter import LocalGitAdapter
 from engineering_gateway.infrastructure.openproject_adapter import LocalOpenProjectAdapter
@@ -58,9 +58,7 @@ class ExternalAdapterSet:
                     f"{capability} adapter must expose a non-empty system_name"
                 )
             if name in names:
-                raise AdapterCompositionError(
-                    f"duplicate {capability} adapter for system '{name}'"
-                )
+                raise AdapterCompositionError(f"duplicate {capability} adapter for system '{name}'")
             names.append(name)
 
     def as_read_adapters(self) -> tuple[ReadAdapter, ...]:

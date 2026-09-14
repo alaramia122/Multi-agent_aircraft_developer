@@ -17,7 +17,7 @@ from engineering_gateway.infrastructure.openproject_adapter import (
 
 
 class _Response(io.BytesIO):
-    def __enter__(self) -> "_Response":
+    def __enter__(self) -> _Response:
         return self
 
     def __exit__(self, *_args: object) -> None:

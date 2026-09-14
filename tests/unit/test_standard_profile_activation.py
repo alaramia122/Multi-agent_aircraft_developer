@@ -1,9 +1,18 @@
 import pytest
 
+from engineering_gateway.application.profile_engine import (
+    ProfileCompositionError,
+    StandardProfileEngine,
+)
 from engineering_gateway.domain.models import ElementKind, RelationType
-from engineering_gateway.domain.profiles import ElementTypeDefinition, RelationDefinition, StandardProfile, TraceabilityRule, VerificationRule
+from engineering_gateway.domain.profiles import (
+    ElementTypeDefinition,
+    RelationDefinition,
+    StandardProfile,
+    TraceabilityRule,
+    VerificationRule,
+)
 from engineering_gateway.infrastructure.profile_registry import InMemoryStandardProfileRegistry
-from engineering_gateway.application.profile_engine import ProfileCompositionError, StandardProfileEngine
 
 
 def valid_profile(profile_id: str = "verification") -> StandardProfile:

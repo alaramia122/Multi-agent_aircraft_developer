@@ -66,9 +66,7 @@ class LocalGitAdapter:
         )
         if existing_commit is not None:
             if existing_commit != resolved_commit:
-                raise RuntimeError(
-                    f"Git tag '{tag}' already exists at a different commit"
-                )
+                raise RuntimeError(f"Git tag '{tag}' already exists at a different commit")
             return GitSnapshot(
                 repository=str(Path(repository).resolve()),
                 commit=resolved_commit,

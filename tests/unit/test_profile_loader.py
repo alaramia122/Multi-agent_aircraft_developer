@@ -5,8 +5,10 @@ from pathlib import Path
 import pytest
 
 from engineering_gateway.domain.models import ElementKind, RelationType
-from engineering_gateway.infrastructure.profile_loader import StandardProfileLoadError, load_standard_profile
-
+from engineering_gateway.infrastructure.profile_loader import (
+    StandardProfileLoadError,
+    load_standard_profile,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 PROFILE = ROOT / "profiles" / "arp4754a" / "1.0" / "profile.json"

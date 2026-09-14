@@ -5,10 +5,14 @@ from pathlib import Path
 import pytest
 
 from engineering_gateway.application.validation import DeterministicValidationEngine
-from engineering_gateway.domain.models import ElementKind, EngineeringElement, EngineeringRelation, RelationType
+from engineering_gateway.domain.models import (
+    ElementKind,
+    EngineeringElement,
+    EngineeringRelation,
+    RelationType,
+)
 from engineering_gateway.infrastructure.profile_loader import load_standard_profile
 from engineering_gateway.infrastructure.profile_registry import InMemoryStandardProfileRegistry
-
 
 ROOT = Path(__file__).resolve().parents[2]
 PROFILE = ROOT / "profiles" / "arp4754a" / "1.0" / "profile.json"

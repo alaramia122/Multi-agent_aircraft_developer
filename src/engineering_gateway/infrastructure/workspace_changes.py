@@ -5,7 +5,11 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from engineering_gateway.domain.models import EngineeringElement, EngineeringGraph, EngineeringRelation
+from engineering_gateway.domain.models import (
+    EngineeringElement,
+    EngineeringGraph,
+    EngineeringRelation,
+)
 from engineering_gateway.domain.ports import EngineeringRepository
 from engineering_gateway.infrastructure.models import (
     WorkspaceChangeElementRecord,
@@ -32,15 +36,21 @@ class InMemoryWorkspaceChangeSetRepository:
             return staged
         return await self._canonical.get(element_id)
 
-    async def save_element(self, workspace_id: UUID, element: EngineeringElement) -> EngineeringElement:
+    async def save_element(
+        self, workspace_id: UUID, element: EngineeringElement
+    ) -> EngineeringElement:
         self._elements.setdefault(workspace_id, {})[element.id] = element
         return element
 
-    async def add_relation(self, workspace_id: UUID, relation: EngineeringRelation) -> EngineeringRelation:
+    async def add_relation(
+        self, workspace_id: UUID, relation: EngineeringRelation
+    ) -> EngineeringRelation:
         source = await self.get_element(workspace_id, relation.source_id)
         target = await self.get_element(workspace_id, relation.target_id)
         if source is None or target is None:
-            raise ValueError("workspace relation endpoints must exist in the canonical graph or workspace changeset")
+            raise ValueError(
+                "workspace relation endpoints must exist in the canonical graph or workspace changeset"
+            )
         self._relations.setdefault(workspace_id, {})[relation.id] = relation
         return relation
 
@@ -58,7 +68,9 @@ class InMemoryWorkspaceChangeSetRepository:
         elements.update(self._elements.get(workspace_id, {}))
         relations = {relation.id: relation for relation in canonical_graph.relations}
         relations.update(self._relations.get(workspace_id, {}))
-        return EngineeringGraph(elements=list(elements.values()), relations=list(relations.values()))
+        return EngineeringGraph(
+            elements=list(elements.values()), relations=list(relations.values())
+        )
 
 
 class SqlAlchemyWorkspaceChangeSetRepository:
@@ -82,7 +94,9 @@ class SqlAlchemyWorkspaceChangeSetRepository:
             return self._to_element(record)
         return await self._canonical.get(element_id)
 
-    async def save_element(self, workspace_id: UUID, element: EngineeringElement) -> EngineeringElement:
+    async def save_element(
+        self, workspace_id: UUID, element: EngineeringElement
+    ) -> EngineeringElement:
         record = await self._session.get(
             WorkspaceChangeElementRecord,
             {"workspace_id": workspace_id, "element_id": element.id},
@@ -103,11 +117,15 @@ class SqlAlchemyWorkspaceChangeSetRepository:
         await self._session.flush()
         return self._to_element(record)
 
-    async def add_relation(self, workspace_id: UUID, relation: EngineeringRelation) -> EngineeringRelation:
+    async def add_relation(
+        self, workspace_id: UUID, relation: EngineeringRelation
+    ) -> EngineeringRelation:
         source = await self.get_element(workspace_id, relation.source_id)
         target = await self.get_element(workspace_id, relation.target_id)
         if source is None or target is None:
-            raise ValueError("workspace relation endpoints must exist in the canonical graph or workspace changeset")
+            raise ValueError(
+                "workspace relation endpoints must exist in the canonical graph or workspace changeset"
+            )
 
         record = await self._session.get(
             WorkspaceChangeRelationRecord,
@@ -151,7 +169,9 @@ class SqlAlchemyWorkspaceChangeSetRepository:
         changes = await self.get_changes(workspace_id)
         elements.update({element.id: element for element in changes.elements})
         relations.update({relation.id: relation for relation in changes.relations})
-        return EngineeringGraph(elements=list(elements.values()), relations=list(relations.values()))
+        return EngineeringGraph(
+            elements=list(elements.values()), relations=list(relations.values())
+        )
 
     @staticmethod
     def _to_element(record: WorkspaceChangeElementRecord) -> EngineeringElement:

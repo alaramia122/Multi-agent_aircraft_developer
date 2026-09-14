@@ -8,7 +8,9 @@ from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 
 from engineering_gateway.application.gateway_service import Actor, GatewayApplicationService
-from engineering_gateway.application.governed_gateway_service import GovernedGatewayApplicationService
+from engineering_gateway.application.governed_gateway_service import (
+    GovernedGatewayApplicationService,
+)
 from engineering_gateway.domain.change_control import AuthorizationLevel
 from engineering_gateway.domain.models import EngineeringElement, EngineeringRelation
 
@@ -80,6 +82,7 @@ def create_mcp_server(service: GatewayApplicationService, actor: Actor) -> MCPSe
         }
 
     if actor.authorization_level is AuthorizationLevel.L2_MODIFY_WORKSPACE:
+
         @server.tool(
             name="create_workspace",
             title="Create engineering workspace",
@@ -143,6 +146,7 @@ def create_mcp_server(service: GatewayApplicationService, actor: Actor) -> MCPSe
             return await service.add_workspace_relation(actor, relation, UUID(workspace_id))
 
         if isinstance(service, GovernedGatewayApplicationService):
+
             @server.tool(
                 name="prepare_workspace_for_approval",
                 title="Prepare workspace for approval",
@@ -160,7 +164,10 @@ def create_mcp_server(service: GatewayApplicationService, actor: Actor) -> MCPSe
                 """Run deterministic validation and bind evidence before human approval."""
                 _require_l2(actor)
                 result = await service.prepare_for_approval(
-                    actor, UUID(workspace_id), profile_id=profile_id, profile_version=profile_version
+                    actor,
+                    UUID(workspace_id),
+                    profile_id=profile_id,
+                    profile_version=profile_version,
                 )
                 return {
                     "profile_id": result.profile_id,

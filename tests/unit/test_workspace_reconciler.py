@@ -3,8 +3,17 @@ from uuid import uuid4
 import pytest
 
 from engineering_gateway.domain.adapters import ExternalVersion
-from engineering_gateway.domain.models import EngineeringElement, EngineeringGraph, EngineeringRelation, ElementKind, RelationType
-from engineering_gateway.domain.reconciliation import WorkspaceReconciliationError, compute_change_set_hash
+from engineering_gateway.domain.models import (
+    ElementKind,
+    EngineeringElement,
+    EngineeringGraph,
+    EngineeringRelation,
+    RelationType,
+)
+from engineering_gateway.domain.reconciliation import (
+    WorkspaceReconciliationError,
+    compute_change_set_hash,
+)
 from engineering_gateway.domain.workspaces import Workspace
 from engineering_gateway.infrastructure.workspace_reconciler import AdapterWorkspaceReconciler
 
@@ -137,7 +146,9 @@ async def test_relation_with_unresolved_endpoint_is_rejected():
     )
 
     with pytest.raises(WorkspaceReconciliationError, match="unknown endpoint"):
-        await reconciler.reconcile(workspace, EngineeringGraph(elements=[source], relations=[relation]))
+        await reconciler.reconcile(
+            workspace, EngineeringGraph(elements=[source], relations=[relation])
+        )
 
 
 @pytest.mark.asyncio
@@ -152,7 +163,11 @@ async def test_adapter_without_workspace_operations_is_rejected_before_mutation(
     read_only_adapter = type(
         "ReadOnlyAdapter",
         (),
-        {"system_name": "strictdoc", "get_element": lambda self, external_id: None, "get_version": lambda self: None},
+        {
+            "system_name": "strictdoc",
+            "get_element": lambda self, external_id: None,
+            "get_version": lambda self: None,
+        },
     )()
     reconciler = AdapterWorkspaceReconciler((read_only_adapter,), FakeCanonical({}))
     workspace = Workspace(
@@ -161,5 +176,7 @@ async def test_adapter_without_workspace_operations_is_rejected_before_mutation(
         change_request_id=uuid4(),
     )
 
-    with pytest.raises(WorkspaceReconciliationError, match="does not implement required operations"):
+    with pytest.raises(
+        WorkspaceReconciliationError, match="does not implement required operations"
+    ):
         await reconciler.reconcile(workspace, EngineeringGraph(elements=[element]))

@@ -48,9 +48,7 @@ def test_workspace_adapter_is_also_exposed_as_read_adapter() -> None:
 def test_same_adapter_can_be_declared_in_both_capability_views() -> None:
     adapter = _adapter("capella")
 
-    composed = ExternalAdapterSet(
-        read_adapters=(adapter,), workspace_adapters=(adapter,)
-    )
+    composed = ExternalAdapterSet(read_adapters=(adapter,), workspace_adapters=(adapter,))
 
     assert composed.as_read_adapters() == (adapter,)
     assert composed.as_workspace_adapters() == (adapter,)

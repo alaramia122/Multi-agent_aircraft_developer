@@ -1,7 +1,7 @@
 """Tests for the StrictDoc adapter boundary."""
 
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -19,9 +19,7 @@ def strictdoc_project(tmp_path: Path) -> Path:
 
 def _fake_export(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
     output_dir = next(
-        argument.split("=", 1)[1]
-        for argument in command
-        if argument.startswith("--output-dir=")
+        argument.split("=", 1)[1] for argument in command if argument.startswith("--output-dir=")
     )
     output_path = Path(output_dir) / "json"
     output_path.mkdir(parents=True, exist_ok=True)
@@ -29,7 +27,7 @@ def _fake_export(command: list[str], **_: object) -> subprocess.CompletedProcess
         '{"DOCUMENTS": [{"_NODE_TYPE": "DOCUMENT", "NODES": ['
         '{"_NODE_TYPE": "SECTION", "NODES": ['
         '{"_NODE_TYPE": "REQUIREMENT", "UID": "REQ-001", "TITLE": "Flight requirement"}'
-        ']}]}]}',
+        "]}]}]}",
         encoding="utf-8",
     )
     return subprocess.CompletedProcess(command, 0, "", "")

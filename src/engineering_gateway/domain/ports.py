@@ -6,7 +6,11 @@ from uuid import UUID
 from engineering_gateway.domain.audit import AuditEvent
 from engineering_gateway.domain.baselines import Baseline
 from engineering_gateway.domain.change_control import ChangeRequest
-from engineering_gateway.domain.models import EngineeringElement, EngineeringGraph, EngineeringRelation
+from engineering_gateway.domain.models import (
+    EngineeringElement,
+    EngineeringGraph,
+    EngineeringRelation,
+)
 from engineering_gateway.domain.profiles import StandardProfile
 from engineering_gateway.domain.workspaces import Workspace
 
@@ -29,9 +33,15 @@ class EngineeringRepository(Protocol):
 class WorkspaceChangeSetRepository(Protocol):
     """Isolated overlay for unapproved workspace engineering changes."""
 
-    async def get_element(self, workspace_id: UUID, element_id: UUID) -> EngineeringElement | None: ...
-    async def save_element(self, workspace_id: UUID, element: EngineeringElement) -> EngineeringElement: ...
-    async def add_relation(self, workspace_id: UUID, relation: EngineeringRelation) -> EngineeringRelation: ...
+    async def get_element(
+        self, workspace_id: UUID, element_id: UUID
+    ) -> EngineeringElement | None: ...
+    async def save_element(
+        self, workspace_id: UUID, element: EngineeringElement
+    ) -> EngineeringElement: ...
+    async def add_relation(
+        self, workspace_id: UUID, relation: EngineeringRelation
+    ) -> EngineeringRelation: ...
     async def get_graph(self, workspace_id: UUID) -> EngineeringGraph: ...
     async def get_changes(self, workspace_id: UUID) -> EngineeringGraph: ...
 
@@ -66,6 +76,7 @@ class WorkspaceRegistryPort(Protocol):
 
 class EngineeringSystemAdapter(Protocol):
     system_name: str
+
     async def get_element(self, external_id: str) -> EngineeringElement | None: ...
 
 
