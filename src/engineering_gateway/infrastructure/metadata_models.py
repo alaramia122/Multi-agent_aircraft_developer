@@ -55,6 +55,7 @@ class WorkspaceRecord(Base):
     profile_id: Mapped[str | None] = mapped_column(String(255))
     profile_version: Mapped[str | None] = mapped_column(String(128))
     reconciled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    reconciled_change_set_hash: Mapped[str | None] = mapped_column(String(64))
     state: Mapped[str] = mapped_column(String(64), nullable=False)
 
 
