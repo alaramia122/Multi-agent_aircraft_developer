@@ -51,17 +51,31 @@ async def test_get_snapshot_rejects_unknown_ref(git_repository: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_create_tag_creates_immutable_reference(git_repository: Path) -> None:
+async def test_create_tag_is_idempotent_for_same_commit(git_repository: Path) -> None:
     adapter = LocalGitAdapter()
     commit = _git(git_repository, "rev-parse", "HEAD")
 
-    snapshot = await adapter.create_tag(str(git_repository), "baseline-001", commit)
+    first = await adapter.create_tag(str(git_repository), "baseline-001", commit)
+    second = await adapter.create_tag(str(git_repository), "baseline-001", commit)
 
-    assert snapshot.commit == commit
-    assert snapshot.tag == "baseline-001"
-    assert _git(git_repository, "rev-parse", "baseline-001") == commit
-    with pytest.raises(RuntimeError, match="Git command failed"):
-        await adapter.create_tag(str(git_repository), "baseline-001", commit)
+    assert first == second
+    assert _git(git_repository, "rev-parse", "refs/tags/baseline-001^{commit}") == commit
+
+
+@pytest.mark.asyncio
+async def test_create_tag_rejects_existing_tag_at_different_commit(git_repository: Path) -> None:
+    adapter = LocalGitAdapter()
+    first_commit = _git(git_repository, "rev-parse", "HEAD")
+    (git_repository / "README.md").write_text("changed\n", encoding="utf-8")
+    _git(git_repository, "add", "README.md")
+    _git(git_repository, "commit", "-m", "second")
+    second_commit = _git(git_repository, "rev-parse", "HEAD")
+    _git(git_repository, "tag", "baseline-002", first_commit)
+
+    with pytest.raises(RuntimeError, match="already exists at a different commit"):
+        await adapter.create_tag(str(git_repository), "baseline-002", second_commit)
+
+    assert _git(git_repository, "rev-parse", "refs/tags/baseline-002^{commit}") == first_commit
 
 
 @pytest.mark.asyncio
@@ -69,4 +83,17 @@ async def test_create_tag_rejects_unknown_commit(git_repository: Path) -> None:
     adapter = LocalGitAdapter()
 
     with pytest.raises(ValueError, match="does not exist"):
-        await adapter.create_tag(str(git_repository), "baseline-002", str(uuid4()))
+        await adapter.create_tag(str(git_repository), "baseline-003", str(uuid4()))
+
+
+@pytest.mark.asyncio
+async def test_is_ancestor_distinguishes_false_from_command_failure(git_repository: Path) -> None:
+    adapter = LocalGitAdapter()
+    first_commit = _git(git_repository, "rev-parse", "HEAD")
+    (git_repository / "README.md").write_text("second\n", encoding="utf-8")
+    _git(git_repository, "add", "README.md")
+    _git(git_repository, "commit", "-m", "second")
+    second_commit = _git(git_repository, "rev-parse", "HEAD")
+
+    assert await adapter.is_ancestor(str(git_repository), first_commit, second_commit)
+    assert not await adapter.is_ancestor(str(git_repository), second_commit, first_commit)
