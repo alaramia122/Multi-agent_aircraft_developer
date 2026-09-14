@@ -121,7 +121,7 @@ async def test_audit_sink_persists_mapped_metadata_attribute(session) -> None:
     event = AuditEvent(
         actor_id="actor-1",
         actor_type=ActorType.HUMAN,
-        authorization_level=AuthorizationLevel.L3,
+        authorization_level=AuthorizationLevel.L3_APPROVE,
         action="approve_workspace",
         target_type="workspace",
         target_id=uuid4(),
@@ -146,7 +146,7 @@ async def test_audit_sink_uses_independent_transaction_for_failure(session) -> N
     event = AuditEvent(
         actor_id="actor-2",
         actor_type=ActorType.AI,
-        authorization_level=AuthorizationLevel.L2,
+        authorization_level=AuthorizationLevel.L2_MODIFY_WORKSPACE,
         action="approve_workspace",
         target_type="workspace",
         target_id=uuid4(),
