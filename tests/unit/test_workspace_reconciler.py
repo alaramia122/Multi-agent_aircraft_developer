@@ -138,3 +138,28 @@ async def test_relation_with_unresolved_endpoint_is_rejected():
 
     with pytest.raises(WorkspaceReconciliationError, match="unknown endpoint"):
         await reconciler.reconcile(workspace, EngineeringGraph(elements=[source], relations=[relation]))
+
+
+@pytest.mark.asyncio
+async def test_adapter_without_workspace_operations_is_rejected_before_mutation():
+    element = EngineeringElement(
+        kind=ElementKind.REQUIREMENT,
+        type_id="requirement",
+        name="REQ-1",
+        external_system="strictdoc",
+        external_id="REQ-1",
+    )
+    read_only_adapter = type(
+        "ReadOnlyAdapter",
+        (),
+        {"system_name": "strictdoc", "get_element": lambda self, external_id: None, "get_version": lambda self: None},
+    )()
+    reconciler = AdapterWorkspaceReconciler((read_only_adapter,), FakeCanonical({}))
+    workspace = Workspace(
+        source_baseline_id=uuid4(),
+        source_git_commit="abc123",
+        change_request_id=uuid4(),
+    )
+
+    with pytest.raises(WorkspaceReconciliationError, match="does not implement required operations"):
+        await reconciler.reconcile(workspace, EngineeringGraph(elements=[element]))
