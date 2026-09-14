@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from engineering_gateway.application.gateway_service import Actor, GatewayApplicationService, GatewayServiceError, ValidationResult
@@ -10,6 +11,7 @@ from engineering_gateway.application.workspace_reconciliation import Reconciliat
 from engineering_gateway.domain.audit import AuditResult
 from engineering_gateway.domain.baselines import Baseline
 from engineering_gateway.domain.change_control import AuthorizationLevel, ChangeGate, ChangeRequestState
+from engineering_gateway.domain.models import EngineeringElement, EngineeringRelation
 from engineering_gateway.domain.ports import AuditSink, ChangeRequestRegistryPort, WorkspaceChangeSetRepository, WorkspaceRegistryPort
 from engineering_gateway.domain.reconciliation import WorkspaceReconciler, compute_change_set_hash
 from engineering_gateway.domain.workspaces import WorkspaceGate, WorkspaceState
@@ -18,7 +20,7 @@ from engineering_gateway.domain.workspaces import WorkspaceGate, WorkspaceState
 class GovernedGatewayApplicationService(TransactionalApplicationServiceMixin, GatewayApplicationService):
     """Gateway service with explicit reconciliation, approval and transaction boundaries."""
 
-    def __init__(self, *args, workspace_reconciler: WorkspaceReconciler | None = None, workspace_registry: WorkspaceRegistryPort | None = None, change_request_registry: ChangeRequestRegistryPort | None = None, workspace_changes: WorkspaceChangeSetRepository | None = None, audit: AuditSink | None = None, **kwargs) -> None:
+    def __init__(self, *args: Any, workspace_reconciler: WorkspaceReconciler | None = None, workspace_registry: WorkspaceRegistryPort | None = None, change_request_registry: ChangeRequestRegistryPort | None = None, workspace_changes: WorkspaceChangeSetRepository | None = None, audit: AuditSink | None = None, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         if workspace_reconciler is None:
             self._workspace_reconciliation = None
@@ -31,7 +33,20 @@ class GovernedGatewayApplicationService(TransactionalApplicationServiceMixin, Ga
                 raise ValueError("workspace reconciliation requires workspace, change-request, change-set and audit services")
             self._workspace_reconciliation = WorkspaceReconciliationService(workspaces=workspaces, change_requests=change_requests, changes=changes, reconciler=workspace_reconciler, audit=audit_sink)
 
-    async def prepare_for_approval(self, actor: Actor, workspace_id: UUID, elements=None, relations=None, profile_id: str = "", profile_version: str = "", *, validation_attributes: dict[UUID, dict[str, object]] | None = None, artifact_evidence: set[tuple[UUID, str]] | frozenset[tuple[UUID, str]] = frozenset(), lifecycle_states: dict[UUID, str] | None = None, lifecycle_transitions: dict[UUID, tuple[str, str]] | None = None) -> ValidationResult:
+    async def prepare_for_approval(
+        self,
+        actor: Actor,
+        workspace_id: UUID,
+        elements: list[EngineeringElement] | None = None,
+        relations: list[EngineeringRelation] | None = None,
+        profile_id: str = "",
+        profile_version: str = "",
+        *,
+        validation_attributes: dict[UUID, dict[str, object]] | None = None,
+        artifact_evidence: set[tuple[UUID, str]] | frozenset[tuple[UUID, str]] = frozenset(),
+        lifecycle_states: dict[UUID, str] | None = None,
+        lifecycle_transitions: dict[UUID, tuple[str, str]] | None = None,
+    ) -> ValidationResult:
         workspace = await self._workspaces.get(workspace_id)
         if workspace is None:
             raise GatewayServiceError(f"workspace '{workspace_id}' was not found")
