@@ -20,7 +20,6 @@ class _TransactionAware:
     def __init__(self, session: AsyncSession, *, autocommit: bool = True) -> None:
         self._session = session
         self._autocommit = autocommit
-
     async def _persist(self) -> None:
         if self._autocommit:
             await self._session.commit()
@@ -142,7 +141,7 @@ class SqlAlchemyWorkspaceRegistry(_TransactionAware):
             raise ValueError("workspace validation profile is immutable once bound")
         if record.validation_graph_hash is not None and record.validation_graph_hash != workspace.validation_graph_hash:
             raise ValueError("validation evidence is immutable once bound")
-        if record.validation_evidence != workspace.validation_evidence:
+        if record.validation_graph_hash is not None and record.validation_evidence != workspace.validation_evidence:
             raise ValueError("validation evidence is immutable once bound")
         if record.reconciled and not workspace.reconciled and WorkspaceState(record.state) is not WorkspaceState.ACTIVE:
             raise ValueError("workspace reconciliation evidence can only be reset while workspace is active")
@@ -168,10 +167,8 @@ class SqlAlchemyWorkspaceRegistry(_TransactionAware):
 def _to_baseline(record: BaselineRecord) -> Baseline:
     return Baseline(id=record.id, name=record.name, git_repository=record.git_repository, git_commit=record.git_commit, git_tag=record.git_tag, external_versions=tuple(ExternalSystemVersion.model_validate(item) for item in record.external_versions))
 
-
 def _to_change_request(record: ChangeRequestRecord) -> ChangeRequest:
     return ChangeRequest(id=record.id, external_system=record.external_system, external_id=record.external_id, title=record.title, state=ChangeRequestState(record.state), source_baseline_id=record.source_baseline_id, workspace_id=record.workspace_id)
-
 
 def _to_workspace(record: WorkspaceRecord) -> Workspace:
     return Workspace(id=record.id, source_baseline_id=record.source_baseline_id, source_git_commit=record.source_git_commit, change_request_id=record.change_request_id, git_ref=record.git_ref, profile_id=record.profile_id, profile_version=record.profile_version, validation_graph_hash=record.validation_graph_hash, validation_evidence=record.validation_evidence or {}, reconciled=record.reconciled, reconciled_change_set_hash=record.reconciled_change_set_hash, state=WorkspaceState(record.state))
