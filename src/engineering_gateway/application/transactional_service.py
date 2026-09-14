@@ -34,7 +34,7 @@ class TransactionalApplicationServiceMixin:
         )
 
 
-def _transactional_method(
+def _transactional_method[T](
     operation: Callable[..., Awaitable[T]],
     get_uow: Callable[[], UnitOfWork | None],
 ) -> Callable[..., Awaitable[T]]:

@@ -179,11 +179,10 @@ class WorkspaceRegistry:
             current.reconciled
             and not workspace.reconciled
             and current.state is not WorkspaceState.ACTIVE
-        ):
-            if workspace.state is not WorkspaceState.ACTIVE:
-                raise ValueError(
-                    "workspace reconciliation evidence is immutable outside active engineering"
-                )
+        ) and workspace.state is not WorkspaceState.ACTIVE:
+            raise ValueError(
+                "workspace reconciliation evidence is immutable outside active engineering"
+            )
         if (
             current.reconciled
             and workspace.reconciled

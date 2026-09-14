@@ -269,11 +269,10 @@ class SqlAlchemyWorkspaceRegistry(_TransactionAware):
             record.reconciled
             and not workspace.reconciled
             and current_state is not WorkspaceState.ACTIVE
-        ):
-            if workspace.state is not WorkspaceState.ACTIVE:
-                raise ValueError(
-                    "workspace reconciliation evidence is immutable outside active engineering"
-                )
+        ) and workspace.state is not WorkspaceState.ACTIVE:
+            raise ValueError(
+                "workspace reconciliation evidence is immutable outside active engineering"
+            )
         if (
             record.reconciled
             and workspace.reconciled
