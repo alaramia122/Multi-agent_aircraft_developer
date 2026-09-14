@@ -1,7 +1,11 @@
+"""Tests for declarative Standard Profile loading."""
+
 from pathlib import Path
 
+import pytest
+
 from engineering_gateway.domain.models import ElementKind, RelationType
-from engineering_gateway.infrastructure.profile_loader import load_standard_profile
+from engineering_gateway.infrastructure.profile_loader import StandardProfileLoadError, load_standard_profile
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -20,3 +24,11 @@ def test_load_arp4754a_vertical_slice_profile() -> None:
     assert profile.element_types[0].kind is ElementKind.REQUIREMENT
     assert profile.traceability[0].relation_type is RelationType.ALLOCATED_TO
     assert profile.verification[0].required_relation_type is RelationType.VERIFIED_BY
+
+
+def test_load_standard_profile_rejects_invalid_json(tmp_path: Path) -> None:
+    path = tmp_path / "profile.json"
+    path.write_text("{not-json", encoding="utf-8")
+
+    with pytest.raises(StandardProfileLoadError, match="invalid JSON"):
+        load_standard_profile(path)
