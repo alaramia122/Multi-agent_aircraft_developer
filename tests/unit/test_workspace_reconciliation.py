@@ -70,8 +70,10 @@ class FakeCanonical:
 class FakeReconciler:
     def __init__(self):
         self.received = None
+        self.calls = 0
 
     async def reconcile(self, workspace, changes):
+        self.calls += 1
         self.received = (workspace, changes)
         return (ExternalVersion(system="capella", version="rev-2"),)
 
@@ -120,8 +122,29 @@ async def test_reconcile_keeps_workspace_ready_and_does_not_touch_canonical():
 
     assert result.external_versions[0].version == "rev-2"
     assert reconciler.received[1].elements == [element]
+    assert reconciler.calls == 1
     assert (await workspaces.get(workspace.id)).state is WorkspaceState.READY_FOR_APPROVAL
     assert await canonical.get(element.id) is None
+
+
+@pytest.mark.asyncio
+async def test_reconcile_same_change_set_is_idempotent():
+    service, workspaces, workspace, changes, element, reconciler, _, audit = build_service()
+    await changes.save_element(workspace.id, element)
+    actor = Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE)
+
+    first = await service.reconcile(actor, workspace.id)
+    second = await service.reconcile(actor, workspace.id)
+
+    assert second == first
+    assert reconciler.calls == 1
+    assert (await workspaces.get(workspace.id)).reconciliation_external_versions == (
+        ExternalVersion(system="capella", version="rev-2"),
+    )
+    events = await audit.list()
+    assert len(events) == 2
+    assert events[1].result is AuditResult.SUCCESS
+    assert events[1].metadata["idempotent_replay"] is True
 
 
 @pytest.mark.asyncio
