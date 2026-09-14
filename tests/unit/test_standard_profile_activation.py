@@ -77,5 +77,5 @@ async def test_registry_can_deactivate_profile() -> None:
 def test_verification_rule_requires_matching_relation_definition() -> None:
     profile = valid_profile()
     invalid = profile.model_copy(update={"relations": []})
-    with pytest.raises(ProfileCompositionError, match="verification relation"):
+    with pytest.raises(ProfileCompositionError, match="matching relation definition"):
         StandardProfileEngine.validate_profile(invalid)
