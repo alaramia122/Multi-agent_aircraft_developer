@@ -107,7 +107,7 @@ async def test_run_rejects_invalid_protocol(
 ) -> None:
     monkeypatch.setattr(
         "engineering_gateway.infrastructure.capella_adapter.subprocess.run",
-        lambda **_kwargs: type(
+        lambda *_args, **_kwargs: type(
             "Result", (), {"returncode": 0, "stdout": json.dumps({"protocol": 2}), "stderr": ""}
         )(),
     )
@@ -122,7 +122,7 @@ async def test_run_rejects_unexpected_operation(
 ) -> None:
     monkeypatch.setattr(
         "engineering_gateway.infrastructure.capella_adapter.subprocess.run",
-        lambda **_kwargs: type(
+        lambda *_args, **_kwargs: type(
             "Result",
             (),
             {
