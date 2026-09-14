@@ -8,7 +8,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 from engineering_gateway.domain.adapters import ExternalVersion
@@ -17,6 +17,10 @@ from engineering_gateway.domain.models import ElementKind, EngineeringElement
 
 class OpenProjectAdapterError(RuntimeError):
     """Raised when an OpenProject API operation cannot be completed."""
+
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 @dataclass(frozen=True)
@@ -74,9 +78,14 @@ class LocalOpenProjectAdapter:
             raise ValueError("title must be non-empty")
         if idempotency_key is not None and not idempotency_key.strip():
             raise ValueError("idempotency_key must be non-empty when provided")
+
         subject = title
         if idempotency_key:
             subject = f"[{idempotency_key}] {title}"
+            existing = await asyncio.to_thread(self._find_by_subject, subject)
+            if existing is not None:
+                return existing
+
         payload = {
             "_type": "WorkPackage",
             "subject": subject,
@@ -118,6 +127,33 @@ class LocalOpenProjectAdapter:
             "_links": {"status": {"href": status_href}},
         }
         await asyncio.to_thread(self._request_json, "PATCH", update_href, payload)
+
+    def _find_by_subject(self, subject: str) -> str | None:
+        filters = json.dumps(
+            [{"subject": {"operator": "=", "values": [subject]}}],
+            separators=(",", ":"),
+        )
+        query = urlencode({"filters": filters, "pageSize": "2"})
+        response = self._request_json(
+            "GET",
+            f"/api/v3/projects/{self._config.project_id}/work_packages?{query}",
+        )
+        embedded = response.get("_embedded")
+        if not isinstance(embedded, dict):
+            raise OpenProjectAdapterError("OpenProject collection has no _embedded object")
+        elements = embedded.get("elements")
+        if not isinstance(elements, list):
+            raise OpenProjectAdapterError("OpenProject collection has no elements list")
+        if len(elements) > 1:
+            raise OpenProjectAdapterError(
+                "multiple OpenProject work packages match the idempotency key"
+            )
+        if not elements:
+            return None
+        identifier = elements[0].get("id") if isinstance(elements[0], dict) else None
+        if not isinstance(identifier, int) or identifier <= 0:
+            raise OpenProjectAdapterError("OpenProject idempotency lookup returned an invalid id")
+        return str(identifier)
 
     @staticmethod
     def _status_href(payload: dict[str, Any]) -> str | None:
@@ -185,11 +221,9 @@ class LocalOpenProjectAdapter:
             with urlopen(request, timeout=self._config.timeout_seconds) as response:
                 raw = response.read()
         except HTTPError as exc:
-            error = OpenProjectAdapterError(
-                f"OpenProject returned HTTP {exc.code}: {exc.reason}"
-            )
-            error.status_code = exc.code
-            raise error from exc
+            raise OpenProjectAdapterError(
+                f"OpenProject returned HTTP {exc.code}: {exc.reason}", status_code=exc.code
+            ) from exc
         except URLError as exc:
             raise OpenProjectAdapterError("OpenProject API request failed") from exc
         try:
