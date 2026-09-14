@@ -67,12 +67,19 @@ class LocalOpenProjectAdapter:
             raise OpenProjectAdapterError("OpenProject root response has no usable version")
         return ExternalVersion(system=self.system_name, version=version)
 
-    async def create_change_request(self, title: str, description: str) -> str:
+    async def create_change_request(
+        self, title: str, description: str, idempotency_key: str | None = None
+    ) -> str:
         if not title.strip():
             raise ValueError("title must be non-empty")
+        if idempotency_key is not None and not idempotency_key.strip():
+            raise ValueError("idempotency_key must be non-empty when provided")
+        subject = title
+        if idempotency_key:
+            subject = f"[{idempotency_key}] {title}"
         payload = {
             "_type": "WorkPackage",
-            "subject": title,
+            "subject": subject,
             "description": {"raw": description},
             "_links": {
                 "project": {"href": f"/api/v3/projects/{self._config.project_id}"},
@@ -89,35 +96,59 @@ class LocalOpenProjectAdapter:
             raise OpenProjectAdapterError("OpenProject create response has no numeric id")
         return str(identifier)
 
-    async def update_change_request(self, external_id: str, status: str) -> None:
+    async def update_change_request(self, external_id: str, status_href: str) -> None:
         if not external_id:
             raise ValueError("external_id must be non-empty")
-        if not status.strip():
-            raise ValueError("status must be non-empty")
+        if not status_href.strip():
+            raise ValueError("status_href must be non-empty")
+        if not status_href.startswith("/api/v3/statuses/"):
+            raise ValueError("status_href must be an OpenProject status API href")
         current = await asyncio.to_thread(
-            self._request_json, "GET", f"/api/v3/work_packages/{quote(external_id)}"
+            self._request_json, "GET", f"/api/v3/work_packages/{quote(external_id, safe='')}"
         )
         lock_version = current.get("lockVersion")
         if not isinstance(lock_version, int):
             raise OpenProjectAdapterError("OpenProject work package has no lockVersion")
+        current_status = self._status_href(current)
+        if current_status == status_href:
+            return
+        update_href = self._update_href(current, external_id)
         payload = {
             "lockVersion": lock_version,
-            "_links": {"status": {"href": status}},
+            "_links": {"status": {"href": status_href}},
         }
-        await asyncio.to_thread(
-            self._request_json,
-            "PATCH",
-            f"/api/v3/work_packages/{quote(external_id)}",
-            payload,
-        )
+        await asyncio.to_thread(self._request_json, "PATCH", update_href, payload)
+
+    @staticmethod
+    def _status_href(payload: dict[str, Any]) -> str | None:
+        links = payload.get("_links")
+        if not isinstance(links, dict):
+            return None
+        status = links.get("status")
+        if not isinstance(status, dict):
+            return None
+        href = status.get("href")
+        return href if isinstance(href, str) else None
+
+    @staticmethod
+    def _update_href(payload: dict[str, Any], external_id: str) -> str:
+        links = payload.get("_links")
+        if isinstance(links, dict):
+            update = links.get("update")
+            if isinstance(update, dict):
+                href = update.get("href")
+                method = update.get("method")
+                if isinstance(href, str) and href and method in (None, "patch", "PATCH"):
+                    return href
+        return f"/api/v3/work_packages/{quote(external_id, safe='')}"
 
     def _get_element(self, external_id: str) -> EngineeringElement | None:
         try:
             payload = self._request_json(
-                "GET", f"/api/v3/work_packages/{quote(external_id)}"
+                "GET", f"/api/v3/work_packages/{quote(external_id, safe='')}"
             )
         except OpenProjectAdapterError as exc:
-            if exc.args and str(exc).startswith("OpenProject returned HTTP 404"):
+            if exc.status_code == 404:
                 return None
             raise
         identifier = payload.get("id")
@@ -154,9 +185,11 @@ class LocalOpenProjectAdapter:
             with urlopen(request, timeout=self._config.timeout_seconds) as response:
                 raw = response.read()
         except HTTPError as exc:
-            raise OpenProjectAdapterError(
+            error = OpenProjectAdapterError(
                 f"OpenProject returned HTTP {exc.code}: {exc.reason}"
-            ) from exc
+            )
+            error.status_code = exc.code
+            raise error from exc
         except URLError as exc:
             raise OpenProjectAdapterError("OpenProject API request failed") from exc
         try:
