@@ -116,14 +116,14 @@ class WorkspaceRegistry:
             raise ValueError("workspace validation profile is immutable once bound")
         if current.profile_version is not None and current.profile_version != workspace.profile_version:
             raise ValueError("workspace validation profile is immutable once bound")
-        if current.validation_graph_hash is not None and current.validation_graph_hash != workspace.validation_graph_hash:
-            if not (current.state is WorkspaceState.ACTIVE and workspace.state is WorkspaceState.ACTIVE and workspace.validation_graph_hash is None):
-                raise ValueError("validation evidence is immutable once bound outside active reset")
-        if current.validation_graph_hash is not None and current.validation_evidence != workspace.validation_evidence:
-            if not (current.state is WorkspaceState.ACTIVE and workspace.state is WorkspaceState.ACTIVE and workspace.validation_graph_hash is None and not workspace.validation_evidence):
-                raise ValueError("validation evidence is immutable once bound outside active reset")
+        resetting_validation = current.validation_graph_hash is not None and workspace.validation_graph_hash is None and not workspace.validation_evidence and workspace.state is WorkspaceState.ACTIVE
+        if current.validation_graph_hash is not None and current.validation_graph_hash != workspace.validation_graph_hash and not resetting_validation:
+            raise ValueError("validation evidence is immutable once bound outside active reset")
+        if current.validation_graph_hash is not None and current.validation_evidence != workspace.validation_evidence and not resetting_validation:
+            raise ValueError("validation evidence is immutable once bound outside active reset")
         if current.reconciled and not workspace.reconciled and current.state is not WorkspaceState.ACTIVE:
-            raise ValueError("workspace reconciliation evidence is immutable outside active engineering")
+            if workspace.state is not WorkspaceState.ACTIVE:
+                raise ValueError("workspace reconciliation evidence is immutable outside active engineering")
         if current.reconciled and workspace.reconciled and (current.reconciled_change_set_hash != workspace.reconciled_change_set_hash or current.reconciliation_external_versions != workspace.reconciliation_external_versions):
             raise ValueError("reconciliation evidence cannot be replaced without returning to active engineering")
         if not workspace.reconciled and (workspace.reconciled_change_set_hash is not None or workspace.reconciliation_external_versions):
