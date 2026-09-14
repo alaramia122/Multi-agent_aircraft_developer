@@ -75,7 +75,7 @@ async def test_get_version_delegates_to_bridge(
 
 
 @pytest.mark.asyncio
-async def test_workspace_operation_passes_uuid_and_relation(
+async def test_workspace_operation_passes_uuid_and_change_set_hash(
     adapter: LocalCapellaAdapter, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     workspace_id = uuid4()
@@ -87,12 +87,16 @@ async def test_workspace_operation_passes_uuid_and_relation(
 
     monkeypatch.setattr(adapter, "_run", fake_run)
 
-    await adapter.create_workspace(workspace_id, "model-revision-1")
+    await adapter.create_workspace(workspace_id, "model-revision-1", "a" * 64)
 
     assert calls == [
         (
             "create_workspace",
-            {"workspace_id": str(workspace_id), "source_version": "model-revision-1"},
+            {
+                "workspace_id": str(workspace_id),
+                "source_version": "model-revision-1",
+                "change_set_hash": "a" * 64,
+            },
         )
     ]
 
@@ -109,4 +113,27 @@ async def test_run_rejects_invalid_protocol(
     )
 
     with pytest.raises(CapellaAdapterError, match="unsupported Capella bridge protocol"):
+        await adapter._run("get_version", {})
+
+
+@pytest.mark.asyncio
+async def test_run_rejects_unexpected_operation(
+    adapter: LocalCapellaAdapter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "engineering_gateway.infrastructure.capella_adapter.subprocess.run",
+        lambda **_kwargs: type(
+            "Result",
+            (),
+            {
+                "returncode": 0,
+                "stdout": json.dumps(
+                    {"protocol": 1, "operation": "get_element", "ok": True}
+                ),
+                "stderr": "",
+            },
+        )(),
+    )
+
+    with pytest.raises(CapellaAdapterError, match="unexpected operation"):
         await adapter._run("get_version", {})
