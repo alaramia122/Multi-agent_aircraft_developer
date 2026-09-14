@@ -158,11 +158,7 @@ class GatewayApplicationService:
         profile_id: str = "",
         profile_version: str = "",
     ) -> ValidationResult:
-        """Validate the persisted workspace view and bind the exact validation profile.
-
-        ``elements`` and ``relations`` are retained as optional compatibility parameters;
-        approval preparation never trusts caller-supplied graph data.
-        """
+        """Validate the persisted workspace view and bind the exact validation profile."""
         if self._workspaces is None or self._change_requests is None or self._workspace_changes is None:
             raise GatewayServiceError("workspace/change-request/change-set registries are not configured")
         self._require_modify(actor)
@@ -176,12 +172,7 @@ class GatewayApplicationService:
         profile = await self._get_active_profile(profile_id, profile_version, actor=actor, action="prepare_for_approval")
         graph = await self._workspace_changes.get_graph(workspace_id)
         validation = self._validator.validate(graph.elements, graph.relations, profile)
-        result = ValidationResult(
-            profile_id=profile_id,
-            profile_version=profile_version,
-            graph_hash=validation.graph_hash,
-            issues=validation.issues,
-        )
+        result = ValidationResult(profile_id=profile_id, profile_version=profile_version, graph_hash=validation.graph_hash, issues=validation.issues)
         if not result.valid:
             await self._record(actor, action="prepare_for_approval", target_type="workspace", target_id=workspace_id,
                                result=AuditResult.FAILURE, reason=f"validation found {len(result.issues)} issue(s)",
@@ -210,7 +201,7 @@ class GatewayApplicationService:
             raise GatewayServiceError("rejection requires a non-empty reason")
         WorkspaceGate.require_transition(workspace.state, WorkspaceState.ACTIVE)
         ChangeGate.require_transition(change_request.state, ChangeRequestState.REJECTED)
-        await self._workspaces.update(workspace.model_copy(update={"state": WorkspaceState.ACTIVE, "reconciled": False}))
+        await self._workspaces.update(workspace.model_copy(update={"state": WorkspaceState.ACTIVE, "reconciled": False, "reconciled_change_set_hash": None}))
         await self._change_requests.update(change_request.model_copy(update={"state": ChangeRequestState.REJECTED}))
         await self._record(actor, action="reject_workspace", target_type="workspace", target_id=workspace_id,
                            result=AuditResult.SUCCESS, reason=reason)
@@ -304,10 +295,7 @@ class GatewayApplicationService:
             tag = f"baseline-{workspace.id}"
             tagged = await self._git.create_tag(snapshot.repository, tag, snapshot.commit)
             versions = tuple(ExternalSystemVersion(system=version.system, version=version.version) for version in await self._read_external_versions())
-            baseline = Baseline(
-                name=tag, git_repository=tagged.repository, git_commit=tagged.commit,
-                git_tag=tagged.tag or tag, external_versions=versions,
-            )
+            baseline = Baseline(name=tag, git_repository=tagged.repository, git_commit=tagged.commit, git_tag=tagged.tag or tag, external_versions=versions)
             registered = await self._baselines.register(baseline)
             WorkspaceGate.require_transition(workspace.state, WorkspaceState.APPROVED)
             ChangeGate.require_transition(change_request.state, ChangeRequestState.APPROVED)
