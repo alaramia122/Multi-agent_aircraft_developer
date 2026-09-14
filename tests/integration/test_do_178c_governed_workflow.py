@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from engineering_gateway.application.change_request_service import ChangeRequestApplicationService
-from engineering_gateway.application.gateway_service import Actor
+from engineering_gateway.application.gateway_service import Actor, GatewayServiceError
 from engineering_gateway.application.governed_gateway_service import (
     GovernedGatewayApplicationService,
 )
@@ -264,3 +264,15 @@ async def test_do_178c_governed_workflow_reaches_approved_baseline():
     }
     stored = await workspaces.get(workspace.id)
     assert stored is not None and stored.state is WorkspaceState.APPROVED
+
+    with pytest.raises(GatewayServiceError, match="not active"):
+        await gateway.save_workspace_element(
+            engineer,
+            code.model_copy(update={"name": "module_178_modified.c"}),
+            workspace.id,
+        )
+
+    with pytest.raises(ValueError, match="already exists and is immutable"):
+        await baselines.register(
+            baseline.model_copy(update={"git_commit": "tampered-commit"})
+        )
