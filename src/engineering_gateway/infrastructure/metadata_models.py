@@ -54,6 +54,8 @@ class WorkspaceRecord(Base):
     git_ref: Mapped[str] = mapped_column(String(2048), nullable=False, default="HEAD")
     profile_id: Mapped[str | None] = mapped_column(String(255))
     profile_version: Mapped[str | None] = mapped_column(String(128))
+    validation_graph_hash: Mapped[str | None] = mapped_column(String(64))
+    validation_evidence: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     reconciled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     reconciled_change_set_hash: Mapped[str | None] = mapped_column(String(64))
     state: Mapped[str] = mapped_column(String(64), nullable=False)
