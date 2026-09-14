@@ -6,9 +6,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from engineering_gateway.domain.models import (
+    ElementKind,
     EngineeringElement,
     EngineeringGraph,
     EngineeringRelation,
+    RelationType,
 )
 from engineering_gateway.infrastructure.models import (
     EngineeringElementRecord,
@@ -81,7 +83,7 @@ class SqlAlchemyEngineeringRepository:
     def _to_element(record: EngineeringElementRecord) -> EngineeringElement:
         return EngineeringElement(
             id=record.id,
-            kind=record.kind,
+            kind=ElementKind(record.kind),
             type_id=record.type_id,
             name=record.name,
             external_system=record.external_system,
@@ -94,6 +96,6 @@ class SqlAlchemyEngineeringRepository:
         return EngineeringRelation(
             id=record.id,
             source_id=record.source_id,
-            relation_type=record.relation_type,
+            relation_type=RelationType(record.relation_type),
             target_id=record.target_id,
         )
