@@ -6,12 +6,13 @@ from dataclasses import dataclass
 from uuid import UUID, uuid4
 
 from engineering_gateway.application.validation import DeterministicValidationEngine, ValidationIssue
-from engineering_gateway.domain.adapters import GitAdapter, ReadAdapter
+from engineering_gateway.domain.adapters import ExternalVersion, GitAdapter, ReadAdapter
 from engineering_gateway.domain.audit import ActorType, AuditEvent, AuditResult
 from engineering_gateway.domain.baselines import Baseline, ExternalSystemVersion
 from engineering_gateway.domain.change_control import AuthorizationLevel, ChangeGate, ChangeRequest, ChangeRequestState
 from engineering_gateway.domain.models import EngineeringElement, EngineeringRelation
 from engineering_gateway.domain.ports import AuditSink, BaselineRegistryPort, ChangeRequestRegistryPort, EngineeringRepository, StandardProfileRegistry, WorkspaceChangeSetRepository, WorkspaceRegistryPort
+from engineering_gateway.domain.profiles import StandardProfile
 from engineering_gateway.domain.workspaces import Workspace, WorkspaceGate, WorkspaceState
 
 
@@ -216,7 +217,7 @@ class GatewayApplicationService:
         await self._record(actor, action="approve_workspace", target_type="baseline", target_id=registered.id, result=AuditResult.SUCCESS, metadata={"workspace_id": str(workspace_id), "change_request_id": str(change_request.id), "source_baseline_id": str(source.id), "source_git_commit": workspace.source_git_commit, "git_commit": registered.git_commit, "git_tag": registered.git_tag, "profile_id": workspace.profile_id, "profile_version": workspace.profile_version, "external_versions": [{"system": v.system, "version": v.version} for v in registered.external_versions]})
         return registered
 
-    async def _get_active_profile(self, profile_id: str, profile_version: str, *, actor: Actor, action: str):
+    async def _get_active_profile(self, profile_id: str, profile_version: str, *, actor: Actor, action: str) -> StandardProfile:
         profile = await self._profiles.get(profile_id, profile_version)
         if profile is None:
             await self._record(actor, action=action, target_type="standard_profile", result=AuditResult.FAILURE, reason=f"profile '{profile_id}@{profile_version}' was not found")
@@ -237,5 +238,5 @@ class GatewayApplicationService:
             raise GatewayServiceError("workspace change request was not found")
         return workspace, change_request
 
-    async def _read_external_versions(self):
+    async def _read_external_versions(self) -> list[ExternalVersion]:
         return [await adapter.get_version() for adapter in self._external_adapters]
