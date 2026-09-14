@@ -158,8 +158,8 @@ async def test_l1_cannot_reconcile_and_attempt_is_audited_as_denied():
 
 @pytest.mark.asyncio
 async def test_reconcile_requires_ready_workflow():
-    service, _, workspace, _, _, _, _, audit = build_service()
-    workspace = workspace.model_copy(update={"state": WorkspaceState.ACTIVE})
+    service, workspaces, workspace, _, _, _, _, audit = build_service()
+    await workspaces.update(workspace.model_copy(update={"state": WorkspaceState.ACTIVE}))
 
     with pytest.raises(GatewayServiceError, match="ready for approval"):
         await service.reconcile(
