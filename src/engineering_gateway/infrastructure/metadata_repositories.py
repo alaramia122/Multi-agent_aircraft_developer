@@ -153,14 +153,14 @@ class SqlAlchemyWorkspaceRegistry(_TransactionAware):
     async def create(self, workspace: Workspace) -> Workspace:
         if await self.get(workspace.id) is not None:
             raise ValueError(f"workspace '{workspace.id}' already exists")
-        self._session.add(WorkspaceRecord(id=workspace.id, source_baseline_id=workspace.source_baseline_id,
-                                          source_git_commit=workspace.source_git_commit,
-                                          change_request_id=workspace.change_request_id,
-                                          git_ref=workspace.git_ref,
-                                          profile_id=workspace.profile_id,
-                                          profile_version=workspace.profile_version,
-                                          reconciled=workspace.reconciled,
-                                          state=workspace.state.value))
+        self._session.add(WorkspaceRecord(
+            id=workspace.id, source_baseline_id=workspace.source_baseline_id,
+            source_git_commit=workspace.source_git_commit, change_request_id=workspace.change_request_id,
+            git_ref=workspace.git_ref, profile_id=workspace.profile_id,
+            profile_version=workspace.profile_version, reconciled=workspace.reconciled,
+            reconciled_change_set_hash=workspace.reconciled_change_set_hash,
+            state=workspace.state.value,
+        ))
         await self._persist()
         return workspace
 
@@ -186,6 +186,10 @@ class SqlAlchemyWorkspaceRegistry(_TransactionAware):
         if record.reconciled and not workspace.reconciled:
             if WorkspaceState(record.state) is not WorkspaceState.ACTIVE:
                 raise ValueError("workspace reconciliation evidence can only be reset while workspace is active")
+        if record.reconciled and workspace.reconciled and record.reconciled_change_set_hash != workspace.reconciled_change_set_hash:
+            raise ValueError("reconciliation evidence cannot be replaced without returning to active engineering")
+        if not workspace.reconciled and workspace.reconciled_change_set_hash is not None:
+            raise ValueError("reconciliation hash must be cleared when reconciliation evidence is cleared")
         current = WorkspaceState(record.state)
         if current is not workspace.state:
             from engineering_gateway.domain.workspaces import WorkspaceGate
@@ -193,6 +197,7 @@ class SqlAlchemyWorkspaceRegistry(_TransactionAware):
         record.profile_id = workspace.profile_id
         record.profile_version = workspace.profile_version
         record.reconciled = workspace.reconciled
+        record.reconciled_change_set_hash = workspace.reconciled_change_set_hash
         record.state = workspace.state.value
         await self._persist()
         return workspace
@@ -211,10 +216,10 @@ def _to_change_request(record: ChangeRequestRecord) -> ChangeRequest:
 
 def _to_workspace(record: WorkspaceRecord) -> Workspace:
     return Workspace(id=record.id, source_baseline_id=record.source_baseline_id,
-                     source_git_commit=record.source_git_commit,
-                     change_request_id=record.change_request_id, git_ref=record.git_ref,
-                     profile_id=record.profile_id, profile_version=record.profile_version,
-                     reconciled=record.reconciled, state=WorkspaceState(record.state))
+                     source_git_commit=record.source_git_commit, change_request_id=record.change_request_id,
+                     git_ref=record.git_ref, profile_id=record.profile_id, profile_version=record.profile_version,
+                     reconciled=record.reconciled, reconciled_change_set_hash=record.reconciled_change_set_hash,
+                     state=WorkspaceState(record.state))
 
 
 class SqlAlchemyAuditSink(_TransactionAware):
