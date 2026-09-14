@@ -4,7 +4,7 @@ import pytest
 
 from engineering_gateway.domain.adapters import ExternalVersion
 from engineering_gateway.domain.models import EngineeringElement, EngineeringGraph, EngineeringRelation, ElementKind, RelationType
-from engineering_gateway.domain.reconciliation import WorkspaceReconciliationError
+from engineering_gateway.domain.reconciliation import WorkspaceReconciliationError, compute_change_set_hash
 from engineering_gateway.domain.workspaces import Workspace
 from engineering_gateway.infrastructure.workspace_reconciler import AdapterWorkspaceReconciler
 
@@ -42,8 +42,8 @@ class FakeAdapter:
     async def get_version(self):
         return ExternalVersion(system=self.system_name, version="rev-1")
 
-    async def create_workspace(self, workspace_id, source_version):
-        self.created.append((workspace_id, source_version))
+    async def create_workspace(self, workspace_id, source_version, change_set_hash):
+        self.created.append((workspace_id, source_version, change_set_hash))
 
     async def apply_element(self, workspace_id, element):
         self.elements.append(element)
@@ -80,13 +80,39 @@ async def test_relation_to_unchanged_canonical_endpoint_is_routed_to_source_adap
         source_git_commit="abc123",
         change_request_id=uuid4(),
     )
+    changes = EngineeringGraph(elements=[source], relations=[relation])
 
-    versions = await reconciler.reconcile(workspace, EngineeringGraph(elements=[source], relations=[relation]))
+    versions = await reconciler.reconcile(workspace, changes)
 
     assert versions == (ExternalVersion(system="capella", version="rev-1"),)
     assert adapter.elements == [source]
     assert adapter.relations == [relation]
-    assert adapter.created == [(workspace.id, "abc123")]
+    assert adapter.created == [(workspace.id, "abc123", compute_change_set_hash(changes))]
+
+
+@pytest.mark.asyncio
+async def test_same_change_set_produces_same_idempotency_key_on_retry():
+    source = EngineeringElement(
+        kind=ElementKind.ARCHITECTURE,
+        type_id="component",
+        name="Changed",
+        external_system="capella",
+        external_id="COMP-1",
+    )
+    changes = EngineeringGraph(elements=[source])
+    adapter = FakeAdapter("capella")
+    reconciler = AdapterWorkspaceReconciler((adapter,), FakeCanonical({}))
+    workspace = Workspace(
+        source_baseline_id=uuid4(),
+        source_git_commit="abc123",
+        change_request_id=uuid4(),
+    )
+
+    await reconciler.reconcile(workspace, changes)
+    await reconciler.reconcile(workspace, changes)
+
+    assert adapter.created[0][2] == adapter.created[1][2]
+    assert adapter.created[0][0] == adapter.created[1][0] == workspace.id
 
 
 @pytest.mark.asyncio
