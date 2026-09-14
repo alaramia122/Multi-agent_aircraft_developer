@@ -1,4 +1,4 @@
-"""Tests for the read-only MCP Gateway surface."""
+"""Tests for the governed MCP Gateway surface."""
 
 from __future__ import annotations
 
@@ -53,12 +53,12 @@ def _service(repository: _Repository) -> GatewayApplicationService:
     )
 
 
-def _actor() -> Actor:
-    return Actor("mcp-ai", ActorType.AI, AuthorizationLevel.L0_READ)
+def _actor(level: AuthorizationLevel = AuthorizationLevel.L0_READ) -> Actor:
+    return Actor("mcp-ai", ActorType.AI, level)
 
 
 @pytest.mark.asyncio
-async def test_mcp_server_exposes_only_read_tools() -> None:
+async def test_l0_mcp_server_exposes_only_read_tools() -> None:
     repository = _Repository()
     server = create_mcp_server(_service(repository), _actor())
 
@@ -67,9 +67,27 @@ async def test_mcp_server_exposes_only_read_tools() -> None:
     assert {tool.name for tool in tools} == {
         "get_engineering_element",
         "get_engineering_relations",
+        "validate_engineering_graph",
     }
     assert all(tool.annotations is not None for tool in tools)
     assert all(tool.annotations.read_only_hint for tool in tools)
+
+
+@pytest.mark.asyncio
+async def test_l2_mcp_server_exposes_workspace_mutation_tools_but_no_approval() -> None:
+    repository = _Repository()
+    server = create_mcp_server(_service(repository), _actor(AuthorizationLevel.L2_MODIFY_WORKSPACE))
+
+    tools = await server.list_tools()
+    names = {tool.name for tool in tools}
+
+    assert {
+        "create_workspace",
+        "save_workspace_element",
+        "add_workspace_relation",
+    }.issubset(names)
+    assert "approve_workspace" not in names
+    assert "reject_workspace" not in names
 
 
 @pytest.mark.asyncio
@@ -82,3 +100,32 @@ async def test_mcp_tool_returns_canonical_element() -> None:
     )
 
     assert result is not None
+
+
+@pytest.mark.asyncio
+async def test_l2_mutating_tools_are_not_read_only() -> None:
+    repository = _Repository()
+    server = create_mcp_server(_service(repository), _actor(AuthorizationLevel.L2_MODIFY_WORKSPACE))
+
+    tools = await server.list_tools()
+    by_name = {tool.name: tool for tool in tools}
+
+    for name in ("create_workspace", "save_workspace_element", "add_workspace_relation"):
+        assert by_name[name].annotations is not None
+        assert not by_name[name].annotations.read_only_hint
+        assert by_name[name].annotations.destructive_hint is False
+
+
+@pytest.mark.asyncio
+async def test_mcp_does_not_expose_l3_approval_even_for_l3_human_actor() -> None:
+    repository = _Repository()
+    server = create_mcp_server(
+        _service(repository), Actor("operator", ActorType.HUMAN, AuthorizationLevel.L3_APPROVE)
+    )
+
+    tools = await server.list_tools()
+    names = {tool.name for tool in tools}
+
+    assert "approve_workspace" not in names
+    assert "reject_workspace" not in names
+    assert "approve_baseline" not in names
