@@ -1,26 +1,29 @@
 """Ports for authoritative external engineering-system adapters."""
 
-from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from engineering_gateway.domain.models import EngineeringElement, EngineeringRelation
 
 
-@dataclass(frozen=True)
-class ExternalVersion:
+class ExternalVersion(BaseModel):
     """Version or revision identifier of an authoritative external system."""
 
-    system: str
-    version: str
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    system: str = Field(min_length=1)
+    version: str = Field(min_length=1)
 
 
-@dataclass(frozen=True)
-class GitSnapshot:
+class GitSnapshot(BaseModel):
     """Reproducible Git repository state used by a Gateway baseline."""
 
-    repository: str
-    commit: str
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    repository: str = Field(min_length=1)
+    commit: str = Field(min_length=1)
     tag: str | None = None
 
 
