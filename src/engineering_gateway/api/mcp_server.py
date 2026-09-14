@@ -10,12 +10,7 @@ from mcp.types import ToolAnnotations
 from engineering_gateway.application.gateway_service import Actor, GatewayApplicationService
 from engineering_gateway.application.governed_gateway_service import GovernedGatewayApplicationService
 from engineering_gateway.domain.change_control import AuthorizationLevel
-from engineering_gateway.domain.models import (
-    ElementKind,
-    EngineeringElement,
-    EngineeringRelation,
-    RelationType,
-)
+from engineering_gateway.domain.models import EngineeringElement, EngineeringRelation
 
 
 def _require_l2(actor: Actor) -> None:
