@@ -12,13 +12,13 @@ The CI quality job uses Python 3.12 and runs:
 
 ```text
 python -m pip install -e .
-python -m pip install pytest pytest-asyncio httpx ruff mypy
+python -m pip install 'pytest>=8.3,<9.0' 'pytest-asyncio>=0.24,<1.0' 'httpx>=0.27,<1.0' 'ruff>=0.8,<1.0' 'mypy>=1.13,<2.0'
 ruff check .
 mypy src
 pytest -q
 ```
 
-Use the version ranges declared in `.github/workflows/ci.yml` for reproducible CI behavior.
+Use the version ranges declared in `.github/workflows/ci.yml` for reproducible CI behavior. Every infrastructure commit must be considered unverified until its corresponding CI workflow has completed successfully.
 
 ## PostgreSQL
 
