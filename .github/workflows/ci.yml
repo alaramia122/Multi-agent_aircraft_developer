@@ -23,7 +23,7 @@ jobs:
       - name: Apply Ruff fixes during infrastructure cleanup
         if: github.event_name == 'push' && github.ref == 'refs/heads/infrastructure/canonical-persistence'
         run: |
-          ruff check . --fix || true
+          ruff check . --fix --unsafe-fixes || true
           ruff format .
           if git diff --quiet; then
             exit 0
