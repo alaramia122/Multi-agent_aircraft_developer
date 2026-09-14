@@ -86,7 +86,7 @@ async def test_bridge_rejects_unexpected_operation(
 ) -> None:
     monkeypatch.setattr(
         "engineering_gateway.infrastructure.strictdoc_workspace_adapter.subprocess.run",
-        lambda **_kwargs: type(
+        lambda *_args, **_kwargs: type(
             "Result",
             (),
             {
