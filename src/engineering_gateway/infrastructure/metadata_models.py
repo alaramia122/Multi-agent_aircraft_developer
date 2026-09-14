@@ -67,7 +67,9 @@ class WorkspaceRecord(Base):
     profile_id: Mapped[str | None] = mapped_column(String(255))
     profile_version: Mapped[str | None] = mapped_column(String(128))
     validation_graph_hash: Mapped[str | None] = mapped_column(String(64))
-    validation_evidence: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    validation_evidence: Mapped[dict[str, object]] = mapped_column(
+        JSON, nullable=False, default=dict
+    )
     reconciled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     reconciled_change_set_hash: Mapped[str | None] = mapped_column(String(64))
     reconciliation_external_versions: Mapped[list[object]] = mapped_column(
