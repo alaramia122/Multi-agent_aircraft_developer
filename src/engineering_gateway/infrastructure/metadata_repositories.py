@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from engineering_gateway.application.profile_engine import StandardProfileEngine
 from engineering_gateway.domain.audit import AuditEvent, AuditResult
+from engineering_gateway.domain.adapters import ExternalVersion
 from engineering_gateway.domain.baselines import Baseline, ExternalSystemVersion
 from engineering_gateway.domain.change_control import ChangeGate, ChangeRequest, ChangeRequestState
 from engineering_gateway.domain.profiles import StandardProfile
@@ -348,7 +349,7 @@ def _to_workspace(record: WorkspaceRecord) -> Workspace:
         reconciled=record.reconciled,
         reconciled_change_set_hash=record.reconciled_change_set_hash,
         reconciliation_external_versions=tuple(
-            ExternalSystemVersion.model_validate(item)
+            ExternalVersion.model_validate(item)
             for item in (record.reconciliation_external_versions or [])
         ),
         state=WorkspaceState(record.state),

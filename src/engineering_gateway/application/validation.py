@@ -13,7 +13,11 @@ from engineering_gateway.domain.models import (
     EngineeringRelation,
     RelationType,
 )
-from engineering_gateway.domain.profiles import AttributeType, StandardProfile
+from engineering_gateway.domain.profiles import (
+    AttributeType,
+    ElementTypeDefinition,
+    StandardProfile,
+)
 from engineering_gateway.domain.traceability import TraceabilityGraph
 
 
@@ -217,7 +221,7 @@ class DeterministicValidationEngine:
     @staticmethod
     def _validate_attributes(
         graph: EngineeringGraph,
-        type_definitions: dict[str, object],
+        type_definitions: dict[str, ElementTypeDefinition],
         attributes: dict[UUID, dict[str, object]],
         issues: list[ValidationIssue],
     ) -> None:

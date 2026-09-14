@@ -59,7 +59,12 @@ class GovernedGatewayApplicationService(
             change_requests = change_request_registry or getattr(self, "_change_requests", None)
             changes = workspace_changes or getattr(self, "_workspace_changes", None)
             audit_sink = audit or getattr(self, "_audit", None)
-            if not all((workspaces, change_requests, changes, audit_sink)):
+            if (
+                workspaces is None
+                or change_requests is None
+                or changes is None
+                or audit_sink is None
+            ):
                 raise ValueError(
                     "workspace reconciliation requires workspace, change-request, change-set and audit services"
                 )
@@ -85,6 +90,12 @@ class GovernedGatewayApplicationService(
         lifecycle_states: dict[UUID, str] | None = None,
         lifecycle_transitions: dict[UUID, tuple[str, str]] | None = None,
     ) -> ValidationResult:
+        if (
+            self._workspaces is None
+            or self._workspace_changes is None
+            or self._change_requests is None
+        ):
+            raise GatewayServiceError("workspace/change-set services are not configured")
         workspace = await self._workspaces.get(workspace_id)
         if workspace is None:
             raise GatewayServiceError(f"workspace '{workspace_id}' was not found")
@@ -139,7 +150,7 @@ class GovernedGatewayApplicationService(
                 metadata={"graph_hash": result.graph_hash},
             )
             return result
-        evidence = {
+        evidence: dict[str, object] = {
             "attributes": {
                 str(element_id): values
                 for element_id, values in (validation_attributes or {}).items()
