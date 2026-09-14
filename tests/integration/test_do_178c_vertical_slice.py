@@ -69,7 +69,7 @@ def test_do_178c_lifecycle_and_traceability(invalid: bool) -> None:
         lifecycle_states[llr.id] = "approved"
         relations = relations[:-1]
 
-    result = engine.validate(
+    result = engine.validate_graph(
         EngineeringGraph(elements=elements, relations=relations),
         profile,
         lifecycle_states=lifecycle_states,
