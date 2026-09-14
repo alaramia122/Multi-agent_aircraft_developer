@@ -7,8 +7,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from engineering_gateway.application.profile_engine import StandardProfileEngine
-from engineering_gateway.domain.audit import AuditEvent, AuditResult
 from engineering_gateway.domain.adapters import ExternalVersion
+from engineering_gateway.domain.audit import AuditEvent, AuditResult
 from engineering_gateway.domain.baselines import Baseline, ExternalSystemVersion
 from engineering_gateway.domain.change_control import ChangeGate, ChangeRequest, ChangeRequestState
 from engineering_gateway.domain.profiles import StandardProfile
