@@ -229,8 +229,8 @@ async def test_arp4754a_full_governed_workflow():
     assert capella.created == [(workspace.id, "abc123", expected_hash)]
     assert strictdoc.elements == [requirement, verification]
     assert capella.elements == [architecture]
-    assert strictdoc.relations == [verification_relation]
-    assert capella.relations == [allocation]
+    assert strictdoc.relations == [allocation, verification_relation]
+    assert capella.relations == []
 
     baseline = await gateway.approve_workspace(reviewer, workspace.id)
     assert baseline.git_commit == "def456"
