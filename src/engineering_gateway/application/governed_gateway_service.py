@@ -9,7 +9,7 @@ from engineering_gateway.application.transactional_service import TransactionalA
 from engineering_gateway.application.workspace_reconciliation import ReconciliationResult, WorkspaceReconciliationService
 from engineering_gateway.domain.baselines import Baseline
 from engineering_gateway.domain.ports import AuditSink, ChangeRequestRegistryPort, WorkspaceChangeSetRepository, WorkspaceRegistryPort
-from engineering_gateway.domain.reconciliation import WorkspaceReconciler
+from engineering_gateway.domain.reconciliation import WorkspaceReconciler, compute_change_set_hash
 
 
 class GovernedGatewayApplicationService(TransactionalApplicationServiceMixin, GatewayApplicationService):
@@ -47,7 +47,10 @@ class GovernedGatewayApplicationService(TransactionalApplicationServiceMixin, Ga
         """Prepare a workspace and invalidate stale reconciliation evidence."""
         workspace = await self._workspaces.get(workspace_id)
         if workspace is not None and workspace.reconciled:
-            await self._workspaces.update(workspace.model_copy(update={"reconciled": False}))
+            await self._workspaces.update(workspace.model_copy(update={
+                "reconciled": False,
+                "reconciled_change_set_hash": None,
+            }))
         return await super().prepare_for_approval(actor, workspace_id, *args, **kwargs)
 
     async def reconcile_workspace(self, actor: Actor, workspace_id: UUID) -> ReconciliationResult:
@@ -57,12 +60,13 @@ class GovernedGatewayApplicationService(TransactionalApplicationServiceMixin, Ga
         return await self._workspace_reconciliation.reconcile(actor, workspace_id)
 
     async def approve_workspace(self, actor: Actor, workspace_id: UUID) -> Baseline:
-        """Require fresh reconciliation evidence before creating a new baseline."""
+        """Require fresh reconciliation evidence for the exact current change-set."""
         workspace = await self._workspaces.get(workspace_id)
         if workspace is None:
             raise GatewayServiceError(f"workspace '{workspace_id}' was not found")
+        changes = await self._workspace_changes.get_changes(workspace_id)
         try:
-            workspace.require_reconciled()
+            workspace.require_reconciled(compute_change_set_hash(changes))
         except ValueError as exc:
             raise GatewayServiceError(str(exc)) from exc
         return await super().approve_workspace(actor, workspace_id)
