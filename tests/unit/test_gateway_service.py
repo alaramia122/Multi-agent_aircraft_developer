@@ -143,13 +143,18 @@ async def make_change_request(
 
 
 async def mark_workspace_ready(
-    workspace, workspaces: WorkspaceRegistry, change_requests: InMemoryChangeRequests, change_request: ChangeRequest
+    workspace,
+    workspaces: WorkspaceRegistry,
+    change_requests: InMemoryChangeRequests,
+    change_request: ChangeRequest,
 ) -> None:
     ready = workspace.model_copy(
         update={
             "state": WorkspaceState.READY_FOR_APPROVAL,
             "profile_id": "test-profile",
             "profile_version": "1.0",
+            "reconciled": True,
+            "reconciled_change_set_hash": "a" * 64,
             "reconciliation_external_versions": (
                 ExternalVersion(system="strictdoc", version="rev-42"),
             ),
