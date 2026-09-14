@@ -15,6 +15,7 @@ from engineering_gateway.domain.workspaces import WorkspaceState
 @dataclass(frozen=True)
 class ReconciliationResult:
     """Evidence returned after successful publication to authoritative systems."""
+
     workspace_id: UUID
     change_set_hash: str
     external_versions: tuple[ExternalVersion, ...]
@@ -22,6 +23,7 @@ class ReconciliationResult:
 
 class WorkspaceReconciliationService:
     """Govern reconciliation without changing the Gateway canonical model."""
+
     def __init__(self, workspaces: WorkspaceRegistryPort, change_requests: ChangeRequestRegistryPort, changes: WorkspaceChangeSetRepository, reconciler: WorkspaceReconciler, audit: AuditSink) -> None:
         self._workspaces = workspaces
         self._change_requests = change_requests
@@ -30,8 +32,8 @@ class WorkspaceReconciliationService:
         self._audit = audit
 
     async def reconcile(self, actor: Actor, workspace_id: UUID) -> ReconciliationResult:
-        if actor.is_ai or actor.authorization_level != AuthorizationLevel.L2_MODIFY_WORKSPACE:
-            raise GatewayServiceError("workspace reconciliation requires human L2 workspace modification authority")
+        if actor.authorization_level != AuthorizationLevel.L2_MODIFY_WORKSPACE:
+            raise GatewayServiceError("workspace reconciliation requires L2 workspace modification authority")
         workspace = await self._workspaces.get(workspace_id)
         if workspace is None:
             raise GatewayServiceError(f"workspace '{workspace_id}' was not found")
