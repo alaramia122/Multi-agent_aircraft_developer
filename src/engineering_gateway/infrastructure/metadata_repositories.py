@@ -16,7 +16,6 @@ from engineering_gateway.infrastructure.metadata_models import AuditEventRecord,
 
 
 class _TransactionAware:
-    """Shared commit policy for repositories participating in Gateway transactions."""
     def __init__(self, session: AsyncSession, *, autocommit: bool = True) -> None:
         self._session = session
         self._autocommit = autocommit
@@ -28,7 +27,6 @@ class _TransactionAware:
 
 
 class SqlAlchemyStandardProfileRegistry(_TransactionAware):
-    """Durable Standard Profile registry with explicit activation state."""
     def __init__(self, session: AsyncSession, *, autocommit: bool = True) -> None:
         super().__init__(session, autocommit=autocommit)
     async def register(self, profile: StandardProfile) -> None:
@@ -71,7 +69,6 @@ class SqlAlchemyStandardProfileRegistry(_TransactionAware):
 
 
 class SqlAlchemyBaselineRegistry(_TransactionAware):
-    """Durable immutable baseline registry."""
     def __init__(self, session: AsyncSession, *, autocommit: bool = True) -> None:
         super().__init__(session, autocommit=autocommit)
     async def register(self, baseline: Baseline) -> Baseline:
@@ -93,7 +90,6 @@ class SqlAlchemyBaselineRegistry(_TransactionAware):
 
 
 class SqlAlchemyChangeRequestRepository(_TransactionAware):
-    """Durable Gateway reference store for controlled change requests."""
     def __init__(self, session: AsyncSession, *, autocommit: bool = True) -> None:
         super().__init__(session, autocommit=autocommit)
     async def create(self, change_request: ChangeRequest) -> ChangeRequest:
@@ -117,13 +113,12 @@ class SqlAlchemyChangeRequestRepository(_TransactionAware):
 
 
 class SqlAlchemyWorkspaceRegistry(_TransactionAware):
-    """Durable Gateway-owned controlled workspace state."""
     def __init__(self, session: AsyncSession, *, autocommit: bool = True) -> None:
         super().__init__(session, autocommit=autocommit)
     async def create(self, workspace: Workspace) -> Workspace:
         if await self.get(workspace.id) is not None:
             raise ValueError(f"workspace '{workspace.id}' already exists")
-        self._session.add(WorkspaceRecord(id=workspace.id, source_baseline_id=workspace.source_baseline_id, source_git_commit=workspace.source_git_commit, change_request_id=workspace.change_request_id, git_ref=workspace.git_ref, profile_id=workspace.profile_id, profile_version=workspace.profile_version, validation_graph_hash=workspace.validation_graph_hash, validation_evidence=workspace.validation_evidence, reconciled=workspace.reconciled, reconciled_change_set_hash=workspace.reconciled_change_set_hash, state=workspace.state.value))
+        self._session.add(WorkspaceRecord(id=workspace.id, source_baseline_id=workspace.source_baseline_id, source_git_commit=workspace.source_git_commit, change_request_id=workspace.change_request_id, git_ref=workspace.git_ref, profile_id=workspace.profile_id, profile_version=workspace.profile_version, validation_graph_hash=workspace.validation_graph_hash, validation_evidence=workspace.validation_evidence, reconciled=workspace.reconciled, reconciled_change_set_hash=workspace.reconciled_change_set_hash, reconciliation_external_versions=[item.model_dump(mode="json") for item in workspace.reconciliation_external_versions], state=workspace.state.value))
         await self._persist()
         return workspace
     async def get(self, workspace_id: UUID) -> Workspace | None:
@@ -141,14 +136,14 @@ class SqlAlchemyWorkspaceRegistry(_TransactionAware):
             raise ValueError("workspace validation profile is immutable once bound")
         if record.validation_graph_hash is not None and record.validation_graph_hash != workspace.validation_graph_hash:
             raise ValueError("validation evidence is immutable once bound")
-        if record.validation_graph_hash is not None and record.validation_evidence != workspace.validation_evidence:
+        if record.validation_evidence != workspace.validation_evidence:
             raise ValueError("validation evidence is immutable once bound")
         if record.reconciled and not workspace.reconciled and WorkspaceState(record.state) is not WorkspaceState.ACTIVE:
             raise ValueError("workspace reconciliation evidence can only be reset while workspace is active")
-        if record.reconciled and workspace.reconciled and record.reconciled_change_set_hash != workspace.reconciled_change_set_hash:
+        if record.reconciled and workspace.reconciled and (record.reconciled_change_set_hash != workspace.reconciled_change_set_hash or record.reconciliation_external_versions != [item.model_dump(mode="json") for item in workspace.reconciliation_external_versions]):
             raise ValueError("reconciliation evidence cannot be replaced without returning to active engineering")
-        if not workspace.reconciled and workspace.reconciled_change_set_hash is not None:
-            raise ValueError("reconciliation hash must be cleared when reconciliation evidence is cleared")
+        if not workspace.reconciled and (workspace.reconciled_change_set_hash is not None or workspace.reconciliation_external_versions):
+            raise ValueError("reconciliation evidence must be cleared together")
         current = WorkspaceState(record.state)
         if current is not workspace.state:
             from engineering_gateway.domain.workspaces import WorkspaceGate
@@ -159,6 +154,7 @@ class SqlAlchemyWorkspaceRegistry(_TransactionAware):
         record.validation_evidence = workspace.validation_evidence
         record.reconciled = workspace.reconciled
         record.reconciled_change_set_hash = workspace.reconciled_change_set_hash
+        record.reconciliation_external_versions = [item.model_dump(mode="json") for item in workspace.reconciliation_external_versions]
         record.state = workspace.state.value
         await self._persist()
         return workspace
@@ -171,11 +167,10 @@ def _to_change_request(record: ChangeRequestRecord) -> ChangeRequest:
     return ChangeRequest(id=record.id, external_system=record.external_system, external_id=record.external_id, title=record.title, state=ChangeRequestState(record.state), source_baseline_id=record.source_baseline_id, workspace_id=record.workspace_id)
 
 def _to_workspace(record: WorkspaceRecord) -> Workspace:
-    return Workspace(id=record.id, source_baseline_id=record.source_baseline_id, source_git_commit=record.source_git_commit, change_request_id=record.change_request_id, git_ref=record.git_ref, profile_id=record.profile_id, profile_version=record.profile_version, validation_graph_hash=record.validation_graph_hash, validation_evidence=record.validation_evidence or {}, reconciled=record.reconciled, reconciled_change_set_hash=record.reconciled_change_set_hash, state=WorkspaceState(record.state))
+    return Workspace(id=record.id, source_baseline_id=record.source_baseline_id, source_git_commit=record.source_git_commit, change_request_id=record.change_request_id, git_ref=record.git_ref, profile_id=record.profile_id, profile_version=record.profile_version, validation_graph_hash=record.validation_graph_hash, validation_evidence=record.validation_evidence or {}, reconciled=record.reconciled, reconciled_change_set_hash=record.reconciled_change_set_hash, reconciliation_external_versions=tuple(ExternalSystemVersion.model_validate(item) for item in (record.reconciliation_external_versions or [])), state=WorkspaceState(record.state))
 
 
 class SqlAlchemyAuditSink(_TransactionAware):
-    """Append-only durable audit sink with rollback-independent failure recording."""
     def __init__(self, session: AsyncSession, *, autocommit: bool = True, independent_session_factory: Callable[[], object] | None = None) -> None:
         super().__init__(session, autocommit=autocommit)
         self._independent_session_factory = independent_session_factory
