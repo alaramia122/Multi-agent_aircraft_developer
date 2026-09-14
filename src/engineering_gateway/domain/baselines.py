@@ -6,9 +6,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ExternalSystemVersion(BaseModel):
-    """Version/reference of an authoritative external engineering system."""
+    """Immutable version/reference of an authoritative external engineering system."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", frozen=True)
     system: str = Field(min_length=1)
     version: str = Field(min_length=1)
 
