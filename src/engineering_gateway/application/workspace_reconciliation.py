@@ -8,7 +8,7 @@ from engineering_gateway.domain.adapters import ExternalVersion
 from engineering_gateway.domain.audit import AuditEvent, AuditResult
 from engineering_gateway.domain.change_control import AuthorizationLevel, ChangeRequestState
 from engineering_gateway.domain.ports import AuditSink, ChangeRequestRegistryPort, WorkspaceChangeSetRepository, WorkspaceRegistryPort
-from engineering_gateway.domain.reconciliation import WorkspaceReconciler
+from engineering_gateway.domain.reconciliation import WorkspaceReconciler, compute_change_set_hash
 from engineering_gateway.domain.workspaces import WorkspaceState
 
 
@@ -17,6 +17,7 @@ class ReconciliationResult:
     """Evidence returned after successful publication to authoritative systems."""
 
     workspace_id: UUID
+    change_set_hash: str
     external_versions: tuple[ExternalVersion, ...]
 
 
@@ -53,9 +54,10 @@ class WorkspaceReconciliationService:
             raise GatewayServiceError("change request must be ready for approval before reconciliation")
 
         changes = await self._changes.get_changes(workspace_id)
+        change_set_hash = compute_change_set_hash(changes)
         try:
             versions = await self._reconciler.reconcile(workspace, changes)
-            await self._workspaces.update(workspace.mark_reconciled())
+            await self._workspaces.update(workspace.mark_reconciled(change_set_hash))
         except Exception as exc:
             await self._audit.record(AuditEvent(
                 actor_id=actor.actor_id,
@@ -66,7 +68,11 @@ class WorkspaceReconciliationService:
                 target_id=workspace_id,
                 result=AuditResult.FAILURE,
                 reason=str(exc),
-                metadata={"change_elements": len(changes.elements), "change_relations": len(changes.relations)},
+                metadata={
+                    "change_elements": len(changes.elements),
+                    "change_relations": len(changes.relations),
+                    "change_set_hash": change_set_hash,
+                },
             ))
             if isinstance(exc, GatewayServiceError):
                 raise
@@ -83,10 +89,15 @@ class WorkspaceReconciliationService:
             metadata={
                 "change_elements": len(changes.elements),
                 "change_relations": len(changes.relations),
+                "change_set_hash": change_set_hash,
                 "external_versions": [version.version for version in versions],
             },
         ))
-        return ReconciliationResult(workspace_id=workspace_id, external_versions=versions)
+        return ReconciliationResult(
+            workspace_id=workspace_id,
+            change_set_hash=change_set_hash,
+            external_versions=versions,
+        )
 
 
 __all__ = ["ReconciliationResult", "WorkspaceReconciliationService"]
