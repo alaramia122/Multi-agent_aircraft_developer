@@ -20,7 +20,7 @@ class StandardProfileRecord(Base):
     profile_id: Mapped[str] = mapped_column(String(255), nullable=False)
     version: Mapped[str] = mapped_column(String(128), nullable=False)
     name: Mapped[str] = mapped_column(String(1024), nullable=False)
-    definition: Mapped[dict] = mapped_column(JSON, nullable=False)
+    definition: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
@@ -32,7 +32,7 @@ class BaselineRecord(Base):
     git_repository: Mapped[str] = mapped_column(String(2048), nullable=False)
     git_commit: Mapped[str] = mapped_column(String(255), nullable=False)
     git_tag: Mapped[str | None] = mapped_column(String(255))
-    external_versions: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    external_versions: Mapped[list[object]] = mapped_column(JSON, nullable=False, default=list)
 
 
 class ChangeRequestRecord(Base):
@@ -67,10 +67,10 @@ class WorkspaceRecord(Base):
     profile_id: Mapped[str | None] = mapped_column(String(255))
     profile_version: Mapped[str | None] = mapped_column(String(128))
     validation_graph_hash: Mapped[str | None] = mapped_column(String(64))
-    validation_evidence: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    validation_evidence: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
     reconciled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     reconciled_change_set_hash: Mapped[str | None] = mapped_column(String(64))
-    reconciliation_external_versions: Mapped[list] = mapped_column(
+    reconciliation_external_versions: Mapped[list[object]] = mapped_column(
         JSON, nullable=False, default=list
     )
     state: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -94,4 +94,6 @@ class AuditEventRecord(Base):
     correlation_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
     result: Mapped[str] = mapped_column(String(32), nullable=False)
     reason: Mapped[str | None] = mapped_column(Text)
-    metadata: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    event_metadata: Mapped[dict[str, object]] = mapped_column(
+        "metadata", JSON, nullable=False, default=dict
+    )
