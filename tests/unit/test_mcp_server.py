@@ -79,6 +79,21 @@ async def test_l0_mcp_server_exposes_only_read_tools() -> None:
 
 
 @pytest.mark.asyncio
+async def test_l1_mcp_server_exposes_only_read_tools() -> None:
+    repository = _Repository()
+    server = create_mcp_server(_service(repository), _actor(AuthorizationLevel.L1_PROPOSE))
+
+    tools = await server.list_tools()
+    names = {tool.name for tool in tools}
+
+    assert names == {
+        "get_engineering_element",
+        "get_engineering_relations",
+        "validate_engineering_graph",
+    }
+
+
+@pytest.mark.asyncio
 async def test_l2_mcp_server_exposes_workspace_mutation_tools_but_no_approval() -> None:
     repository = _Repository()
     server = create_mcp_server(_service(repository), _actor(AuthorizationLevel.L2_MODIFY_WORKSPACE))
