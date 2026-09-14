@@ -2,7 +2,10 @@
 
 from engineering_gateway.domain.adapters import ExternalVersion, WorkspaceAdapter
 from engineering_gateway.domain.models import EngineeringGraph
-from engineering_gateway.domain.reconciliation import WorkspaceReconciliationError
+from engineering_gateway.domain.reconciliation import (
+    WorkspaceReconciliationError,
+    compute_change_set_hash,
+)
 from engineering_gateway.domain.workspaces import Workspace
 
 
@@ -29,10 +32,11 @@ class AdapterWorkspaceReconciler:
                 "no writable workspace adapter configured for: " + ", ".join(missing)
             )
 
+        change_set_hash = compute_change_set_hash(changes)
         for system in sorted(systems):
             adapter = self._adapters[system]
-            source_version = ""
-            await adapter.create_workspace(workspace.id, source_version)
+            source_version = (await adapter.get_version()).version
+            await adapter.create_workspace(workspace.id, source_version, change_set_hash)
 
         for element in changes.elements:
             await self._adapters[element.external_system].apply_element(workspace.id, element)
