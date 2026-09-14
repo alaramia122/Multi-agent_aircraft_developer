@@ -75,6 +75,41 @@ class WorkspaceReconciliationService:
 
         changes = await self._changes.get_changes(workspace_id)
         change_set_hash = compute_change_set_hash(changes)
+
+        # A committed reconciliation is a durable publication result. Replaying the
+        # same request must not invoke external systems again; this also makes the
+        # Gateway side of the reconciliation operation explicitly idempotent.
+        if (
+            workspace.reconciled
+            and workspace.reconciled_change_set_hash == change_set_hash
+        ):
+            await self._audit.record(
+                AuditEvent(
+                    actor_id=actor.actor_id,
+                    actor_type=actor.actor_type,
+                    authorization_level=actor.authorization_level,
+                    action="reconcile_workspace",
+                    target_type="workspace",
+                    target_id=workspace_id,
+                    result=AuditResult.SUCCESS,
+                    metadata={
+                        "change_elements": len(changes.elements),
+                        "change_relations": len(changes.relations),
+                        "change_set_hash": change_set_hash,
+                        "external_versions": [
+                            {"system": version.system, "version": version.version}
+                            for version in workspace.reconciliation_external_versions
+                        ],
+                        "idempotent_replay": True,
+                    },
+                )
+            )
+            return ReconciliationResult(
+                workspace_id=workspace_id,
+                change_set_hash=change_set_hash,
+                external_versions=workspace.reconciliation_external_versions,
+            )
+
         try:
             versions = await self._reconciler.reconcile(workspace, changes)
             await self._workspaces.update(workspace.mark_reconciled(change_set_hash, versions))
