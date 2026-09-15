@@ -87,6 +87,15 @@ async def test_create_tag_rejects_unknown_commit(git_repository: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_tag_rejects_invalid_tag_name(git_repository: Path) -> None:
+    adapter = LocalGitAdapter()
+    commit = _git(git_repository, "rev-parse", "HEAD")
+
+    with pytest.raises(ValueError, match="invalid Git tag name"):
+        await adapter.create_tag(str(git_repository), "invalid..tag", commit)
+
+
+@pytest.mark.asyncio
 async def test_is_ancestor_distinguishes_false_from_command_failure(git_repository: Path) -> None:
     adapter = LocalGitAdapter()
     first_commit = _git(git_repository, "rev-parse", "HEAD")
