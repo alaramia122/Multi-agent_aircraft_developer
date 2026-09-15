@@ -42,6 +42,10 @@ from engineering_gateway.infrastructure.metadata_repositories import (
     SqlAlchemyWorkspaceRegistry,
 )
 from engineering_gateway.infrastructure.repositories import SqlAlchemyEngineeringRepository
+from engineering_gateway.infrastructure.strictdoc_workspace_adapter import (
+    LocalStrictDocWorkspaceAdapter,
+    StrictDocBridgeConfig,
+)
 from engineering_gateway.infrastructure.workspace_changes import (
     SqlAlchemyWorkspaceChangeSetRepository,
 )
@@ -70,6 +74,30 @@ _BRIDGE = textwrap.dedent(
     if operation == "get_version":
         response["version"] = "capella-rev-1"
     print(json.dumps(response, sort_keys=True))
+    """
+).lstrip()
+
+
+_STRICTDOC_CLI = textwrap.dedent(
+    """
+    #!/usr/bin/env python3
+    import json
+    import pathlib
+    import sys
+
+    args = sys.argv[1:]
+    if args[:2] != ["export", args[1]] if len(args) > 1 else True:
+        pass
+    project = pathlib.Path(args[1])
+    output_dir = pathlib.Path(next(arg.split("=", 1)[1] for arg in args if arg.startswith("--output-dir=")))
+    output = output_dir / "json"
+    output.mkdir(parents=True, exist_ok=True)
+    documents = []
+    for path in sorted(project.rglob("*.sdoc")):
+        documents.append(json.loads(path.read_text(encoding="utf-8")))
+    (output / "index.json").write_text(
+        json.dumps({"DOCUMENTS": documents}, sort_keys=True), encoding="utf-8"
+    )
     """
 ).lstrip()
 
@@ -262,9 +290,7 @@ async def test_composed_capella_and_strictdoc_adapters_route_cross_system_relati
         async with governed_gateway_context(database, adapter_set=adapter_set) as service:
             reconciliation = await service.reconcile_workspace(actor, workspace.id)
 
-        assert [(system, version) for system, version in (
-            (item.system, item.version) for item in reconciliation.external_versions
-        )] == [
+        assert [(item.system, item.version) for item in reconciliation.external_versions] == [
             ("capella", "capella-rev-1"),
             ("strictdoc", "strictdoc-rev-1"),
         ]
@@ -285,3 +311,76 @@ async def test_composed_capella_and_strictdoc_adapters_route_cross_system_relati
         assert all(request["payload"]["workspace_id"] == str(workspace.id) for request in requests)
     finally:
         await database.dispose()
+
+
+@pytest.mark.asyncio
+async def test_composed_strictdoc_workspace_adapter_uses_real_bridge_protocol_and_cli_reader(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    bridge = tmp_path / "strictdoc_bridge.py"
+    bridge.write_text(_BRIDGE, encoding="utf-8")
+    bridge.chmod(bridge.stat().st_mode | stat.S_IXUSR)
+
+    cli = tmp_path / "strictdoc"
+    cli.write_text(_STRICTDOC_CLI, encoding="utf-8")
+    cli.chmod(cli.stat().st_mode | stat.S_IXUSR)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ.get('PATH', '')}")
+
+    project = tmp_path / "strictdoc-project"
+    project.mkdir()
+    (project / "requirements.sdoc").write_text(
+        json.dumps(
+            {
+                "_NODE_TYPE": "REQUIREMENT",
+                "UID": "REQ-1",
+                "TITLE": "Flight control requirement",
+            }
+        ),
+        encoding="utf-8",
+    )
+    log = tmp_path / "strictdoc-bridge.log"
+    monkeypatch.setenv("BRIDGE_LOG", str(log))
+
+    adapter = LocalStrictDocWorkspaceAdapter(
+        StrictDocBridgeConfig(executable=str(bridge), project_path=project)
+    )
+    adapter_set = compose_external_adapters(LocalAdapterConfig(strictdoc=adapter))
+    assert adapter_set.workspace_adapters == (adapter,)
+    assert adapter_set.read_adapters == (adapter,)
+
+    element = await adapter.get_element("REQ-1")
+    assert element is not None
+    assert element.external_id == "REQ-1"
+    assert element.type_id == "strictdoc.requirement"
+
+    version = await adapter.get_version()
+    assert version.system == "strictdoc"
+    assert version.version.startswith("sha256:")
+
+    workspace_id = UUID("00000000-0000-0000-0000-000000000010")
+    await adapter.create_workspace(workspace_id, "source-rev", "change-hash")
+    await adapter.apply_element(workspace_id, element)
+    relation = EngineeringRelation(
+        id=UUID("00000000-0000-0000-0000-000000000011"),
+        source_id=element.id,
+        relation_type=RelationType.SATISFIES,
+        target_id=element.id,
+    )
+    await adapter.apply_relation(workspace_id, relation)
+
+    requests = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
+    assert [request["operation"] for request in requests] == [
+        "create_workspace",
+        "apply_element",
+        "apply_relation",
+    ]
+    assert all(request["protocol"] == 1 for request in requests)
+    assert all(request["project_path"] == str(project.resolve()) for request in requests)
+    assert requests[0]["payload"] == {
+        "workspace_id": str(workspace_id),
+        "source_version": "source-rev",
+        "change_set_hash": "change-hash",
+    }
+    assert requests[1]["payload"]["element"]["external_id"] == "REQ-1"
+    assert requests[2]["payload"]["relation"]["relation_type"] == "satisfies"
