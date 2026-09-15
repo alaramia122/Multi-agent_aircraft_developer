@@ -19,6 +19,9 @@ from engineering_gateway.infrastructure.metadata_repositories import (
     SqlAlchemyStandardProfileRegistry,
     SqlAlchemyWorkspaceRegistry,
 )
+from engineering_gateway.infrastructure.reconciliation_coordination import (
+    PostgresReconciliationCoordinator,
+)
 from engineering_gateway.infrastructure.repositories import SqlAlchemyEngineeringRepository
 from engineering_gateway.infrastructure.transaction import SqlAlchemyUnitOfWork
 from engineering_gateway.infrastructure.workspace_changes import (
@@ -45,9 +48,15 @@ async def governed_gateway_context(
     reconciler is explicitly supplied by the caller.
 
     Each public async application operation is committed or rolled back by the
-    service's UnitOfWork. External adapters remain outside the database transaction
-    and are handled by the reconciliation protocol rather than pretending to
-    participate in a distributed transaction.
+    service's UnitOfWork. Reconciliation additionally acquires a PostgreSQL
+    transaction-scoped advisory lock for its workspace, so concurrent Gateway
+    instances coordinate through the shared database rather than relying only on a
+    process-local asyncio lock.
+
+    External adapters remain outside the database transaction semantically; the
+    transaction protects Gateway metadata, the reconciliation evidence and the
+    coordination lock. External idempotency/recovery remains required because
+    PostgreSQL cannot roll back an already completed external side effect.
 
     Success audit events share the application transaction. Failure and denied audit
     events use an independent session so the audit trail survives rollback of the
@@ -60,7 +69,8 @@ async def governed_gateway_context(
     if adapter_set is not None:
         resolved_external_adapters = adapter_set.as_read_adapters()
         resolved_reconciler = workspace_reconciler or AdapterWorkspaceReconciler(
-            adapter_set.as_workspace_adapters()
+            adapter_set.as_workspace_adapters(),
+            canonical=None,
         )
     else:
         resolved_external_adapters = external_adapters or ()
@@ -80,6 +90,12 @@ async def governed_gateway_context(
             independent_session_factory=database.session_factory,
         )
 
+        if resolved_reconciler is None and adapter_set is not None:
+            resolved_reconciler = AdapterWorkspaceReconciler(
+                adapter_set.as_workspace_adapters(),
+                canonical=canonical,
+            )
+
         yield GovernedGatewayApplicationService(
             repository=canonical,
             profiles=profiles,
@@ -94,6 +110,7 @@ async def governed_gateway_context(
             workspace_registry=workspaces,
             change_request_registry=change_requests,
             uow=uow,
+            reconciliation_coordinator=PostgresReconciliationCoordinator(session),
         )
 
 
