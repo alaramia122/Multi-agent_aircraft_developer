@@ -95,9 +95,20 @@ class LocalOpenProjectAdapter:
                 "type": {"href": f"/api/v3/types/{self._config.change_request_type_id}"},
             },
         }
-        response = await asyncio.to_thread(
-            self._request_json, "POST", "/api/v3/work_packages", payload
-        )
+        try:
+            response = await asyncio.to_thread(
+                self._request_json, "POST", "/api/v3/work_packages", payload
+            )
+        except OpenProjectAdapterError as exc:
+            # The pre-flight lookup cannot close the race between two Gateway
+            # workers. When OpenProject rejects a concurrent create with 409,
+            # resolve the deterministic idempotency marker again and return the
+            # object created by the winning worker.
+            if idempotency_key and exc.status_code == 409:
+                existing = await asyncio.to_thread(self._find_by_subject, subject)
+                if existing is not None:
+                    return existing
+            raise
         identifier = response.get("id")
         if not isinstance(identifier, int) or identifier <= 0:
             raise OpenProjectAdapterError("OpenProject create response has no numeric id")
