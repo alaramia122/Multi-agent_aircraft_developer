@@ -60,6 +60,7 @@ class WorkspaceRecord(Base):
         Index("ix_workspaces_state", "state"),
     )
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    version: Mapped[int] = mapped_column(nullable=False, default=0)
     source_baseline_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
     source_git_commit: Mapped[str] = mapped_column(String(255), nullable=False)
     change_request_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
