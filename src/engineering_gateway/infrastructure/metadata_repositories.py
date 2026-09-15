@@ -3,7 +3,7 @@
 from collections.abc import Callable
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from engineering_gateway.application.profile_engine import StandardProfileEngine
@@ -209,6 +209,7 @@ class SqlAlchemyWorkspaceRegistry(_TransactionAware):
         self._session.add(
             WorkspaceRecord(
                 id=workspace.id,
+                version=workspace.version,
                 source_baseline_id=workspace.source_baseline_id,
                 source_git_commit=workspace.source_git_commit,
                 change_request_id=workspace.change_request_id,
@@ -237,6 +238,10 @@ class SqlAlchemyWorkspaceRegistry(_TransactionAware):
         record = await self._session.get(WorkspaceRecord, workspace.id)
         if record is None:
             raise ValueError(f"workspace '{workspace.id}' does not exist")
+        if record.version != workspace.version:
+            raise ValueError(
+                f"workspace '{workspace.id}' was modified concurrently; reload before updating"
+            )
         if (
             record.source_baseline_id != workspace.source_baseline_id
             or record.source_git_commit != workspace.source_git_commit
@@ -296,18 +301,34 @@ class SqlAlchemyWorkspaceRegistry(_TransactionAware):
             raise ValueError("reconciliation evidence must be cleared together")
         if current_state is not workspace.state:
             WorkspaceGate.require_transition(current_state, workspace.state)
-        record.profile_id = workspace.profile_id
-        record.profile_version = workspace.profile_version
-        record.validation_graph_hash = workspace.validation_graph_hash
-        record.validation_evidence = workspace.validation_evidence
-        record.reconciled = workspace.reconciled
-        record.reconciled_change_set_hash = workspace.reconciled_change_set_hash
-        record.reconciliation_external_versions = [
-            item.model_dump(mode="json") for item in workspace.reconciliation_external_versions
-        ]
-        record.state = workspace.state.value
+
+        result = await self._session.execute(
+            update(WorkspaceRecord)
+            .where(
+                WorkspaceRecord.id == workspace.id,
+                WorkspaceRecord.version == workspace.version,
+            )
+            .values(
+                profile_id=workspace.profile_id,
+                profile_version=workspace.profile_version,
+                validation_graph_hash=workspace.validation_graph_hash,
+                validation_evidence=workspace.validation_evidence,
+                reconciled=workspace.reconciled,
+                reconciled_change_set_hash=workspace.reconciled_change_set_hash,
+                reconciliation_external_versions=[
+                    item.model_dump(mode="json")
+                    for item in workspace.reconciliation_external_versions
+                ],
+                state=workspace.state.value,
+                version=WorkspaceRecord.version + 1,
+            )
+        )
+        if result.rowcount != 1:
+            raise ValueError(
+                f"workspace '{workspace.id}' was modified concurrently; reload before updating"
+            )
         await self._persist()
-        return workspace
+        return workspace.model_copy(update={"version": workspace.version + 1})
 
 
 def _to_baseline(record: BaselineRecord) -> Baseline:
@@ -338,6 +359,7 @@ def _to_change_request(record: ChangeRequestRecord) -> ChangeRequest:
 def _to_workspace(record: WorkspaceRecord) -> Workspace:
     return Workspace(
         id=record.id,
+        version=record.version,
         source_baseline_id=record.source_baseline_id,
         source_git_commit=record.source_git_commit,
         change_request_id=record.change_request_id,
