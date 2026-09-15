@@ -11,7 +11,7 @@ from engineering_gateway.domain.adapters import ExternalVersion
 from engineering_gateway.domain.audit import ActorType, InMemoryAuditSink
 from engineering_gateway.domain.change_control import AuthorizationLevel, ChangeRequest, ChangeRequestState
 from engineering_gateway.domain.models import EngineeringGraph
-from engineering_gateway.domain.workspaces import Workspace, WorkspaceState
+from engineering_gateway.domain.workspaces import Workspace, WorkspaceRegistry, WorkspaceState
 
 
 class InMemoryChangeRequests:
@@ -81,8 +81,6 @@ async def test_concurrent_reconciliation_for_same_workspace_is_serialized():
         change_request_id=change_request.id,
         state=WorkspaceState.READY_FOR_APPROVAL,
     )
-
-    from engineering_gateway.domain.workspaces import WorkspaceRegistry
 
     workspaces = WorkspaceRegistry()
     await workspaces.create(workspace)
