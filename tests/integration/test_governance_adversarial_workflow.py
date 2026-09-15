@@ -1,5 +1,6 @@
 """Adversarial governance scenarios for the Gateway application boundary."""
 
+from pathlib import Path
 from uuid import UUID
 
 import pytest
@@ -13,14 +14,18 @@ from engineering_gateway.domain.adapters import ExternalVersion, GitSnapshot
 from engineering_gateway.domain.audit import ActorType, InMemoryAuditSink
 from engineering_gateway.domain.baselines import Baseline, BaselineRegistry
 from engineering_gateway.domain.change_control import AuthorizationLevel
-from engineering_gateway.domain.models import ElementKind, EngineeringElement
+from engineering_gateway.domain.models import (
+    ElementKind,
+    EngineeringElement,
+    EngineeringGraph,
+    EngineeringRelation,
+    RelationType,
+)
 from engineering_gateway.domain.workspaces import WorkspaceRegistry, WorkspaceState
 from engineering_gateway.infrastructure.profile_loader import load_standard_profile
 from engineering_gateway.infrastructure.profile_registry import InMemoryStandardProfileRegistry
 from engineering_gateway.infrastructure.workspace_changes import InMemoryWorkspaceChangeSetRepository
 from engineering_gateway.infrastructure.workspace_reconciler import AdapterWorkspaceReconciler
-
-from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 PROFILE = ROOT / "profiles" / "arp4754a" / "1.0" / "profile.json"
@@ -50,8 +55,6 @@ class CanonicalRepository:
         ]
 
     async def list_graph(self):
-        from engineering_gateway.domain.models import EngineeringGraph
-
         return EngineeringGraph(
             elements=list(self.elements.values()), relations=list(self.relations.values())
         )
@@ -133,7 +136,6 @@ async def _gateway():
     changes = InMemoryWorkspaceChangeSetRepository(canonical)
     openproject = FakeOpenProject()
     change_service = ChangeRequestApplicationService(change_requests, openproject, audit)
-    git = FakeGit()
     strictdoc = FakeWorkspaceAdapter("strictdoc")
     capella = FakeWorkspaceAdapter("capella")
     reconciler = AdapterWorkspaceReconciler((strictdoc, capella), canonical)
@@ -145,7 +147,7 @@ async def _gateway():
         change_requests=change_requests,
         workspaces=workspaces,
         workspace_changes=changes,
-        git=git,
+        git=FakeGit(),
         external_adapters=(openproject,),
         workspace_reconciler=reconciler,
     )
@@ -159,6 +161,7 @@ async def _gateway():
         engineer, "Controlled change", "Adversarial governance test", source
     )
     workspace = await gateway.create_workspace(engineer, source.id, change_request.id)
+
     requirement = EngineeringElement(
         kind=ElementKind.REQUIREMENT,
         type_id="system_requirement",
@@ -182,7 +185,6 @@ async def _gateway():
     )
     for element in (requirement, architecture, verification):
         await gateway.save_workspace_element(engineer, element, workspace.id)
-    from engineering_gateway.domain.models import EngineeringRelation, RelationType
 
     await gateway.add_workspace_relation(
         engineer,
@@ -228,8 +230,8 @@ async def test_rejection_clears_evidence_and_reopen_requires_new_preparation():
     await gateway.reject_workspace(reviewer, workspace_id, "Architecture review rejected")
 
     workspace = await workspaces.get(workspace_id)
-    change_request = await change_requests.get(workspace.change_request_id)
     assert workspace is not None
+    change_request = await change_requests.get(workspace.change_request_id)
     assert workspace.state is WorkspaceState.ACTIVE
     assert workspace.validation_graph_hash is None
     assert not workspace.reconciled
