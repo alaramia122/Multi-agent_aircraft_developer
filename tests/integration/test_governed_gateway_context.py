@@ -6,7 +6,11 @@ import pytest
 from engineering_gateway.application.gateway_service import Actor, GatewayServiceError
 from engineering_gateway.domain.adapters import ExternalVersion
 from engineering_gateway.domain.audit import ActorType, AuditResult
-from engineering_gateway.domain.change_control import ChangeRequest, ChangeRequestState
+from engineering_gateway.domain.change_control import (
+    AuthorizationLevel,
+    ChangeRequest,
+    ChangeRequestState,
+)
 from engineering_gateway.domain.models import EngineeringGraph
 from engineering_gateway.domain.workspaces import Workspace, WorkspaceState
 from engineering_gateway.infrastructure.db import Database
@@ -68,7 +72,9 @@ async def test_governed_context_reconciliation_commits_and_persists_metadata():
     database = Database(POSTGRES_TEST_URL)
     reconciler = SuccessfulReconciler()
     workspace = await _seed_ready_workspace(database)
-    actor = Actor("integration-test", ActorType.HUMAN, "L2_MODIFY_WORKSPACE")
+    actor = Actor(
+        "integration-test", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE
+    )
 
     try:
         async with governed_gateway_context(
@@ -102,7 +108,9 @@ async def test_governed_context_reconciliation_commits_and_persists_metadata():
 async def test_governed_context_reconciliation_failure_rolls_back_but_keeps_failure_audit():
     database = Database(POSTGRES_TEST_URL)
     workspace = await _seed_ready_workspace(database)
-    actor = Actor("integration-test", ActorType.HUMAN, "L2_MODIFY_WORKSPACE")
+    actor = Actor(
+        "integration-test", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE
+    )
 
     try:
         async with governed_gateway_context(
