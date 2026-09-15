@@ -76,7 +76,7 @@ async def _seed_workspace(database: Database) -> Workspace:
                 external_system="openproject",
                 external_id=f"CR-{uuid4()}",
                 title="Bridge integration change",
-                state=ChangeRequestState.IN_PROGRESS,
+                state=ChangeRequestState.READY_FOR_APPROVAL,
             )
         )
         workspace = await workspaces.create(
@@ -84,7 +84,7 @@ async def _seed_workspace(database: Database) -> Workspace:
                 source_baseline_id=uuid4(),
                 source_git_commit="abc123",
                 change_request_id=change_request.id,
-                state=WorkspaceState.ACTIVE,
+                state=WorkspaceState.READY_FOR_APPROVAL,
             )
         )
         return workspace
@@ -132,23 +132,13 @@ async def test_composed_capella_adapter_reconciles_through_real_bridge_and_persi
             AuthorizationLevel.L2_MODIFY_WORKSPACE,
         )
         async with governed_gateway_context(database, adapter_set=adapter_set) as service:
-            result = await service.prepare_for_approval(
-                actor,
-                workspace.id,
-                profile_id="ARP4754A",
-                profile_version="1.0",
-            )
-
-        # The fixture profile is not required to exercise the bridge boundary; if it
-        # is unavailable in a minimal test database, prepare_for_approval would fail
-        # before reconciliation. Seed the workspace's approval state directly below
-        # only after confirming the composed adapter path itself.
-        if not result.valid:
-            pytest.skip("test database has no compatible ARP4754A profile fixture")
-
-        async with governed_gateway_context(database, adapter_set=adapter_set) as service:
             reconciliation = await service.reconcile_workspace(actor, workspace.id)
 
+        assert reconciliation.external_versions == (
+            # The composed adapter is the real LocalCapellaAdapter; only the external
+            # Capella process is represented by the deterministic fixture bridge.
+            reconciliation.external_versions[0],
+        )
         assert reconciliation.external_versions[0].system == "capella"
         assert reconciliation.external_versions[0].version == "capella-rev-1"
 
@@ -157,6 +147,7 @@ async def test_composed_capella_adapter_reconciles_through_real_bridge_and_persi
         assert operations == ["create_workspace", "apply_element", "get_version"]
         assert requests[0]["payload"]["change_set_hash"] == reconciliation.change_set_hash
         assert requests[0]["payload"]["workspace_id"] == str(workspace.id)
+        assert requests[1]["payload"]["element"]["external_id"] == "COMP-1"
 
         async with database.session_factory() as session:
             stored = await SqlAlchemyWorkspaceRegistry(session).get(workspace.id)
