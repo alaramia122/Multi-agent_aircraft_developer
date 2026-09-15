@@ -1,5 +1,6 @@
 """Application flow for reconciling a prepared workspace before approval."""
 
+import asyncio
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -42,8 +43,17 @@ class WorkspaceReconciliationService:
         self._changes = changes
         self._reconciler = reconciler
         self._audit = audit
+        # Serialize reconciliation attempts for the same workspace within one
+        # Gateway process. The persisted reconciliation evidence remains the
+        # source of truth for idempotent retries after the lock is released.
+        self._reconciliation_locks: dict[UUID, asyncio.Lock] = {}
 
     async def reconcile(self, actor: Actor, workspace_id: UUID) -> ReconciliationResult:
+        lock = self._reconciliation_locks.setdefault(workspace_id, asyncio.Lock())
+        async with lock:
+            return await self._reconcile_locked(actor, workspace_id)
+
+    async def _reconcile_locked(self, actor: Actor, workspace_id: UUID) -> ReconciliationResult:
         if actor.authorization_level != AuthorizationLevel.L2_MODIFY_WORKSPACE:
             reason = "workspace reconciliation requires L2 workspace modification authority"
             await self._audit.record(
