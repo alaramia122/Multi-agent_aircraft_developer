@@ -1,6 +1,6 @@
 """Application flow for reconciling a prepared workspace before approval."""
 
-import asyncio
+from collections.abc import AsyncContextManager
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -11,6 +11,7 @@ from engineering_gateway.domain.change_control import AuthorizationLevel, Change
 from engineering_gateway.domain.ports import (
     AuditSink,
     ChangeRequestRegistryPort,
+    ReconciliationCoordinator,
     WorkspaceChangeSetRepository,
     WorkspaceRegistryPort,
 )
@@ -37,20 +38,23 @@ class WorkspaceReconciliationService:
         changes: WorkspaceChangeSetRepository,
         reconciler: WorkspaceReconciler,
         audit: AuditSink,
+        coordinator: ReconciliationCoordinator | None = None,
     ) -> None:
         self._workspaces = workspaces
         self._change_requests = change_requests
         self._changes = changes
         self._reconciler = reconciler
         self._audit = audit
-        # Serialize reconciliation attempts for the same workspace within one
-        # Gateway process. The persisted reconciliation evidence remains the
-        # source of truth for idempotent retries after the lock is released.
-        self._reconciliation_locks: dict[UUID, asyncio.Lock] = {}
+        if coordinator is None:
+            from engineering_gateway.infrastructure.reconciliation_coordination import (
+                ProcessLocalReconciliationCoordinator,
+            )
+
+            coordinator = ProcessLocalReconciliationCoordinator()
+        self._coordinator = coordinator
 
     async def reconcile(self, actor: Actor, workspace_id: UUID) -> ReconciliationResult:
-        lock = self._reconciliation_locks.setdefault(workspace_id, asyncio.Lock())
-        async with lock:
+        async with self._coordinator.lock(workspace_id):
             return await self._reconcile_locked(actor, workspace_id)
 
     async def _reconcile_locked(self, actor: Actor, workspace_id: UUID) -> ReconciliationResult:
@@ -89,10 +93,7 @@ class WorkspaceReconciliationService:
         # A committed reconciliation is a durable publication result. Replaying the
         # same request must not invoke external systems again; this also makes the
         # Gateway side of the reconciliation operation explicitly idempotent.
-        if (
-            workspace.reconciled
-            and workspace.reconciled_change_set_hash == change_set_hash
-        ):
+        if workspace.reconciled and workspace.reconciled_change_set_hash == change_set_hash:
             await self._audit.record(
                 AuditEvent(
                     actor_id=actor.actor_id,
