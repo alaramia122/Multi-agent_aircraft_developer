@@ -23,6 +23,13 @@ def test_external_adapter_set_rejects_duplicate_read_systems() -> None:
         ExternalAdapterSet(read_adapters=(_adapter("strictdoc"), _adapter("strictdoc")))
 
 
+def test_external_adapter_set_rejects_duplicate_workspace_systems() -> None:
+    with pytest.raises(AdapterCompositionError, match="duplicate workspace adapter"):
+        ExternalAdapterSet(
+            workspace_adapters=(_adapter("capella"), _adapter("capella")),
+        )
+
+
 def test_external_adapter_set_rejects_missing_system_name() -> None:
     with pytest.raises(AdapterCompositionError, match="non-empty system_name"):
         ExternalAdapterSet(read_adapters=(_adapter(""),))
@@ -70,6 +77,39 @@ def test_composition_keeps_read_and_workspace_capabilities_separate() -> None:
     assert composed.as_workspace_adapters() == (capella,)
 
 
-def test_context_composition_rejects_both_adapter_inputs() -> None:
-    """Documented at the context boundary; kept here as a contract reminder."""
-    assert ExternalAdapterSet().as_read_adapters() == ()
+def test_composition_preserves_deterministic_capability_order() -> None:
+    strictdoc = _adapter("strictdoc")
+    capella = _adapter("capella")
+    openproject = _adapter("openproject")
+
+    first = compose_external_adapters(
+        LocalAdapterConfig(strictdoc=strictdoc, capella=capella, openproject=openproject)  # type: ignore[arg-type]
+    )
+    second = compose_external_adapters(
+        LocalAdapterConfig(strictdoc=strictdoc, capella=capella, openproject=openproject)  # type: ignore[arg-type]
+    )
+
+    assert first.as_read_adapters() == second.as_read_adapters()
+    assert first.as_workspace_adapters() == second.as_workspace_adapters()
+
+
+def test_composition_exposes_strictdoc_workspace_adapter_for_reconciliation() -> None:
+    strictdoc_workspace = _adapter("strictdoc")
+    capella = _adapter("capella")
+
+    config = LocalAdapterConfig(
+        strictdoc=strictdoc_workspace,  # type: ignore[arg-type]
+        capella=capella,  # type: ignore[arg-type]
+    )
+
+    composed = compose_external_adapters(config)
+
+    assert composed.as_read_adapters() == (strictdoc_workspace, capella)
+    assert composed.as_workspace_adapters() == (strictdoc_workspace, capella)
+
+
+def test_empty_composition_is_valid_for_read_only_or_no_external_integrations() -> None:
+    composed = ExternalAdapterSet()
+
+    assert composed.as_read_adapters() == ()
+    assert composed.as_workspace_adapters() == ()
