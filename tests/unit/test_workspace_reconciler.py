@@ -104,7 +104,7 @@ async def test_relation_to_unchanged_canonical_endpoint_is_routed_to_source_adap
 
 
 @pytest.mark.asyncio
-async def test_cross_system_relation_is_applied_to_source_system():
+async def test_cross_system_relation_is_applied_to_target_system():
     source = _element("capella", "COMP-1")
     target = _element("strictdoc", "REQ-1")
     relation = EngineeringRelation(
@@ -122,8 +122,8 @@ async def test_cross_system_relation_is_applied_to_source_system():
         _workspace(), EngineeringGraph(elements=[source], relations=[relation])
     )
 
-    assert capella.relations == [relation]
-    assert strictdoc.relations == []
+    assert capella.relations == []
+    assert strictdoc.relations == [relation]
 
 
 @pytest.mark.asyncio
