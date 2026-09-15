@@ -40,6 +40,21 @@ def _response(payload: dict[str, object]) -> _Response:
     return _Response(json.dumps(payload).encode("utf-8"))
 
 
+def test_openproject_config_rejects_non_http_url() -> None:
+    with pytest.raises(ValueError, match="absolute HTTP\(S\) URL"):
+        OpenProjectConfig("ftp://openproject.example", "token", 7, 4)
+
+
+def test_openproject_config_rejects_query_or_fragment() -> None:
+    with pytest.raises(ValueError, match="query or fragment"):
+        OpenProjectConfig("https://openproject.example/api?tenant=1", "token", 7, 4)
+
+
+def test_openproject_config_accepts_reverse_proxy_path() -> None:
+    config = OpenProjectConfig("https://openproject.example/openproject/", "token", 7, 4)
+    assert config.base_url.endswith("/")
+
+
 @pytest.mark.asyncio
 async def test_get_element_maps_work_package(
     adapter: LocalOpenProjectAdapter, monkeypatch: pytest.MonkeyPatch
