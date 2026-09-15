@@ -22,6 +22,7 @@ class Workspace(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     id: UUID = Field(default_factory=uuid4)
+    version: int = Field(default=0, ge=0)
     source_baseline_id: UUID
     source_git_commit: str = Field(min_length=1)
     change_request_id: UUID
@@ -143,6 +144,10 @@ class WorkspaceRegistry:
         current = self._workspaces.get(workspace.id)
         if current is None:
             raise ValueError(f"workspace '{workspace.id}' does not exist")
+        if current.version != workspace.version:
+            raise ValueError(
+                f"workspace '{workspace.id}' was modified concurrently; reload before updating"
+            )
         if (
             current.source_baseline_id != workspace.source_baseline_id
             or current.source_git_commit != workspace.source_git_commit
@@ -201,8 +206,10 @@ class WorkspaceRegistry:
         ):
             raise ValueError("reconciliation evidence must be cleared together")
         WorkspaceGate.require_transition(current.state, workspace.state)
-        self._workspaces[workspace.id] = workspace
-        return workspace
+        self._workspaces[workspace.id] = workspace.model_copy(
+            update={"version": workspace.version + 1}
+        )
+        return self._workspaces[workspace.id]
 
 
 __all__ = [
