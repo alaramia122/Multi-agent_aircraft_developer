@@ -82,8 +82,9 @@ class FakeReconciler:
 class ConcurrentWinnerRegistry(FakeWorkspaceRegistry):
     """Simulate another Gateway instance committing reconciliation first."""
 
-    def __init__(self, workspace, winner_versions):
+    def __init__(self, workspace, change_set_hash, winner_versions):
         super().__init__(workspace)
+        self.change_set_hash = change_set_hash
         self.winner_versions = winner_versions
         self.update_calls = 0
 
@@ -91,9 +92,11 @@ class ConcurrentWinnerRegistry(FakeWorkspaceRegistry):
         self.update_calls += 1
         if self.update_calls == 1:
             self.workspace = workspace.mark_reconciled(
-                compute_change_set_hash(EngineeringGraph()), self.winner_versions
+                self.change_set_hash, self.winner_versions
+            ).model_copy(update={"version": workspace.version + 1})
+            raise ValueError(
+                f"workspace '{workspace.id}' was modified concurrently; reload before updating"
             )
-            raise ValueError("workspace 'race' was modified concurrently; reload before updating")
         return await super().update(workspace)
 
 
@@ -173,7 +176,7 @@ async def test_reconcile_recovers_when_another_gateway_instance_wins_persistence
     changes_graph = await changes.get_changes(workspace.id)
     change_set_hash = compute_change_set_hash(changes_graph)
     winner_versions = (ExternalVersion(system="capella", version="rev-3"),)
-    workspaces = ConcurrentWinnerRegistry(workspace, winner_versions)
+    workspaces = ConcurrentWinnerRegistry(workspace, change_set_hash, winner_versions)
     service = WorkspaceReconciliationService(
         workspaces,
         service._change_requests,
