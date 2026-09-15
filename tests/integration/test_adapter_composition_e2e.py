@@ -6,20 +6,27 @@ import json
 import os
 import stat
 import textwrap
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
 from engineering_gateway.application.gateway_service import Actor
+from engineering_gateway.domain.adapters import ExternalVersion
 from engineering_gateway.domain.audit import ActorType, AuditResult
 from engineering_gateway.domain.change_control import (
     AuthorizationLevel,
     ChangeRequest,
     ChangeRequestState,
 )
-from engineering_gateway.domain.models import ElementKind, EngineeringElement
+from engineering_gateway.domain.models import (
+    ElementKind,
+    EngineeringElement,
+    EngineeringRelation,
+    RelationType,
+)
 from engineering_gateway.domain.workspaces import Workspace, WorkspaceState
 from engineering_gateway.infrastructure.adapter_composition import (
+    ExternalAdapterSet,
     LocalAdapterConfig,
     compose_external_adapters,
 )
@@ -65,6 +72,35 @@ _BRIDGE = textwrap.dedent(
     print(json.dumps(response, sort_keys=True))
     """
 ).lstrip()
+
+
+class RecordingWorkspaceAdapter:
+    """Small authoritative adapter used to exercise cross-system routing."""
+
+    system_name = "strictdoc"
+
+    def __init__(self) -> None:
+        self.operations: list[tuple[str, UUID]] = []
+        self.relations: list[EngineeringRelation] = []
+
+    async def get_element(self, external_id: str) -> EngineeringElement | None:
+        return None
+
+    async def get_version(self) -> ExternalVersion:
+        self.operations.append(("get_version", UUID(int=0)))
+        return ExternalVersion(system=self.system_name, version="strictdoc-rev-1")
+
+    async def create_workspace(
+        self, workspace_id: UUID, source_version: str, change_set_hash: str
+    ) -> None:
+        self.operations.append(("create_workspace", workspace_id))
+
+    async def apply_element(self, workspace_id: UUID, element: EngineeringElement) -> None:
+        self.operations.append(("apply_element", element.id))
+
+    async def apply_relation(self, workspace_id: UUID, relation: EngineeringRelation) -> None:
+        self.operations.append(("apply_relation", relation.id))
+        self.relations.append(relation)
 
 
 async def _seed_workspace(database: Database) -> Workspace:
@@ -134,11 +170,7 @@ async def test_composed_capella_adapter_reconciles_through_real_bridge_and_persi
         async with governed_gateway_context(database, adapter_set=adapter_set) as service:
             reconciliation = await service.reconcile_workspace(actor, workspace.id)
 
-        assert reconciliation.external_versions == (
-            # The composed adapter is the real LocalCapellaAdapter; only the external
-            # Capella process is represented by the deterministic fixture bridge.
-            reconciliation.external_versions[0],
-        )
+        assert len(reconciliation.external_versions) == 1
         assert reconciliation.external_versions[0].system == "capella"
         assert reconciliation.external_versions[0].version == "capella-rev-1"
 
@@ -159,5 +191,97 @@ async def test_composed_capella_adapter_reconciles_through_real_bridge_and_persi
             events = await SqlAlchemyAuditSink(session).list()
             event = next(item for item in events if item.target_id == workspace.id)
             assert event.result is AuditResult.SUCCESS
+    finally:
+        await database.dispose()
+
+
+@pytest.mark.asyncio
+async def test_composed_capella_and_strictdoc_adapters_route_cross_system_relation_to_target(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    bridge = tmp_path / "capella_bridge.py"
+    bridge.write_text(_BRIDGE, encoding="utf-8")
+    bridge.chmod(bridge.stat().st_mode | stat.S_IXUSR)
+    project = tmp_path / "model.aird"
+    project.write_text("test project", encoding="utf-8")
+    log = tmp_path / "bridge.log"
+    monkeypatch.setenv("BRIDGE_LOG", str(log))
+
+    capella = LocalCapellaAdapter(
+        CapellaBridgeConfig(executable=str(bridge), project_path=project)
+    )
+    strictdoc = RecordingWorkspaceAdapter()
+    adapter_set = ExternalAdapterSet(
+        read_adapters=(capella, strictdoc),
+        workspace_adapters=(capella, strictdoc),
+    )
+    database = Database(POSTGRES_TEST_URL)
+    workspace = await _seed_workspace(database)
+
+    capella_id = UUID("00000000-0000-0000-0000-000000000001")
+    strictdoc_id = UUID("00000000-0000-0000-0000-000000000002")
+    relation_id = UUID("00000000-0000-0000-0000-000000000003")
+    capella_element = EngineeringElement(
+        id=capella_id,
+        kind=ElementKind.ARCHITECTURE,
+        type_id="component",
+        name="FlightControl",
+        external_system="capella",
+        external_id="COMP-1",
+    )
+    strictdoc_element = EngineeringElement(
+        id=strictdoc_id,
+        kind=ElementKind.REQUIREMENT,
+        type_id="system_requirement",
+        name="Flight control requirement",
+        external_system="strictdoc",
+        external_id="REQ-1",
+    )
+    relation = EngineeringRelation(
+        id=relation_id,
+        source_id=capella_id,
+        relation_type=RelationType.SATISFIES,
+        target_id=strictdoc_id,
+    )
+
+    try:
+        async with database.session_factory() as session:
+            canonical = SqlAlchemyEngineeringRepository(session)
+            changes = SqlAlchemyWorkspaceChangeSetRepository(session, canonical)
+            await changes.save_element(workspace.id, capella_element)
+            await changes.save_element(workspace.id, strictdoc_element)
+            await changes.save_relation(workspace.id, relation)
+            await session.commit()
+
+        actor = Actor(
+            "integration-test",
+            ActorType.HUMAN,
+            AuthorizationLevel.L2_MODIFY_WORKSPACE,
+        )
+        async with governed_gateway_context(database, adapter_set=adapter_set) as service:
+            reconciliation = await service.reconcile_workspace(actor, workspace.id)
+
+        assert [(system, version) for system, version in (
+            (item.system, item.version) for item in reconciliation.external_versions
+        )] == [
+            ("capella", "capella-rev-1"),
+            ("strictdoc", "strictdoc-rev-1"),
+        ]
+        assert [operation for operation, _ in strictdoc.operations] == [
+            "create_workspace",
+            "apply_element",
+            "apply_relation",
+            "get_version",
+        ]
+        assert strictdoc.relations == [relation]
+
+        requests = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
+        assert [request["operation"] for request in requests] == [
+            "create_workspace",
+            "apply_element",
+            "get_version",
+        ]
+        assert all(request["payload"]["workspace_id"] == str(workspace.id) for request in requests)
     finally:
         await database.dispose()
