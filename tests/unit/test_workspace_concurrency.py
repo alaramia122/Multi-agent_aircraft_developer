@@ -24,7 +24,9 @@ async def test_workspace_updates_increment_version() -> None:
 
     assert workspace.version == 0
     assert updated.version == 1
-    assert (await registry.get(workspace.id)).version == 1
+    stored = await registry.get(workspace.id)
+    assert stored is not None
+    assert stored.version == 1
 
 
 @pytest.mark.asyncio
@@ -33,6 +35,8 @@ async def test_workspace_rejects_stale_update() -> None:
     workspace = await registry.create(_workspace())
     first_read = await registry.get(workspace.id)
     second_read = await registry.get(workspace.id)
+    assert first_read is not None
+    assert second_read is not None
 
     updated = await registry.update(
         first_read.model_copy(update={"state": WorkspaceState.READY_FOR_APPROVAL})
