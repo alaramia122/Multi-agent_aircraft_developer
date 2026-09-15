@@ -2,7 +2,20 @@
 
 The Gateway owns only governance metadata. PostgreSQL stores identifiers, workflow state, profile definitions, validation/reconciliation evidence, baseline provenance and audit events. It must not become a copy of StrictDoc, Capella, OpenProject or Git.
 
-Migrations are applied in repository order. Gaps in the numeric sequence are historical and must not be reused.
+Migrations are applied in repository order. Numeric gaps are historical and must not be reused. Migration version numbers must be unique; a duplicate version is a repository defect and is covered by `tests/unit/test_migration_layout.py`.
+
+The current migration sequence is:
+
+- `0003_workspace_change_workflow.sql` — Change Request and workspace workflow metadata;
+- `0004_workspace_baseline_provenance.sql` — exact source Git commit for a workspace;
+- `0005_workspace_profile_provenance.sql` — Standard Profile provenance;
+- `0006_workspace_change_set.sql` — workspace-local staged elements and relations;
+- `0008_profile_activation_workspace_reconciliation.sql` — profile activation and reconciliation state;
+- `0009_reconciliation_evidence_hash.sql` — deterministic reconciliation evidence hash;
+- `0010_workspace_validation_evidence.sql` — deterministic validation hash and evidence;
+- `0011_reconciliation_external_versions.sql` — authoritative external versions captured by reconciliation.
+
+The `migrations/versions/` directory contains the original schema fragments retained as historical reference. It is not a second migration sequence and must not be applied in parallel with the numbered migrations in the repository root.
 
 Current schema responsibilities:
 
