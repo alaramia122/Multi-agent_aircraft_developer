@@ -18,6 +18,7 @@ from engineering_gateway.infrastructure.metadata_repositories import (
     SqlAlchemyWorkspaceRegistry,
 )
 from engineering_gateway.infrastructure.workspace_changes import SqlAlchemyWorkspaceChangeSetRepository
+from engineering_gateway.infrastructure.workspace_reconciler import AdapterWorkspaceReconciler
 
 
 POSTGRES_TEST_URL = os.getenv("POSTGRES_TEST_URL")
@@ -53,6 +54,46 @@ class StatefulIdempotentReconciler:
         return (ExternalVersion(system="external-system", version="rev-1"),)
 
 
+class StatefulWorkspaceAdapter:
+    """External adapter whose published state survives Gateway transaction rollback."""
+
+    def __init__(self, system_name: str, fail_once: bool = False) -> None:
+        self.system_name = system_name
+        self.fail_once = fail_once
+        self.operations: list[str] = []
+        self._published_workspaces: set[tuple[UUID, str]] = set()
+        self._published_elements: set[tuple[UUID, UUID]] = set()
+
+    async def get_element(self, external_id: str) -> EngineeringElement | None:
+        return None
+
+    async def get_version(self) -> ExternalVersion:
+        self.operations.append("get_version")
+        return ExternalVersion(system=self.system_name, version=f"{self.system_name}-rev-1")
+
+    async def create_workspace(
+        self, workspace_id: UUID, source_version: str, change_set_hash: str
+    ) -> None:
+        key = (workspace_id, change_set_hash)
+        if key in self._published_workspaces:
+            return
+        self._published_workspaces.add(key)
+        self.operations.append("create_workspace")
+
+    async def apply_element(self, workspace_id: UUID, element: EngineeringElement) -> None:
+        key = (workspace_id, element.id)
+        if key in self._published_elements:
+            return
+        if self.fail_once:
+            self.fail_once = False
+            raise RuntimeError(f"{self.system_name} publication failed")
+        self._published_elements.add(key)
+        self.operations.append("apply_element")
+
+    async def apply_relation(self, workspace_id: UUID, relation) -> None:
+        self.operations.append("apply_relation")
+
+
 class StaticChangeSetRepository:
     def __init__(self, graph: EngineeringGraph) -> None:
         self._graph = graph
@@ -69,7 +110,7 @@ class _CanonicalStub:
         return EngineeringGraph(elements=[], relations=[])
 
 
-async def _seed_ready_workspace(database: Database, graph: EngineeringGraph) -> Workspace:
+async def _seed_ready_workspace(database: Database, graph: EngineeringGraph | None = None) -> Workspace:
     async with database.session_factory() as session:
         change_requests = SqlAlchemyChangeRequestRepository(session)
         workspaces = SqlAlchemyWorkspaceRegistry(session)
@@ -89,11 +130,12 @@ async def _seed_ready_workspace(database: Database, graph: EngineeringGraph) -> 
                 state=WorkspaceState.READY_FOR_APPROVAL,
             )
         )
-        changes = SqlAlchemyWorkspaceChangeSetRepository(session, _CanonicalStub())
-        for element in graph.elements:
-            await changes.save_element(workspace.id, element)
-        for relation in graph.relations:
-            await changes.add_relation(workspace.id, relation)
+        if graph is not None:
+            changes = SqlAlchemyWorkspaceChangeSetRepository(session, _CanonicalStub())
+            for element in graph.elements:
+                await changes.save_element(workspace.id, element)
+            for relation in graph.relations:
+                await changes.add_relation(workspace.id, relation)
         await session.commit()
         return workspace
 
@@ -148,6 +190,93 @@ async def test_partial_external_failure_rolls_back_gateway_and_retry_recovers():
         assert result.external_versions == (
             ExternalVersion(system="external-system", version="rev-1"),
         )
+
+        async with database.session_factory() as session:
+            stored = await SqlAlchemyWorkspaceRegistry(session).get(workspace.id)
+            assert stored is not None
+            assert stored.reconciled is True
+            assert stored.reconciled_change_set_hash == result.change_set_hash
+            assert stored.reconciliation_external_versions == result.external_versions
+            assert stored.version == 1
+
+            events = await SqlAlchemyAuditSink(session).list()
+            matching = [event for event in events if event.target_id == workspace.id]
+            assert any(event.result is AuditResult.FAILURE for event in matching)
+            assert any(event.result is AuditResult.SUCCESS for event in matching)
+    finally:
+        await database.dispose()
+
+
+@pytest.mark.asyncio
+async def test_actual_adapter_reconciler_recovers_partial_multi_system_publication():
+    database = Database(POSTGRES_TEST_URL)
+    first = StatefulWorkspaceAdapter("capella")
+    second = StatefulWorkspaceAdapter("strictdoc", fail_once=True)
+    adapter_reconciler = AdapterWorkspaceReconciler((first, second))
+    graph = EngineeringGraph(
+        elements=[
+            EngineeringElement(
+                id=UUID("00000000-0000-0000-0000-000000000101"),
+                kind=ElementKind.ARCHITECTURE,
+                type_id="component",
+                name="FlightControl",
+                external_system="capella",
+                external_id="COMP-101",
+            ),
+            EngineeringElement(
+                id=UUID("00000000-0000-0000-0000-000000000102"),
+                kind=ElementKind.REQUIREMENT,
+                type_id="system_requirement",
+                name="Flight control requirement",
+                external_system="strictdoc",
+                external_id="REQ-102",
+            ),
+        ]
+    )
+    workspace = await _seed_ready_workspace(database)
+    actor = Actor(
+        "integration-test", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE
+    )
+
+    try:
+        async with database.session_factory() as session:
+            changes = SqlAlchemyWorkspaceChangeSetRepository(session, _CanonicalStub())
+            for element in graph.elements:
+                await changes.save_element(workspace.id, element)
+            await session.commit()
+
+        async with governed_gateway_context(
+            database, workspace_reconciler=adapter_reconciler
+        ) as service:
+            with pytest.raises(GatewayServiceError, match="strictdoc publication failed"):
+                await service.reconcile_workspace(actor, workspace.id)
+
+        async with database.session_factory() as session:
+            stored = await SqlAlchemyWorkspaceRegistry(session).get(workspace.id)
+            assert stored is not None
+            assert stored.reconciled is False
+            assert stored.reconciled_change_set_hash is None
+            assert stored.version == 0
+
+            events = await SqlAlchemyAuditSink(session).list()
+            matching = [event for event in events if event.target_id == workspace.id]
+            assert any(event.result is AuditResult.FAILURE for event in matching)
+
+        async with governed_gateway_context(
+            database, workspace_reconciler=adapter_reconciler
+        ) as service:
+            result = await service.reconcile_workspace(actor, workspace.id)
+
+        assert result.external_versions == (
+            ExternalVersion(system="capella", version="capella-rev-1"),
+            ExternalVersion(system="strictdoc", version="strictdoc-rev-1"),
+        )
+        assert first.operations == ["create_workspace", "apply_element", "get_version"]
+        assert second.operations == [
+            "create_workspace",
+            "apply_element",
+            "get_version",
+        ]
 
         async with database.session_factory() as session:
             stored = await SqlAlchemyWorkspaceRegistry(session).get(workspace.id)
