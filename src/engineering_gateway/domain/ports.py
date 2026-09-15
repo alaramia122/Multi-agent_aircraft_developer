@@ -1,5 +1,6 @@
 """Ports for persistence and external engineering systems."""
 
+from contextlib import AbstractAsyncContextManager
 from typing import Protocol
 from uuid import UUID
 
@@ -20,6 +21,17 @@ class UnitOfWork(Protocol):
 
     async def commit(self) -> None: ...
     async def rollback(self) -> None: ...
+
+
+class ReconciliationCoordinator(Protocol):
+    """Exclusive coordination boundary for one workspace reconciliation operation.
+
+    Implementations must serialize reconciliation for the same workspace across the
+    scope they advertise. A production coordinator must coordinate across Gateway
+    processes, not only within one Python event loop.
+    """
+
+    def lock(self, workspace_id: UUID) -> AbstractAsyncContextManager[None]: ...
 
 
 class EngineeringRepository(Protocol):
