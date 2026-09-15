@@ -18,6 +18,11 @@ from uuid import UUID
 
 from engineering_gateway.domain.adapters import ExternalVersion
 from engineering_gateway.domain.models import EngineeringElement, EngineeringRelation
+from engineering_gateway.infrastructure.bridge_protocol import (
+    BridgeProtocolError,
+    build_request,
+    validate_response,
+)
 from engineering_gateway.infrastructure.strictdoc_adapter import LocalStrictDocAdapter
 
 
@@ -100,12 +105,11 @@ class LocalStrictDocWorkspaceAdapter:
         return await asyncio.to_thread(self._run_sync, operation, payload)
 
     def _run_sync(self, operation: str, payload: dict[str, Any]) -> dict[str, Any]:
-        request = {
-            "protocol": 1,
-            "operation": operation,
-            "project_path": str(Path(self._config.project_path).resolve()),
-            "payload": payload,
-        }
+        request = build_request(
+            operation,
+            str(Path(self._config.project_path).resolve()),
+            payload,
+        )
         try:
             result = subprocess.run(
                 [self._config.executable],
@@ -128,20 +132,10 @@ class LocalStrictDocWorkspaceAdapter:
             raise StrictDocWorkspaceAdapterError(
                 "StrictDoc workspace bridge returned invalid JSON"
             ) from exc
-        if not isinstance(response, dict):
-            raise StrictDocWorkspaceAdapterError(
-                "StrictDoc workspace bridge returned a non-object JSON response"
-            )
-        if response.get("protocol") != 1:
-            raise StrictDocWorkspaceAdapterError("unsupported StrictDoc bridge protocol")
-        if response.get("operation") not in (None, operation):
-            raise StrictDocWorkspaceAdapterError(
-                "StrictDoc bridge returned an unexpected operation"
-            )
-        if response.get("ok") is not True:
-            message = response.get("error") or "unknown StrictDoc bridge error"
-            raise StrictDocWorkspaceAdapterError(str(message))
-        return response
+        try:
+            return validate_response(response, operation)
+        except BridgeProtocolError as exc:
+            raise StrictDocWorkspaceAdapterError(str(exc)) from exc
 
 
 __all__ = [
