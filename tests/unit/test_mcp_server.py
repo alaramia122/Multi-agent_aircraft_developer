@@ -123,6 +123,32 @@ async def test_mcp_tool_returns_canonical_element() -> None:
 
 
 @pytest.mark.asyncio
+async def test_mcp_tool_rejects_invalid_uuid_at_boundary() -> None:
+    repository = _Repository()
+    server = create_mcp_server(_service(repository), _actor())
+
+    with pytest.raises(ValueError, match="element_id must be a valid UUID"):
+        await server.call_tool("get_engineering_element", {"element_id": "not-a-uuid"})
+
+
+@pytest.mark.asyncio
+async def test_mcp_validation_rejects_blank_profile_identity_at_boundary() -> None:
+    repository = _Repository()
+    server = create_mcp_server(_service(repository), _actor())
+
+    with pytest.raises(ValueError, match="profile_id must not be blank"):
+        await server.call_tool(
+            "validate_engineering_graph",
+            {
+                "elements": [],
+                "relations": [],
+                "profile_id": "   ",
+                "profile_version": "1.0",
+            },
+        )
+
+
+@pytest.mark.asyncio
 async def test_l2_mutating_tools_are_not_read_only() -> None:
     repository = _Repository()
     server = create_mcp_server(_service(repository), _actor(AuthorizationLevel.L2_MODIFY_WORKSPACE))
