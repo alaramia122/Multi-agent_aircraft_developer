@@ -86,8 +86,8 @@ _STRICTDOC_CLI = textwrap.dedent(
     import sys
 
     args = sys.argv[1:]
-    if args[:2] != ["export", args[1]] if len(args) > 1 else True:
-        pass
+    if len(args) < 2 or args[0] != "export":
+        raise SystemExit("unsupported command")
     project = pathlib.Path(args[1])
     output_dir = pathlib.Path(next(arg.split("=", 1)[1] for arg in args if arg.startswith("--output-dir=")))
     output = output_dir / "json"
@@ -384,3 +384,59 @@ async def test_composed_strictdoc_workspace_adapter_uses_real_bridge_protocol_an
     }
     assert requests[1]["payload"]["element"]["external_id"] == "REQ-1"
     assert requests[2]["payload"]["relation"]["relation_type"] == "satisfies"
+
+
+@pytest.mark.asyncio
+async def test_composed_reconciliation_replay_is_idempotent_without_external_calls(
+    tmp_path,
+):
+    bridge = tmp_path / "capella_bridge.py"
+    bridge.write_text(_BRIDGE, encoding="utf-8")
+    bridge.chmod(bridge.stat().st_mode | stat.S_IXUSR)
+    project = tmp_path / "model.aird"
+    project.write_text("test project", encoding="utf-8")
+    log = tmp_path / "bridge.log"
+    os.environ["BRIDGE_LOG"] = str(log)
+
+    adapter = LocalCapellaAdapter(
+        CapellaBridgeConfig(executable=str(bridge), project_path=project)
+    )
+    adapter_set = compose_external_adapters(LocalAdapterConfig(capella=adapter))
+    database = Database(POSTGRES_TEST_URL)
+    workspace = await _seed_workspace(database)
+    element = EngineeringElement(
+        id=UUID("00000000-0000-0000-0000-000000000020"),
+        kind=ElementKind.ARCHITECTURE,
+        type_id="component",
+        name="FlightControl",
+        external_system="capella",
+        external_id="COMP-20",
+    )
+
+    try:
+        async with database.session_factory() as session:
+            canonical = SqlAlchemyEngineeringRepository(session)
+            changes = SqlAlchemyWorkspaceChangeSetRepository(session, canonical)
+            await changes.save_element(workspace.id, element)
+            await session.commit()
+
+        actor = Actor(
+            "integration-test",
+            ActorType.HUMAN,
+            AuthorizationLevel.L2_MODIFY_WORKSPACE,
+        )
+        async with governed_gateway_context(database, adapter_set=adapter_set) as service:
+            first = await service.reconcile_workspace(actor, workspace.id)
+            second = await service.reconcile_workspace(actor, workspace.id)
+
+        assert second.change_set_hash == first.change_set_hash
+        assert second.external_versions == first.external_versions
+        requests = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
+        assert [request["operation"] for request in requests] == [
+            "create_workspace",
+            "apply_element",
+            "get_version",
+        ]
+    finally:
+        os.environ.pop("BRIDGE_LOG", None)
+        await database.dispose()
