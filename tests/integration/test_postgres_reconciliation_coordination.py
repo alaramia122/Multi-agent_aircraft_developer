@@ -140,3 +140,94 @@ async def test_concurrent_reconciliation_workers_publish_once_and_persist_eviden
             assert publish_count == 1
     finally:
         await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_rollback_releases_advisory_lock_and_idempotent_retry_persists_evidence():
+    """A crash-like rollback must not cause duplicate external publication.
+
+    The first worker publishes externally and then loses its Gateway transaction. The
+    PostgreSQL advisory lock is released by rollback, allowing the second worker to
+    retry. External idempotency keyed by ``(workspace_id, change_set_hash)`` absorbs the
+    replay, while the second worker becomes the durable owner of reconciliation evidence.
+    """
+    engine = create_async_engine(POSTGRES_TEST_URL, pool_pre_ping=True)
+    workspace_id = uuid4()
+    baseline_id = uuid4()
+    change_request_id = uuid4()
+    change_set_hash = "b" * 64
+    external_versions = (ExternalVersion(system="test-system", version="rev-1"),)
+    external_publications: set[tuple[str, str]] = set()
+    publish_calls = 0
+    retry_acquired = asyncio.Event()
+
+    try:
+        async with engine.connect() as setup:
+            await setup.begin()
+            registry = SqlAlchemyWorkspaceRegistry(setup, autocommit=False)
+            await registry.create(
+                Workspace(
+                    id=workspace_id,
+                    source_baseline_id=baseline_id,
+                    source_git_commit="abc123",
+                    change_request_id=change_request_id,
+                    git_ref="refs/heads/test",
+                    state=WorkspaceState.READY_FOR_APPROVAL,
+                )
+            )
+            await setup.commit()
+
+        # Worker 1: publish externally, persist nothing, then roll back as if the
+        # process crashed after the side effect and before the Gateway commit.
+        async with engine.connect() as first:
+            await first.begin()
+            registry = SqlAlchemyWorkspaceRegistry(first, autocommit=False)
+            async with PostgresReconciliationCoordinator(first).lock(workspace_id):
+                workspace = await registry.get(workspace_id)
+                assert workspace is not None
+                key = (str(workspace.id), change_set_hash)
+                if key not in external_publications:
+                    external_publications.add(key)
+                    publish_calls += 1
+
+                await registry.update(workspace.mark_reconciled(change_set_hash, external_versions))
+                await first.rollback()
+
+        async with engine.connect() as verification:
+            stored = await SqlAlchemyWorkspaceRegistry(verification).get(workspace_id)
+            assert stored is not None
+            assert stored.reconciled is False
+            assert stored.reconciled_change_set_hash is None
+            assert stored.version == 0
+
+        # Worker 2: it must acquire the lock after rollback, replay the same external
+        # idempotency key, and persist the evidence that worker 1 could not commit.
+        async with engine.connect() as second:
+            await second.begin()
+            registry = SqlAlchemyWorkspaceRegistry(second, autocommit=False)
+            async with PostgresReconciliationCoordinator(second).lock(workspace_id):
+                retry_acquired.set()
+                workspace = await registry.get(workspace_id)
+                assert workspace is not None
+                assert workspace.reconciled is False
+
+                key = (str(workspace.id), change_set_hash)
+                if key not in external_publications:
+                    external_publications.add(key)
+                    publish_calls += 1
+
+                await registry.update(workspace.mark_reconciled(change_set_hash, external_versions))
+                await second.commit()
+
+        assert retry_acquired.is_set()
+        assert publish_calls == 1
+
+        async with engine.connect() as verification:
+            stored = await SqlAlchemyWorkspaceRegistry(verification).get(workspace_id)
+            assert stored is not None
+            assert stored.reconciled is True
+            assert stored.reconciled_change_set_hash == change_set_hash
+            assert stored.reconciliation_external_versions == external_versions
+            assert stored.version == 1
+    finally:
+        await engine.dispose()
