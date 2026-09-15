@@ -95,12 +95,8 @@ class AdapterWorkspaceReconciler:
             await self._adapters[element.external_system].apply_element(workspace.id, element)
 
         for relation in changes.relations:
-            # A relation is authored in the system owning its source endpoint.
-            # The target may be unchanged canonical data or may belong to another
-            # authoritative system; that does not change where the relation itself
-            # is applied.
-            source = relation_sources[relation.id]
-            await self._adapters[source.external_system].apply_relation(workspace.id, relation)
+            target = relation_targets[relation.id]
+            await self._adapters[target.external_system].apply_relation(workspace.id, relation)
 
         versions = [await self._adapters[system].get_version() for system in used]
         return tuple(versions)
