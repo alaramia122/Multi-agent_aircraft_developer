@@ -12,6 +12,11 @@ from uuid import UUID
 
 from engineering_gateway.domain.adapters import ExternalVersion
 from engineering_gateway.domain.models import EngineeringElement, EngineeringRelation
+from engineering_gateway.infrastructure.bridge_protocol import (
+    BridgeProtocolError,
+    build_request,
+    validate_response,
+)
 
 
 class CapellaAdapterError(RuntimeError):
@@ -39,7 +44,7 @@ class LocalCapellaAdapter:
     """Capella integration through a deterministic headless bridge.
 
     The adapter intentionally does not parse the Capella/EMF model itself. The bridge
-    is responsible for using Capella's native EMF/Capella APIs and emits a small,
+    is responsible for using Capella's native EMF/Capella APIs and emits the shared,
     versioned JSON protocol consumed by the Gateway.
     """
 
@@ -90,12 +95,11 @@ class LocalCapellaAdapter:
         return await asyncio.to_thread(self._run_sync, operation, payload)
 
     def _run_sync(self, operation: str, payload: dict[str, Any]) -> dict[str, Any]:
-        request = {
-            "protocol": 1,
-            "operation": operation,
-            "project_path": str(Path(self._config.project_path).resolve()),
-            "payload": payload,
-        }
+        request = build_request(
+            operation,
+            str(Path(self._config.project_path).resolve()),
+            payload,
+        )
         try:
             result = subprocess.run(
                 [self._config.executable],
@@ -116,19 +120,10 @@ class LocalCapellaAdapter:
             response = json.loads(result.stdout)
         except json.JSONDecodeError as exc:
             raise CapellaAdapterError("Capella bridge returned invalid JSON") from exc
-        if not isinstance(response, dict):
-            raise CapellaAdapterError("Capella bridge returned a non-object JSON response")
-        if response.get("protocol") != 1:
-            raise CapellaAdapterError("unsupported Capella bridge protocol")
-        response_operation = response.get("operation")
-        if response_operation is not None and response_operation != operation:
-            raise CapellaAdapterError(
-                f"Capella bridge returned unexpected operation: {response_operation!r}"
-            )
-        if response.get("ok") is not True:
-            message = response.get("error") or "unknown Capella bridge error"
-            raise CapellaAdapterError(str(message))
-        return response
+        try:
+            return validate_response(response, operation)
+        except BridgeProtocolError as exc:
+            raise CapellaAdapterError(str(exc)) from exc
 
     @staticmethod
     def _parse_element(value: Any) -> EngineeringElement:
