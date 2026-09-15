@@ -10,7 +10,7 @@ class Settings(BaseSettings):
 
     app_name: str = "engineering-gateway"
     app_env: str = "development"
-    app_version: str = "0.1.0"
+    app_version: str = "0.2.0"
     log_level: str = "INFO"
     database_url: str = "postgresql+psycopg://gateway:gateway@localhost:5432/engineering_gateway"
 
