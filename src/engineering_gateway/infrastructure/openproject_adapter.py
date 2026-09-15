@@ -8,7 +8,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlsplit
 from urllib.request import Request, urlopen
 
 from engineering_gateway.domain.adapters import ExternalVersion
@@ -34,8 +34,14 @@ class OpenProjectConfig:
     timeout_seconds: float = 30.0
 
     def __post_init__(self) -> None:
-        if not self.base_url.strip():
+        base_url = self.base_url.strip()
+        if not base_url:
             raise ValueError("base_url must be non-empty")
+        parsed = urlsplit(base_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("base_url must be an absolute HTTP(S) URL")
+        if parsed.query or parsed.fragment:
+            raise ValueError("base_url must not contain a query or fragment")
         if not self.api_token:
             raise ValueError("api_token must be non-empty")
         if self.project_id <= 0:
@@ -57,7 +63,7 @@ class LocalOpenProjectAdapter:
 
     def __init__(self, config: OpenProjectConfig) -> None:
         self._config = config
-        self._base_url = config.base_url.rstrip("/")
+        self._base_url = config.base_url.strip().rstrip("/")
 
     async def get_element(self, external_id: str) -> EngineeringElement | None:
         if not external_id:
@@ -100,10 +106,6 @@ class LocalOpenProjectAdapter:
                 self._request_json, "POST", "/api/v3/work_packages", payload
             )
         except OpenProjectAdapterError as exc:
-            # The pre-flight lookup cannot close the race between two Gateway
-            # workers. When OpenProject rejects a concurrent create with 409,
-            # resolve the deterministic idempotency marker again and return the
-            # object created by the winning worker.
             if idempotency_key and exc.status_code == 409:
                 existing = await asyncio.to_thread(self._find_by_subject, subject)
                 if existing is not None:
