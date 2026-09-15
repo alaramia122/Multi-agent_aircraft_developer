@@ -14,7 +14,7 @@
 | State-changing and denied actions are auditable | Gateway tests verify audit records; independent audit session protects failure/denial evidence | `tests/unit/test_gateway_service.py`, audit infrastructure |
 | Profile can be replaced without Gateway-core branching | Profile engine consumes declarative `StandardProfile`; ARP4754A and DO-178C are external profile data | `application/profile_engine.py`, `profiles/*/profile.json` |
 | DO-178C lifecycle traceability is executable | Profile defines HLR/LLR/verification lifecycles and traceability; integration test executes governed slice | `profiles/do-178c/1.0/profile.json`, `tests/integration/test_do_178c_vertical_slice.py` |
-| Vector Store is not authoritative | Gateway persistence model stores metadata/references; canonical model is authoritative only as a reference graph, external systems remain authoritative | architecture documentation |
+| Vector Store is not authoritative | Gateway persistence model stores metadata/references; external systems remain authoritative | architecture documentation |
 
 ## CI quality gate
 
@@ -25,12 +25,21 @@ The repository CI executes:
 3. mypy type checking;
 4. pytest.
 
-The latest completed CI run for commit `70c7434af06e9299f6d78defed8a05764b86898e` passed all four stages. Subsequent commits are expected to be verified by their own workflow runs before the branch is considered green.
+The latest completed verification run for commit `d9b67abde843b229b56d1ae6dcafd5c2953fd416` passed all four stages:
+
+- Ruff: passed;
+- mypy: passed, 46 source files checked;
+- pytest: **147 passed**, 1 deprecation warning;
+- test execution time: 2.53 s.
+
+The warning comes from Starlette's test client and is not a Gateway test failure. The subsequent commits only update runtime-version metadata and documentation; their own CI runs remain the regression gate.
 
 ## Test interpretation
 
 A passing unit test demonstrates the Gateway contract implemented by the test double or deterministic component. Integration tests additionally verify composition across the Gateway and adapter boundaries. They do not claim that external tools are available in CI unless an actual external-tool environment is configured.
 
-## Remaining integration hardening
+The verified suite includes the previously deferred reconciliation replay-idempotency test. Replaying the same workspace change-set does not invoke the external reconciler twice and is recorded as an idempotent success.
 
-The infrastructure is ready for the next phase, but production deployment still requires concrete bridge executables/configuration for StrictDoc and Capella and real service credentials/endpoints for OpenProject. These are deployment concerns, not substitutes for deterministic Gateway validation.
+## Remaining deployment concerns
+
+The infrastructure contract is complete for the pre-AI-Studio phase. Production deployment still requires concrete bridge executables/configuration for StrictDoc and Capella, real OpenProject endpoints/credentials, database migration execution, and deployment-level identity provisioning for the MCP endpoint. These are deployment/integration concerns rather than missing deterministic Gateway logic.
