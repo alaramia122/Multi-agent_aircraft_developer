@@ -124,6 +124,46 @@ class WorkspaceReconciliationService:
             versions = await self._reconciler.reconcile(workspace, changes)
             await self._workspaces.update(workspace.mark_reconciled(change_set_hash, versions))
         except Exception as exc:
+            # External publication and metadata persistence cannot share one ACID
+            # transaction. If another Gateway instance won the final optimistic
+            # concurrency update after the external operation completed, reload the
+            # workspace and use the durable winner's evidence instead of reporting a
+            # false failure. The reconciler contract guarantees that retrying the same
+            # (workspace, change-set) pair is externally idempotent.
+            if isinstance(exc, ValueError) and "modified concurrently" in str(exc):
+                current = await self._workspaces.get(workspace_id)
+                if (
+                    current is not None
+                    and current.reconciled
+                    and current.reconciled_change_set_hash == change_set_hash
+                ):
+                    await self._audit.record(
+                        AuditEvent(
+                            actor_id=actor.actor_id,
+                            actor_type=actor.actor_type,
+                            authorization_level=actor.authorization_level,
+                            action="reconcile_workspace",
+                            target_type="workspace",
+                            target_id=workspace_id,
+                            result=AuditResult.SUCCESS,
+                            metadata={
+                                "change_elements": len(changes.elements),
+                                "change_relations": len(changes.relations),
+                                "change_set_hash": change_set_hash,
+                                "external_versions": [
+                                    {"system": version.system, "version": version.version}
+                                    for version in current.reconciliation_external_versions
+                                ],
+                                "concurrent_winner": True,
+                            },
+                        )
+                    )
+                    return ReconciliationResult(
+                        workspace_id=workspace_id,
+                        change_set_hash=change_set_hash,
+                        external_versions=current.reconciliation_external_versions,
+                    )
+
             await self._audit.record(
                 AuditEvent(
                     actor_id=actor.actor_id,
