@@ -1,5 +1,5 @@
-import re
 from pathlib import Path
+import re
 
 
 MIGRATIONS = Path(__file__).parents[2] / "migrations"
