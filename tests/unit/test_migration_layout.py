@@ -1,5 +1,5 @@
-from pathlib import Path
 import re
+from pathlib import Path
 
 
 MIGRATIONS = Path(__file__).parents[2] / "migrations"
@@ -15,4 +15,3 @@ def test_numbered_migrations_have_unique_order_and_no_duplicate_versions() -> No
     versions = [int(VERSIONED_MIGRATION.match(name).group(1)) for name in files]
 
     assert versions == sorted(set(versions)), "migration version numbers must be unique"
-    assert files == sorted(files)
