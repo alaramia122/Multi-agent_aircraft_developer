@@ -20,6 +20,20 @@ def _require_l2(actor: Actor) -> None:
         raise ValueError("MCP workspace mutation requires L2 authorization")
 
 
+def _parse_uuid(value: str, field_name: str) -> UUID:
+    try:
+        return UUID(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field_name} must be a valid UUID") from exc
+
+
+def _require_non_blank(value: str, field_name: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError(f"{field_name} must not be blank")
+    return normalized
+
+
 def create_mcp_server(service: GatewayApplicationService, actor: Actor) -> MCPServer:
     """Create an MCP server backed by the governed application boundary.
 
@@ -38,7 +52,7 @@ def create_mcp_server(service: GatewayApplicationService, actor: Actor) -> MCPSe
     )
     async def get_engineering_element(element_id: str) -> EngineeringElement | None:
         """Read one canonical engineering element by UUID through the Gateway."""
-        return await service.get_element(actor, UUID(element_id))
+        return await service.get_element(actor, _parse_uuid(element_id, "element_id"))
 
     @server.tool(
         name="get_engineering_relations",
@@ -48,7 +62,7 @@ def create_mcp_server(service: GatewayApplicationService, actor: Actor) -> MCPSe
     )
     async def get_engineering_relations(element_id: str) -> list[EngineeringRelation]:
         """Read incoming and outgoing canonical relations through the Gateway."""
-        return await service.get_relations(actor, UUID(element_id))
+        return await service.get_relations(actor, _parse_uuid(element_id, "element_id"))
 
     @server.tool(
         name="validate_engineering_graph",
@@ -63,7 +77,13 @@ def create_mcp_server(service: GatewayApplicationService, actor: Actor) -> MCPSe
         profile_version: str,
     ) -> dict[str, object]:
         """Run deterministic validation against an activated Standard Profile."""
-        result = await service.validate(actor, elements, relations, profile_id, profile_version)
+        result = await service.validate(
+            actor,
+            elements,
+            relations,
+            _require_non_blank(profile_id, "profile_id"),
+            _require_non_blank(profile_version, "profile_version"),
+        )
         return {
             "profile_id": result.profile_id,
             "profile_version": result.profile_version,
@@ -100,7 +120,10 @@ def create_mcp_server(service: GatewayApplicationService, actor: Actor) -> MCPSe
             """Create an L2 workspace from an approved source baseline and change request."""
             _require_l2(actor)
             result = await service.create_workspace(
-                actor, UUID(baseline_id), UUID(change_request_id), git_ref
+                actor,
+                _parse_uuid(baseline_id, "baseline_id"),
+                _parse_uuid(change_request_id, "change_request_id"),
+                _require_non_blank(git_ref, "git_ref"),
             )
             return {
                 "workspace_id": str(result.id),
@@ -125,7 +148,9 @@ def create_mcp_server(service: GatewayApplicationService, actor: Actor) -> MCPSe
         ) -> EngineeringElement:
             """Add or replace an engineering element in an active L2 workspace."""
             _require_l2(actor)
-            return await service.save_workspace_element(actor, element, UUID(workspace_id))
+            return await service.save_workspace_element(
+                actor, element, _parse_uuid(workspace_id, "workspace_id")
+            )
 
         @server.tool(
             name="add_workspace_relation",
@@ -143,7 +168,9 @@ def create_mcp_server(service: GatewayApplicationService, actor: Actor) -> MCPSe
         ) -> EngineeringRelation:
             """Add an engineering relation to an active L2 workspace."""
             _require_l2(actor)
-            return await service.add_workspace_relation(actor, relation, UUID(workspace_id))
+            return await service.add_workspace_relation(
+                actor, relation, _parse_uuid(workspace_id, "workspace_id")
+            )
 
         if isinstance(service, GovernedGatewayApplicationService):
 
@@ -165,9 +192,9 @@ def create_mcp_server(service: GatewayApplicationService, actor: Actor) -> MCPSe
                 _require_l2(actor)
                 result = await service.prepare_for_approval(
                     actor,
-                    UUID(workspace_id),
-                    profile_id=profile_id,
-                    profile_version=profile_version,
+                    _parse_uuid(workspace_id, "workspace_id"),
+                    profile_id=_require_non_blank(profile_id, "profile_id"),
+                    profile_version=_require_non_blank(profile_version, "profile_version"),
                 )
                 return {
                     "profile_id": result.profile_id,
@@ -200,7 +227,9 @@ def create_mcp_server(service: GatewayApplicationService, actor: Actor) -> MCPSe
             async def reconcile_workspace(workspace_id: str) -> dict[str, object]:
                 """Publish a ready workspace change-set through the governed L2 boundary."""
                 _require_l2(actor)
-                result = await service.reconcile_workspace(actor, UUID(workspace_id))
+                result = await service.reconcile_workspace(
+                    actor, _parse_uuid(workspace_id, "workspace_id")
+                )
                 return {
                     "workspace_id": str(result.workspace_id),
                     "external_versions": [
