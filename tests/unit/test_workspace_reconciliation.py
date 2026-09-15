@@ -12,6 +12,7 @@ from engineering_gateway.domain.change_control import (
     ChangeRequestState,
 )
 from engineering_gateway.domain.models import EngineeringElement, EngineeringGraph
+from engineering_gateway.domain.reconciliation import compute_change_set_hash
 from engineering_gateway.domain.workspaces import Workspace, WorkspaceState
 from engineering_gateway.infrastructure.workspace_changes import (
     InMemoryWorkspaceChangeSetRepository,
@@ -76,6 +77,24 @@ class FakeReconciler:
         self.calls += 1
         self.received = (workspace, changes)
         return (ExternalVersion(system="capella", version="rev-2"),)
+
+
+class ConcurrentWinnerRegistry(FakeWorkspaceRegistry):
+    """Simulate another Gateway instance committing reconciliation first."""
+
+    def __init__(self, workspace, winner_versions):
+        super().__init__(workspace)
+        self.winner_versions = winner_versions
+        self.update_calls = 0
+
+    async def update(self, workspace):
+        self.update_calls += 1
+        if self.update_calls == 1:
+            self.workspace = workspace.mark_reconciled(
+                compute_change_set_hash(EngineeringGraph()), self.winner_versions
+            )
+            raise ValueError("workspace 'race' was modified concurrently; reload before updating")
+        return await super().update(workspace)
 
 
 def build_service():
@@ -145,6 +164,36 @@ async def test_reconcile_same_change_set_is_idempotent():
     assert len(events) == 2
     assert events[1].result is AuditResult.SUCCESS
     assert events[1].metadata["idempotent_replay"] is True
+
+
+@pytest.mark.asyncio
+async def test_reconcile_recovers_when_another_gateway_instance_wins_persistence_race():
+    service, _, workspace, changes, element, reconciler, _, audit = build_service()
+    await changes.save_element(workspace.id, element)
+    changes_graph = await changes.get_changes(workspace.id)
+    change_set_hash = compute_change_set_hash(changes_graph)
+    winner_versions = (ExternalVersion(system="capella", version="rev-3"),)
+    workspaces = ConcurrentWinnerRegistry(workspace, winner_versions)
+    service = WorkspaceReconciliationService(
+        workspaces,
+        service._change_requests,
+        changes,
+        reconciler,
+        audit,
+    )
+
+    result = await service.reconcile(
+        Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE),
+        workspace.id,
+    )
+
+    assert result.change_set_hash == change_set_hash
+    assert result.external_versions == winner_versions
+    assert reconciler.calls == 1
+    assert (await workspaces.get(workspace.id)).reconciled_change_set_hash == change_set_hash
+    events = await audit.list()
+    assert events[-1].result is AuditResult.SUCCESS
+    assert events[-1].metadata["concurrent_winner"] is True
 
 
 @pytest.mark.asyncio
