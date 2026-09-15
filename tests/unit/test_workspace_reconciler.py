@@ -1,4 +1,4 @@
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -69,8 +69,9 @@ def _workspace() -> Workspace:
     )
 
 
-def _element(system: str, external_id: str) -> EngineeringElement:
+def _element(system: str, external_id: str, element_id: UUID | None = None) -> EngineeringElement:
     return EngineeringElement(
+        id=element_id or uuid4(),
         kind=ElementKind.ARCHITECTURE,
         type_id="component",
         name=external_id,
@@ -139,6 +140,40 @@ async def test_same_change_set_produces_same_idempotency_key_on_retry():
 
     assert adapter.created[0][2] == adapter.created[1][2]
     assert adapter.created[0][0] == adapter.created[1][0] == workspace.id
+
+
+@pytest.mark.asyncio
+async def test_operations_are_applied_in_stable_element_and_relation_order():
+    first = _element("capella", "FIRST", UUID("00000000-0000-0000-0000-000000000002"))
+    second = _element("capella", "SECOND", UUID("00000000-0000-0000-0000-000000000001"))
+    relation = EngineeringRelation(
+        id=UUID("00000000-0000-0000-0000-000000000003"),
+        source_id=first.id,
+        relation_type=RelationType.DEPENDS_ON,
+        target_id=second.id,
+    )
+    adapter = FakeAdapter("capella")
+    reconciler = AdapterWorkspaceReconciler((adapter,), FakeCanonical({}))
+
+    await reconciler.reconcile(
+        _workspace(), EngineeringGraph(elements=[first, second], relations=[relation])
+    )
+
+    assert adapter.elements == [second, first]
+    assert adapter.relations == [relation]
+
+
+@pytest.mark.asyncio
+async def test_version_system_mismatch_is_rejected():
+    class MismatchingVersionAdapter(FakeAdapter):
+        async def get_version(self):
+            return ExternalVersion(system="strictdoc", version="rev-1")
+
+    adapter = MismatchingVersionAdapter("capella")
+    reconciler = AdapterWorkspaceReconciler((adapter,), FakeCanonical({}))
+
+    with pytest.raises(WorkspaceReconciliationError, match="returned version for 'strictdoc'"):
+        await reconciler.reconcile(_workspace(), EngineeringGraph(elements=[_element("capella", "COMP-1")]))
 
 
 @pytest.mark.asyncio
