@@ -8,6 +8,7 @@ from engineering_gateway.domain.adapters import ExternalVersion
 from engineering_gateway.domain.audit import ActorType, AuditResult
 from engineering_gateway.domain.change_control import AuthorizationLevel, ChangeRequest, ChangeRequestState
 from engineering_gateway.domain.models import ElementKind, EngineeringElement, EngineeringGraph
+from engineering_gateway.domain.reconciliation import compute_change_set_hash
 from engineering_gateway.domain.workspaces import Workspace, WorkspaceState
 from engineering_gateway.infrastructure.db import Database
 from engineering_gateway.infrastructure.gateway_context import governed_gateway_context
@@ -37,7 +38,7 @@ class StatefulIdempotentReconciler:
 
     async def reconcile(self, workspace: Workspace, changes: EngineeringGraph):
         self.calls += 1
-        change_set_hash = _change_set_hash(changes)
+        change_set_hash = compute_change_set_hash(changes)
         key = (workspace.id, change_set_hash)
 
         if key not in self._published:
@@ -52,18 +53,20 @@ class StatefulIdempotentReconciler:
         return (ExternalVersion(system="external-system", version="rev-1"),)
 
 
-def _change_set_hash(changes: EngineeringGraph) -> str:
-    from engineering_gateway.domain.reconciliation import compute_change_set_hash
-
-    return compute_change_set_hash(changes)
-
-
 class StaticChangeSetRepository:
     def __init__(self, graph: EngineeringGraph) -> None:
         self._graph = graph
 
     async def get_changes(self, workspace_id: UUID) -> EngineeringGraph:
         return self._graph
+
+
+class _CanonicalStub:
+    async def get(self, element_id: UUID):
+        return None
+
+    async def list_graph(self):
+        return EngineeringGraph(elements=[], relations=[])
 
 
 async def _seed_ready_workspace(database: Database, graph: EngineeringGraph) -> Workspace:
@@ -86,10 +89,7 @@ async def _seed_ready_workspace(database: Database, graph: EngineeringGraph) -> 
                 state=WorkspaceState.READY_FOR_APPROVAL,
             )
         )
-        changes = SqlAlchemyWorkspaceChangeSetRepository(
-            session,
-            _CanonicalStub(),
-        )
+        changes = SqlAlchemyWorkspaceChangeSetRepository(session, _CanonicalStub())
         for element in graph.elements:
             await changes.save_element(workspace.id, element)
         for relation in graph.relations:
@@ -98,18 +98,8 @@ async def _seed_ready_workspace(database: Database, graph: EngineeringGraph) -> 
         return workspace
 
 
-class _CanonicalStub:
-    async def get(self, element_id: UUID):
-        return None
-
-    async def list_graph(self):
-        return EngineeringGraph(elements=[], relations=[])
-
-
 @pytest.mark.asyncio
-async def test_partial_external_failure_rolls_back_gateway_and_retry_recovers(
-    monkeypatch: pytest.MonkeyPatch,
-):
+async def test_partial_external_failure_rolls_back_gateway_and_retry_recovers():
     database = Database(POSTGRES_TEST_URL)
     reconciler = StatefulIdempotentReconciler()
     graph = EngineeringGraph(
@@ -130,12 +120,12 @@ async def test_partial_external_failure_rolls_back_gateway_and_retry_recovers(
     )
 
     try:
-        async with governed_gateway_context(
-            database,
-            workspace_reconciler=reconciler,
-        ) as service:
+        async with governed_gateway_context(database, workspace_reconciler=reconciler) as service:
             service._workspace_reconciliation._changes = StaticChangeSetRepository(graph)
-            with pytest.raises(GatewayServiceError, match="second external system failed after publication"):
+            with pytest.raises(
+                GatewayServiceError,
+                match="second external system failed after publication",
+            ):
                 await service.reconcile_workspace(actor, workspace.id)
 
         async with database.session_factory() as session:
@@ -146,13 +136,10 @@ async def test_partial_external_failure_rolls_back_gateway_and_retry_recovers(
             assert stored.version == 0
 
             events = await SqlAlchemyAuditSink(session).list()
-            failures = [event for event in events if event.target_id == workspace.id]
-            assert any(event.result is AuditResult.FAILURE for event in failures)
+            matching = [event for event in events if event.target_id == workspace.id]
+            assert any(event.result is AuditResult.FAILURE for event in matching)
 
-        async with governed_gateway_context(
-            database,
-            workspace_reconciler=reconciler,
-        ) as service:
+        async with governed_gateway_context(database, workspace_reconciler=reconciler) as service:
             service._workspace_reconciliation._changes = StaticChangeSetRepository(graph)
             result = await service.reconcile_workspace(actor, workspace.id)
 
