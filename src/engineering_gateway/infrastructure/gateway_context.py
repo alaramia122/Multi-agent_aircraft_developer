@@ -54,7 +54,7 @@ async def governed_gateway_context(
     process-local asyncio lock.
 
     External adapters remain outside the database transaction semantically; the
-    transaction protects Gateway metadata, the reconciliation evidence and the
+    transaction protects Gateway metadata, reconciliation evidence and the
     coordination lock. External idempotency/recovery remains required because
     PostgreSQL cannot roll back an already completed external side effect.
 
@@ -65,16 +65,10 @@ async def governed_gateway_context(
     if adapter_set is not None and external_adapters is not None:
         raise ValueError("provide either adapter_set or external_adapters, not both")
 
-    resolved_reconciler: WorkspaceReconciler | None
     if adapter_set is not None:
         resolved_external_adapters = adapter_set.as_read_adapters()
-        resolved_reconciler = workspace_reconciler or AdapterWorkspaceReconciler(
-            adapter_set.as_workspace_adapters(),
-            canonical=None,
-        )
     else:
         resolved_external_adapters = external_adapters or ()
-        resolved_reconciler = workspace_reconciler
 
     async with database.session_factory() as session:
         uow = SqlAlchemyUnitOfWork(session)
@@ -90,11 +84,15 @@ async def governed_gateway_context(
             independent_session_factory=database.session_factory,
         )
 
-        if resolved_reconciler is None and adapter_set is not None:
+        if workspace_reconciler is not None:
+            resolved_reconciler = workspace_reconciler
+        elif adapter_set is not None:
             resolved_reconciler = AdapterWorkspaceReconciler(
                 adapter_set.as_workspace_adapters(),
                 canonical=canonical,
             )
+        else:
+            resolved_reconciler = None
 
         yield GovernedGatewayApplicationService(
             repository=canonical,
