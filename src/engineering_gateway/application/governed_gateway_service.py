@@ -29,6 +29,7 @@ from engineering_gateway.domain.models import EngineeringElement, EngineeringRel
 from engineering_gateway.domain.ports import (
     AuditSink,
     ChangeRequestRegistryPort,
+    ReconciliationCoordinator,
     WorkspaceChangeSetRepository,
     WorkspaceRegistryPort,
 )
@@ -45,6 +46,7 @@ class GovernedGatewayApplicationService(
         self,
         *args: Any,
         workspace_reconciler: WorkspaceReconciler | None = None,
+        reconciliation_coordinator: ReconciliationCoordinator | None = None,
         workspace_registry: WorkspaceRegistryPort | None = None,
         change_request_registry: ChangeRequestRegistryPort | None = None,
         workspace_changes: WorkspaceChangeSetRepository | None = None,
@@ -82,6 +84,7 @@ class GovernedGatewayApplicationService(
                 changes=changes,
                 reconciler=workspace_reconciler,
                 audit=audit_sink,
+                coordinator=reconciliation_coordinator,
             )
 
     async def prepare_for_approval(
