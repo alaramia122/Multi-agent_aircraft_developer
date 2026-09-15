@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -11,6 +12,10 @@ from engineering_gateway.infrastructure.adapter_composition import (
     ExternalAdapterSet,
     LocalAdapterConfig,
     compose_external_adapters,
+)
+from engineering_gateway.infrastructure.strictdoc_workspace_adapter import (
+    LocalStrictDocWorkspaceAdapter,
+    StrictDocBridgeConfig,
 )
 
 
@@ -83,22 +88,36 @@ def test_composition_preserves_deterministic_capability_order() -> None:
     openproject = _adapter("openproject")
 
     first = compose_external_adapters(
-        LocalAdapterConfig(strictdoc=strictdoc, capella=capella, openproject=openproject)  # type: ignore[arg-type]
+        LocalAdapterConfig(  # type: ignore[arg-type]
+            strictdoc=strictdoc,
+            capella=capella,
+            openproject=openproject,
+        )
     )
     second = compose_external_adapters(
-        LocalAdapterConfig(strictdoc=strictdoc, capella=capella, openproject=openproject)  # type: ignore[arg-type]
+        LocalAdapterConfig(  # type: ignore[arg-type]
+            strictdoc=strictdoc,
+            capella=capella,
+            openproject=openproject,
+        )
     )
 
     assert first.as_read_adapters() == second.as_read_adapters()
     assert first.as_workspace_adapters() == second.as_workspace_adapters()
 
 
-def test_composition_exposes_strictdoc_workspace_adapter_for_reconciliation() -> None:
-    strictdoc_workspace = _adapter("strictdoc")
+def test_composition_exposes_strictdoc_workspace_adapter_for_reconciliation(
+    tmp_path: Path,
+) -> None:
+    project_path = tmp_path / "strictdoc-project"
+    project_path.mkdir()
+    strictdoc_workspace = LocalStrictDocWorkspaceAdapter(
+        StrictDocBridgeConfig(executable="strictdoc-bridge", project_path=project_path)
+    )
     capella = _adapter("capella")
 
     config = LocalAdapterConfig(
-        strictdoc=strictdoc_workspace,  # type: ignore[arg-type]
+        strictdoc=strictdoc_workspace,
         capella=capella,  # type: ignore[arg-type]
     )
 
