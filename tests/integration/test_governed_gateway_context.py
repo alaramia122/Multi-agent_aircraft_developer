@@ -135,3 +135,35 @@ async def test_governed_context_reconciliation_failure_rolls_back_but_keeps_fail
             assert event.reason == "external publication failed"
     finally:
         await database.dispose()
+
+
+@pytest.mark.asyncio
+async def test_governed_context_denied_reconciliation_keeps_denied_audit():
+    database = Database(POSTGRES_TEST_URL)
+    workspace = await _seed_ready_workspace(database)
+    actor = Actor("integration-test", ActorType.HUMAN, AuthorizationLevel.L1_PROPOSE)
+
+    try:
+        async with governed_gateway_context(
+            database,
+            workspace_reconciler=SuccessfulReconciler(),
+        ) as service:
+            with pytest.raises(
+                GatewayServiceError,
+                match="requires L2 workspace modification authority",
+            ):
+                await service.reconcile_workspace(actor, workspace.id)
+
+        async with database.session_factory() as session:
+            stored_workspace = await SqlAlchemyWorkspaceRegistry(session).get(workspace.id)
+            assert stored_workspace is not None
+            assert stored_workspace.reconciled is False
+            assert stored_workspace.version == 0
+
+            events = await SqlAlchemyAuditSink(session).list()
+            event = next(item for item in events if item.target_id == workspace.id)
+            assert event.action == "reconcile_workspace"
+            assert event.result is AuditResult.DENIED
+            assert event.authorization_level is AuthorizationLevel.L1_PROPOSE
+    finally:
+        await database.dispose()
