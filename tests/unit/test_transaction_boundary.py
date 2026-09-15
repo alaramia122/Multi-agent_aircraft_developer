@@ -4,6 +4,7 @@ from uuid import uuid4
 from engineering_gateway.application.gateway_service import Actor, GatewayServiceError
 from engineering_gateway.application.governed_gateway_service import GovernedGatewayApplicationService
 from engineering_gateway.application.transactional_service import TransactionalApplicationServiceMixin
+from engineering_gateway.domain.adapters import ExternalVersion
 from engineering_gateway.domain.audit import ActorType, AuditResult, InMemoryAuditSink
 from engineering_gateway.domain.change_control import (
     AuthorizationLevel,
@@ -73,16 +74,28 @@ class FakeWorkspaces:
 
 
 class FakeWorkspaceChanges:
+    def __init__(self, changes=None):
+        self.changes = changes or EngineeringGraph()
+
     async def get_changes(self, workspace_id):
-        return EngineeringGraph()
+        return self.changes
 
     async def get_graph(self, workspace_id):
-        return EngineeringGraph()
+        return self.changes
 
 
 class FailingReconciler:
     async def reconcile(self, workspace, changes):
         raise RuntimeError("external publication failed")
+
+
+class SuccessfulReconciler:
+    def __init__(self):
+        self.calls = 0
+
+    async def reconcile(self, workspace, changes):
+        self.calls += 1
+        return (ExternalVersion(system="test-system", version="42"),)
 
 
 @pytest.mark.asyncio
@@ -111,6 +124,51 @@ async def test_private_async_method_is_not_transaction_wrapped():
     assert await service._private_operation() == "private-ok"
     assert service.events == ["private"]
     assert uow.events == []
+
+
+@pytest.mark.asyncio
+async def test_public_reconciliation_success_commits_and_persists_evidence():
+    change_request = ChangeRequest(
+        external_system="openproject",
+        external_id="CR-transaction-success",
+        title="Change",
+        state=ChangeRequestState.READY_FOR_APPROVAL,
+    )
+    workspace = Workspace(
+        source_baseline_id=uuid4(),
+        source_git_commit="abc123",
+        change_request_id=change_request.id,
+        state=WorkspaceState.READY_FOR_APPROVAL,
+    )
+    audit = InMemoryAuditSink()
+    uow = FakeUnitOfWork()
+    reconciler = SuccessfulReconciler()
+    workspaces = FakeWorkspaces(workspace)
+    service = GovernedGatewayApplicationService(
+        repository=FakeRepository(),
+        profiles=FakeProfiles(),
+        audit=audit,
+        change_requests=FakeChangeRequests(change_request),
+        workspaces=workspaces,
+        workspace_changes=FakeWorkspaceChanges(),
+        workspace_reconciler=reconciler,
+        uow=uow,
+    )
+
+    actor = Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE)
+    result = await service.reconcile_workspace(actor, workspace.id)
+
+    assert uow.events == ["commit"]
+    assert reconciler.calls == 1
+    assert result.workspace_id == workspace.id
+    assert result.external_versions == (ExternalVersion(system="test-system", version="42"),)
+    assert workspaces.workspace.reconciled is True
+    assert workspaces.workspace.reconciled_change_set_hash == result.change_set_hash
+    assert workspaces.workspace.reconciliation_external_versions == result.external_versions
+    events = await audit.list()
+    assert len(events) == 1
+    assert events[0].action == "reconcile_workspace"
+    assert events[0].result is AuditResult.SUCCESS
 
 
 @pytest.mark.asyncio
