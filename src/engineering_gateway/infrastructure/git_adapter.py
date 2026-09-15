@@ -50,10 +50,11 @@ class LocalGitAdapter:
         """Create an immutable lightweight tag, idempotently.
 
         Repeating the operation for the same tag and commit succeeds. An existing
-        tag pointing elsewhere is never moved and is rejected explicitly.
+        tag pointing elsewhere is never moved and is rejected explicitly. A race
+        between two creators is resolved by re-reading the tag after the create
+        command fails.
         """
-        if not tag or tag.startswith("-"):
-            raise ValueError("tag must be a non-empty Git reference name")
+        self._validate_tag_name(repository, tag)
         resolved_commit = self._run(repository, "rev-parse", "--verify", f"{commit}^{{commit}}")
         if resolved_commit is None:
             raise ValueError(f"commit '{commit}' does not exist")
@@ -65,20 +66,47 @@ class LocalGitAdapter:
             f"refs/tags/{tag}^{{commit}}",
         )
         if existing_commit is not None:
-            if existing_commit != resolved_commit:
-                raise RuntimeError(f"Git tag '{tag}' already exists at a different commit")
-            return GitSnapshot(
-                repository=str(Path(repository).resolve()),
-                commit=resolved_commit,
-                tag=tag,
-            )
+            return self._snapshot_for_existing_tag(repository, tag, resolved_commit, existing_commit)
 
-        self._run_required(repository, "tag", tag, resolved_commit)
+        try:
+            self._run_required(repository, "tag", tag, resolved_commit)
+        except RuntimeError:
+            # Another process may have published the same immutable tag between the
+            # read above and the create. Re-read before surfacing the original error.
+            raced_commit = self._run(
+                repository,
+                "rev-parse",
+                "--verify",
+                f"refs/tags/{tag}^{{commit}}",
+            )
+            if raced_commit is not None:
+                return self._snapshot_for_existing_tag(repository, tag, resolved_commit, raced_commit)
+            raise
+
         return GitSnapshot(
             repository=str(Path(repository).resolve()),
             commit=resolved_commit,
             tag=tag,
         )
+
+    def _snapshot_for_existing_tag(
+        self, repository: str, tag: str, resolved_commit: str, existing_commit: str
+    ) -> GitSnapshot:
+        if existing_commit != resolved_commit:
+            raise RuntimeError(f"Git tag '{tag}' already exists at a different commit")
+        return GitSnapshot(
+            repository=str(Path(repository).resolve()),
+            commit=resolved_commit,
+            tag=tag,
+        )
+
+    def _validate_tag_name(self, repository: str, tag: str) -> None:
+        if not tag or tag.startswith("-"):
+            raise ValueError("tag must be a non-empty Git reference name")
+        try:
+            self._run_required(repository, "check-ref-format", f"refs/tags/{tag}")
+        except RuntimeError as exc:
+            raise ValueError(f"invalid Git tag name: {tag}") from exc
 
     def _run(self, repository: str, *args: str) -> str | None:
         try:
