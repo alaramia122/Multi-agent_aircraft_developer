@@ -91,14 +91,23 @@ class AdapterWorkspaceReconciler:
                 change_set_hash,
             )
 
-        for element in changes.elements:
+        # Apply in a stable order so retries and independently constructed graphs
+        # produce the same external operation sequence, not merely the same hash.
+        for element in sorted(changes.elements, key=lambda item: str(item.id)):
             await self._adapters[element.external_system].apply_element(workspace.id, element)
 
-        for relation in changes.relations:
+        for relation in sorted(changes.relations, key=lambda item: str(item.id)):
             target = relation_targets[relation.id]
             await self._adapters[target.external_system].apply_relation(workspace.id, relation)
 
-        versions = [await self._adapters[system].get_version() for system in used]
+        versions: list[ExternalVersion] = []
+        for system in used:
+            version = await self._adapters[system].get_version()
+            if version.system != system:
+                raise WorkspaceReconciliationError(
+                    f"workspace adapter '{system}' returned version for '{version.system}'"
+                )
+            versions.append(version)
         return tuple(versions)
 
 
