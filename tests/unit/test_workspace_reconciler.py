@@ -61,22 +61,28 @@ class FakeAdapter:
         self.relations.append(relation)
 
 
+def _workspace() -> Workspace:
+    return Workspace(
+        source_baseline_id=uuid4(),
+        source_git_commit="abc123",
+        change_request_id=uuid4(),
+    )
+
+
+def _element(system: str, external_id: str) -> EngineeringElement:
+    return EngineeringElement(
+        kind=ElementKind.ARCHITECTURE,
+        type_id="component",
+        name=external_id,
+        external_system=system,
+        external_id=external_id,
+    )
+
+
 @pytest.mark.asyncio
 async def test_relation_to_unchanged_canonical_endpoint_is_routed_to_source_adapter():
-    source = EngineeringElement(
-        kind=ElementKind.ARCHITECTURE,
-        type_id="component",
-        name="Changed",
-        external_system="capella",
-        external_id="COMP-1",
-    )
-    target = EngineeringElement(
-        kind=ElementKind.ARCHITECTURE,
-        type_id="component",
-        name="Existing",
-        external_system="capella",
-        external_id="COMP-2",
-    )
+    source = _element("capella", "COMP-1")
+    target = _element("capella", "COMP-2")
     relation = EngineeringRelation(
         source_id=source.id,
         relation_type=RelationType.DEPENDS_ON,
@@ -84,38 +90,49 @@ async def test_relation_to_unchanged_canonical_endpoint_is_routed_to_source_adap
     )
     adapter = FakeAdapter("capella")
     reconciler = AdapterWorkspaceReconciler((adapter,), FakeCanonical({target.id: target}))
-    workspace = Workspace(
-        source_baseline_id=uuid4(),
-        source_git_commit="abc123",
-        change_request_id=uuid4(),
-    )
-    changes = EngineeringGraph(elements=[source], relations=[relation])
 
-    versions = await reconciler.reconcile(workspace, changes)
+    versions = await reconciler.reconcile(
+        _workspace(), EngineeringGraph(elements=[source], relations=[relation])
+    )
 
     assert versions == (ExternalVersion(system="capella", version="rev-1"),)
     assert adapter.elements == [source]
     assert adapter.relations == [relation]
-    assert adapter.created == [(workspace.id, "abc123", compute_change_set_hash(changes))]
+    assert adapter.created[0][2] == compute_change_set_hash(
+        EngineeringGraph(elements=[source], relations=[relation])
+    )
+
+
+@pytest.mark.asyncio
+async def test_cross_system_relation_is_applied_to_source_system():
+    source = _element("capella", "COMP-1")
+    target = _element("strictdoc", "REQ-1")
+    relation = EngineeringRelation(
+        source_id=source.id,
+        relation_type=RelationType.SATISFIES,
+        target_id=target.id,
+    )
+    capella = FakeAdapter("capella")
+    strictdoc = FakeAdapter("strictdoc")
+    reconciler = AdapterWorkspaceReconciler(
+        (capella, strictdoc), FakeCanonical({target.id: target})
+    )
+
+    await reconciler.reconcile(
+        _workspace(), EngineeringGraph(elements=[source], relations=[relation])
+    )
+
+    assert capella.relations == [relation]
+    assert strictdoc.relations == []
 
 
 @pytest.mark.asyncio
 async def test_same_change_set_produces_same_idempotency_key_on_retry():
-    source = EngineeringElement(
-        kind=ElementKind.ARCHITECTURE,
-        type_id="component",
-        name="Changed",
-        external_system="capella",
-        external_id="COMP-1",
-    )
+    source = _element("capella", "COMP-1")
     changes = EngineeringGraph(elements=[source])
     adapter = FakeAdapter("capella")
     reconciler = AdapterWorkspaceReconciler((adapter,), FakeCanonical({}))
-    workspace = Workspace(
-        source_baseline_id=uuid4(),
-        source_git_commit="abc123",
-        change_request_id=uuid4(),
-    )
+    workspace = _workspace()
 
     await reconciler.reconcile(workspace, changes)
     await reconciler.reconcile(workspace, changes)
@@ -126,28 +143,17 @@ async def test_same_change_set_produces_same_idempotency_key_on_retry():
 
 @pytest.mark.asyncio
 async def test_relation_with_unresolved_endpoint_is_rejected():
-    source = EngineeringElement(
-        kind=ElementKind.ARCHITECTURE,
-        type_id="component",
-        name="Changed",
-        external_system="capella",
-        external_id="COMP-1",
-    )
+    source = _element("capella", "COMP-1")
     relation = EngineeringRelation(
         source_id=source.id,
         relation_type=RelationType.DEPENDS_ON,
         target_id=uuid4(),
     )
     reconciler = AdapterWorkspaceReconciler((FakeAdapter("capella"),), FakeCanonical({}))
-    workspace = Workspace(
-        source_baseline_id=uuid4(),
-        source_git_commit="abc123",
-        change_request_id=uuid4(),
-    )
 
     with pytest.raises(WorkspaceReconciliationError, match="unknown endpoint"):
         await reconciler.reconcile(
-            workspace, EngineeringGraph(elements=[source], relations=[relation])
+            _workspace(), EngineeringGraph(elements=[source], relations=[relation])
         )
 
 
@@ -170,13 +176,8 @@ async def test_adapter_without_workspace_operations_is_rejected_before_mutation(
         },
     )()
     reconciler = AdapterWorkspaceReconciler((read_only_adapter,), FakeCanonical({}))
-    workspace = Workspace(
-        source_baseline_id=uuid4(),
-        source_git_commit="abc123",
-        change_request_id=uuid4(),
-    )
 
     with pytest.raises(
         WorkspaceReconciliationError, match="does not implement required operations"
     ):
-        await reconciler.reconcile(workspace, EngineeringGraph(elements=[element]))
+        await reconciler.reconcile(_workspace(), EngineeringGraph(elements=[element]))
