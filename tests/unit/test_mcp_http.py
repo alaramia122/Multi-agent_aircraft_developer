@@ -5,6 +5,8 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 import pytest
+from fastapi import FastAPI
+from starlette.testclient import TestClient
 
 from engineering_gateway.api.actor_provider import StaticActorProvider
 from engineering_gateway.api.mcp_http import create_mcp_http_app
@@ -75,3 +77,18 @@ def test_mcp_http_app_resolves_actor_only_from_trusted_provider() -> None:
 
     assert app is not None
     assert provider.calls == 1
+
+
+def test_mcp_http_app_keeps_endpoint_at_root_mount_path() -> None:
+    mcp_app = create_mcp_http_app(
+        _factory(_service()),
+        StaticActorProvider(_actor()),
+        allowed_hosts=("testserver",),
+    )
+    application = FastAPI()
+    application.mount("/", mcp_app)
+
+    with TestClient(application) as client:
+        response = client.get("/mcp")
+
+    assert response.status_code != 404
