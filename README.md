@@ -18,11 +18,19 @@ Engineering Gateway is an integration and governance layer, not a replacement fo
 
 ## Current implementation stage
 
-**Gateway infrastructure phase: complete.** The branch contains the complete pre-AI-Studio Gateway boundary: canonical engineering references and typed relations, PostgreSQL persistence, Standard Profile registration/activation/composition, deterministic traceability and validation, controlled Change Request/workspace lifecycle, human-only approval and immutable baseline governance, durable audit, Git/StrictDoc/Capella/OpenProject adapter boundaries, retry-safe reconciliation with PostgreSQL coordination, and the governed MCP surface.
+**Gateway infrastructure phase: complete.** The repository contains the complete pre-AI-Studio Gateway boundary: canonical engineering references and typed relations, PostgreSQL persistence, Standard Profile registration/activation/composition, deterministic traceability and validation, controlled Change Request/workspace lifecycle, human-only approval and immutable baseline governance, durable audit, Git/StrictDoc/Capella/OpenProject adapter boundaries, retry-safe reconciliation with PostgreSQL coordination, and the governed MCP surface.
 
 The Gateway is now treated as a frozen integration contract for the next project phase. New requirements that belong to AI Studio Agents/Workflows, knowledge retrieval, Object Storage deployment, production authentication, or concrete external-system deployment are not Gateway implementation gaps; they are subsequent integration/deployment work.
 
 MCP Streamable HTTP is exposed through an explicit trusted `ActorProvider` boundary. Authentication and identity-to-Actor mapping remain deployment concerns; MCP request data and tool annotations do not grant authorization. L3 approval and rejection are application operations and are not exposed as MCP tools.
+
+## Documentation
+
+Start with the documentation map in [`docs/README.md`](docs/README.md).
+
+For a Russian-speaking developer, the recommended entry point is [`docs/ru/system-overview.md`](docs/ru/system-overview.md), followed by [`docs/ru/onboarding.md`](docs/ru/onboarding.md).
+
+The documentation is bilingual by design: detailed engineering contracts remain canonical in English, while Russian system/architecture/onboarding documentation provides an equivalent entry path for the project team.
 
 ## Repository layout
 
@@ -31,7 +39,8 @@ MCP Streamable HTTP is exposed through an explicit trusted `ActorProvider` bound
 ├── docs/
 │   ├── architecture/
 │   ├── contracts/
-│   └── development/
+│   ├── development/
+│   └── ru/
 ├── src/
 │   └── engineering_gateway/
 │       ├── api/
