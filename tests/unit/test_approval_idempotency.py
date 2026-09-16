@@ -1,20 +1,17 @@
 """Regression coverage for retry-safe deterministic baseline tag publication."""
 
 from engineering_gateway.application.gateway_service import Actor
-from engineering_gateway.domain.audit import ActorType
-from engineering_gateway.domain.change_control import AuthorizationLevel
 from engineering_gateway.domain.adapters import GitSnapshot
+from engineering_gateway.domain.audit import ActorType
+from engineering_gateway.domain.baselines import Baseline
+from engineering_gateway.domain.change_control import AuthorizationLevel
 from tests.unit.test_gateway_service import make_change_request, mark_workspace_ready
 
 
 async def test_approval_reuses_existing_deterministic_git_tag(workflow_service) -> None:
     """A retry after a committed Git tag must not require a new tag identity."""
     gateway, _, baselines, workspaces, git, change_requests = workflow_service
-    source = await baselines.register(
-        __import__("engineering_gateway.domain.baselines", fromlist=["Baseline"]).Baseline(
-            name="B0", git_repository="repo", git_commit="abc123"
-        )
-    )
+    source = await baselines.register(Baseline(name="B0", git_repository="repo", git_commit="abc123"))
     change_request = await make_change_request(change_requests)
     actor = Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE)
     workspace = await gateway.create_workspace(actor, source.id, change_request.id)
