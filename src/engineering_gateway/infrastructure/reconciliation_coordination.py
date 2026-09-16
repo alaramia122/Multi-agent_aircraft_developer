@@ -9,6 +9,7 @@ the same database transaction that owns the reconciliation operation.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from hashlib import sha256
 from uuid import UUID
@@ -28,7 +29,7 @@ class ProcessLocalReconciliationCoordinator:
         return self._locked(workspace_id)
 
     @asynccontextmanager
-    async def _locked(self, workspace_id: UUID) -> AbstractAsyncContextManager[None]:
+    async def _locked(self, workspace_id: UUID) -> AsyncIterator[None]:
         lock = self._locks.setdefault(workspace_id, asyncio.Lock())
         async with lock:
             yield None
@@ -52,7 +53,7 @@ class PostgresReconciliationCoordinator:
         return self._locked(workspace_id)
 
     @asynccontextmanager
-    async def _locked(self, workspace_id: UUID) -> AbstractAsyncContextManager[None]:
+    async def _locked(self, workspace_id: UUID) -> AsyncIterator[None]:
         lock_key = _advisory_lock_key(workspace_id)
         await self._session.execute(
             text("SELECT pg_advisory_xact_lock(:lock_key)"),
