@@ -11,12 +11,16 @@ class FakeSession:
     def __init__(self):
         self.added = []
         self.commits = 0
+        self.flushes = 0
 
     def add(self, value):
         self.added.append(value)
 
     async def commit(self):
         self.commits += 1
+
+    async def flush(self):
+        self.flushes += 1
 
 
 class SessionContext:
@@ -81,5 +85,6 @@ async def test_success_audit_stays_in_application_transaction():
 
     assert len(application_session.added) == 1
     assert application_session.commits == 0
+    assert application_session.flushes == 1
     assert audit_session.added == []
     assert audit_session.commits == 0
