@@ -65,10 +65,9 @@ async def governed_gateway_context(
     if adapter_set is not None and external_adapters is not None:
         raise ValueError("provide either adapter_set or external_adapters, not both")
 
-    if adapter_set is not None:
-        resolved_external_adapters = adapter_set.as_read_adapters()
-    else:
-        resolved_external_adapters = external_adapters or ()
+    resolved_external_adapters = (
+        adapter_set.as_read_adapters() if adapter_set is not None else external_adapters or ()
+    )
 
     async with database.session_factory() as session:
         uow = SqlAlchemyUnitOfWork(session)
