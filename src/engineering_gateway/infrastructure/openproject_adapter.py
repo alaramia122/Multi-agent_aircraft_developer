@@ -137,7 +137,32 @@ class LocalOpenProjectAdapter:
             "lockVersion": lock_version,
             "_links": {"status": {"href": status_href}},
         }
-        await asyncio.to_thread(self._request_json, "PATCH", update_href, payload)
+        try:
+            await asyncio.to_thread(self._request_json, "PATCH", update_href, payload)
+        except OpenProjectAdapterError as exc:
+            if exc.status_code != 409:
+                raise
+            # Another writer may have advanced lockVersion between GET and PATCH.
+            # Re-read once; if it already reached the requested state the operation
+            # is complete, otherwise retry exactly once with the fresh lockVersion.
+            current = await asyncio.to_thread(
+                self._request_json,
+                "GET",
+                f"/api/v3/work_packages/{quote(external_id, safe='')}",
+            )
+            lock_version = current.get("lockVersion")
+            if not isinstance(lock_version, int):
+                raise OpenProjectAdapterError(
+                    "OpenProject work package has no lockVersion after conflict"
+                )
+            if self._status_href(current) == status_href:
+                return
+            update_href = self._update_href(current, external_id)
+            retry_payload = {
+                "lockVersion": lock_version,
+                "_links": {"status": {"href": status_href}},
+            }
+            await asyncio.to_thread(self._request_json, "PATCH", update_href, retry_payload)
 
     def _find_by_subject(self, subject: str) -> str | None:
         filters = json.dumps(
