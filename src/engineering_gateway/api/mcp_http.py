@@ -7,13 +7,14 @@ from typing import Any
 
 from mcp.server.transport_security import TransportSecuritySettings
 
+from engineering_gateway.api.actor_provider import ActorProvider
 from engineering_gateway.api.mcp_server import create_mcp_server
-from engineering_gateway.application.gateway_service import Actor, GatewayApplicationService
+from engineering_gateway.application.gateway_service import GatewayApplicationService
 
 
 def create_mcp_http_app(
     service: GatewayApplicationService,
-    actor: Actor,
+    actor_provider: ActorProvider,
     *,
     allowed_hosts: Sequence[str],
     allowed_origins: Sequence[str] = (),
@@ -22,10 +23,10 @@ def create_mcp_http_app(
 ) -> Any:
     """Build the ASGI application used to expose Gateway MCP over HTTP.
 
-    Authentication and actor provisioning remain deployment concerns; the supplied
-    actor is the Gateway identity used for every call handled by this MCP endpoint.
-    The transport boundary still requires an explicit host allowlist to keep
-    DNS-rebinding protection enabled for real deployments.
+    The HTTP deployment boundary receives a trusted actor provider rather than an
+    actor supplied by MCP request data. Authentication and principal-to-actor
+    mapping remain deployment concerns. The resolved actor is the Gateway identity
+    used by this MCP endpoint; MCP metadata and tool annotations never grant rights.
     """
     hosts = tuple(host.strip() for host in allowed_hosts if host.strip())
     if not hosts:
@@ -36,6 +37,7 @@ def create_mcp_http_app(
         allowed_hosts=list(hosts),
         allowed_origins=list(origins),
     )
+    actor = actor_provider.get_actor()
     server = create_mcp_server(service, actor)
     return server.streamable_http_app(
         streamable_http_path=streamable_http_path,
