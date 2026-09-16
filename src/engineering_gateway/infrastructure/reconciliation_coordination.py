@@ -9,7 +9,7 @@ the same database transaction that owns the reconciliation operation.
 from __future__ import annotations
 
 import asyncio
-from contextlib import asynccontextmanager
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from hashlib import sha256
 from uuid import UUID
 
@@ -23,12 +23,12 @@ class ProcessLocalReconciliationCoordinator:
     def __init__(self) -> None:
         self._locks: dict[UUID, asyncio.Lock] = {}
 
-    def lock(self, workspace_id: UUID):
+    def lock(self, workspace_id: UUID) -> AbstractAsyncContextManager[None]:
         """Serialize one workspace within this Python process."""
         return self._locked(workspace_id)
 
     @asynccontextmanager
-    async def _locked(self, workspace_id: UUID):
+    async def _locked(self, workspace_id: UUID) -> AbstractAsyncContextManager[None]:
         lock = self._locks.setdefault(workspace_id, asyncio.Lock())
         async with lock:
             yield None
@@ -47,12 +47,12 @@ class PostgresReconciliationCoordinator:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    def lock(self, workspace_id: UUID):
+    def lock(self, workspace_id: UUID) -> AbstractAsyncContextManager[None]:
         """Acquire the transaction-scoped lock for ``workspace_id``."""
         return self._locked(workspace_id)
 
     @asynccontextmanager
-    async def _locked(self, workspace_id: UUID):
+    async def _locked(self, workspace_id: UUID) -> AbstractAsyncContextManager[None]:
         lock_key = _advisory_lock_key(workspace_id)
         await self._session.execute(
             text("SELECT pg_advisory_xact_lock(:lock_key)"),
