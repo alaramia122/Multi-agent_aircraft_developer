@@ -9,8 +9,9 @@ from fastapi import FastAPI, Response
 from starlette.routing import Mount
 
 from engineering_gateway import __version__
-from engineering_gateway.api.actor_provider import StaticActorProvider
+from engineering_gateway.api.actor_provider import RequestActorProvider, StaticActorProvider
 from engineering_gateway.api.mcp_http import create_mcp_http_app
+from engineering_gateway.api.principal_mapper import ClaimMapping, TrustedClaimsActorMapper
 from engineering_gateway.application.gateway_service import Actor
 from engineering_gateway.config import settings
 from engineering_gateway.infrastructure.db import Database
@@ -23,13 +24,20 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     """Own process-level resources; application services remain operation-scoped."""
 
     database = Database(settings.database.url)
-    actor_provider = StaticActorProvider(
-        Actor(
-            actor_id=settings.mcp.static_actor_id,
-            actor_type=settings.mcp.static_actor_type,
-            authorization_level=settings.mcp.static_authorization_level,
+    if settings.identity.enabled:
+        actor_provider = RequestActorProvider()
+        principal_mapper = TrustedClaimsActorMapper(
+            ClaimMapping(actor_id_claim=settings.identity.actor_claim)
         )
-    )
+    else:
+        actor_provider = StaticActorProvider(
+            Actor(
+                actor_id=settings.mcp.static_actor_id,
+                actor_type=settings.mcp.static_actor_type,
+                authorization_level=settings.mcp.static_authorization_level,
+            )
+        )
+        principal_mapper = None
 
     mcp_app = create_mcp_http_app(
         lambda: governed_gateway_context(database),
@@ -37,6 +45,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         allowed_hosts=settings.mcp.allowed_hosts,
         allowed_origins=settings.mcp.allowed_origins,
         streamable_http_path=settings.mcp.path,
+        principal_mapper=principal_mapper,
     )
     mcp_route = Mount("/", app=mcp_app)
     application.router.routes.append(mcp_route)
