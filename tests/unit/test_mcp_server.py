@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 import pytest
 from mcp.server.mcpserver.exceptions import ToolError
 
+from engineering_gateway.api.actor_provider import ActorProvider
 from engineering_gateway.api.mcp_server import create_mcp_server
 from engineering_gateway.application.gateway_service import Actor, GatewayApplicationService
 from engineering_gateway.domain.audit import ActorType, InMemoryAuditSink
@@ -72,37 +73,54 @@ def _actor(level: AuthorizationLevel = AuthorizationLevel.L0_READ) -> Actor:
     return Actor("mcp-ai", ActorType.AI, level)
 
 
+class _MutableActorProvider:
+    def __init__(self, actor: Actor) -> None:
+        self.actor = actor
+        self.calls = 0
+
+    def get_actor(self) -> Actor:
+        self.calls += 1
+        return self.actor
+
+
 @pytest.mark.asyncio
-async def test_l0_mcp_server_exposes_only_read_tools() -> None:
+async def test_l0_mcp_server_exposes_all_tools_but_enforces_l2_at_invocation() -> None:
     repository = _Repository()
     server = create_mcp_server(_factory(_service(repository)), _actor())
 
     tools = await server.list_tools()
+    names = {tool.name for tool in tools}
 
-    assert {tool.name for tool in tools} == {
+    assert {
         "get_engineering_element",
         "get_engineering_relations",
         "validate_engineering_graph",
-    }
-    assert all(tool.annotations is not None for tool in tools)
-    assert all(tool.annotations.read_only_hint for tool in tools)
+        "create_workspace",
+        "save_workspace_element",
+        "add_workspace_relation",
+        "prepare_workspace_for_approval",
+        "reconcile_workspace",
+    } == names
+
+    with pytest.raises(ToolError, match="MCP workspace mutation requires L2 authorization"):
+        await server.call_tool(
+            "create_workspace",
+            {"baseline_id": str(uuid4()), "change_request_id": str(uuid4())},
+        )
 
 
 @pytest.mark.asyncio
-async def test_l1_mcp_server_exposes_only_read_tools() -> None:
+async def test_l1_mcp_server_cannot_mutate_workspace() -> None:
     repository = _Repository()
     server = create_mcp_server(
         _factory(_service(repository)), _actor(AuthorizationLevel.L1_PROPOSE)
     )
 
-    tools = await server.list_tools()
-    names = {tool.name for tool in tools}
-
-    assert names == {
-        "get_engineering_element",
-        "get_engineering_relations",
-        "validate_engineering_graph",
-    }
+    with pytest.raises(ToolError, match="MCP workspace mutation requires L2 authorization"):
+        await server.call_tool(
+            "create_workspace",
+            {"baseline_id": str(uuid4()), "change_request_id": str(uuid4())},
+        )
 
 
 @pytest.mark.asyncio
@@ -172,7 +190,13 @@ async def test_l2_mutating_tools_are_not_read_only() -> None:
     tools = await server.list_tools()
     by_name = {tool.name: tool for tool in tools}
 
-    for name in ("create_workspace", "save_workspace_element", "add_workspace_relation"):
+    for name in (
+        "create_workspace",
+        "save_workspace_element",
+        "add_workspace_relation",
+        "prepare_workspace_for_approval",
+        "reconcile_workspace",
+    ):
         assert by_name[name].annotations is not None
         assert not by_name[name].annotations.read_only_hint
         assert by_name[name].annotations.destructive_hint is False
@@ -216,3 +240,33 @@ async def test_mcp_operation_acquires_a_fresh_service_context() -> None:
 
     assert opened == 2
     assert closed == 2
+
+
+@pytest.mark.asyncio
+async def test_mcp_resolves_actor_for_each_operation() -> None:
+    repository = _Repository()
+    provider = _MutableActorProvider(_actor())
+    server = create_mcp_server(_factory(_service(repository)), provider)
+
+    await server.call_tool("get_engineering_element", {"element_id": str(repository.element.id)})
+    provider.actor = _actor(AuthorizationLevel.L1_PROPOSE)
+    await server.call_tool("get_engineering_element", {"element_id": str(repository.element.id)})
+
+    assert provider.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_mcp_runtime_authorization_follows_current_actor() -> None:
+    repository = _Repository()
+    provider = _MutableActorProvider(_actor(AuthorizationLevel.L0_READ))
+    server = create_mcp_server(_factory(_service(repository)), provider)
+
+    with pytest.raises(ToolError, match="MCP workspace mutation requires L2 authorization"):
+        await server.call_tool(
+            "create_workspace",
+            {"baseline_id": str(uuid4()), "change_request_id": str(uuid4())},
+        )
+
+    provider.actor = _actor(AuthorizationLevel.L2_MODIFY_WORKSPACE)
+    tools = await server.list_tools()
+    assert "create_workspace" in {tool.name for tool in tools}
