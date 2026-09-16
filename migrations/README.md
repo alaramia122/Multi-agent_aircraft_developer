@@ -4,7 +4,12 @@ The Gateway owns only governance metadata. PostgreSQL stores identifiers, workfl
 
 Migrations are applied in repository order. Numeric gaps are historical and must not be reused. Migration version numbers must be unique; a duplicate version is a repository defect and is covered by `tests/unit/test_migration_layout.py`.
 
-The current migration sequence is:
+The repository has two migration areas with distinct roles:
+
+- `migrations/versions/0001_*.sql` and `0002_*.sql` are the original schema fragments retained as historical bootstrap migrations. They must be applied first when creating a fresh database from this repository.
+- `migrations/0003_*.sql` and later are the active incremental migration sequence. They extend the schema created by the two bootstrap migrations.
+
+The current active migration sequence is:
 
 - `0003_workspace_change_workflow.sql` — Change Request and workspace workflow metadata;
 - `0004_workspace_baseline_provenance.sql` — exact source Git commit for a workspace;
@@ -13,16 +18,19 @@ The current migration sequence is:
 - `0008_profile_activation_workspace_reconciliation.sql` — profile activation and reconciliation state;
 - `0009_reconciliation_evidence_hash.sql` — deterministic reconciliation evidence hash;
 - `0010_workspace_validation_evidence.sql` — deterministic validation hash and evidence;
-- `0011_reconciliation_external_versions.sql` — authoritative external versions captured by reconciliation.
+- `0011_reconciliation_external_versions.sql` — authoritative external versions captured by reconciliation;
+- `0012_workspace_optimistic_concurrency.sql` — workspace optimistic-concurrency version token.
 
-The `migrations/versions/` directory contains the original schema fragments retained as historical reference. It is not a second migration sequence and must not be applied in parallel with the numbered migrations in the repository root.
+Migration `0007` is intentionally absent. Numeric gaps are historical and must not be reused.
+
+For a fresh database, apply `migrations/versions/*.sql` in lexical order first, then `migrations/*.sql` in lexical order. The CI workflow follows this bootstrap-plus-active-sequence order. The two directories must not be treated as parallel active migration sequences.
 
 Current schema responsibilities:
 
 - `standard_profiles` — registered profile definitions and activation state;
 - `baselines` — immutable Git provenance and external-system versions;
 - `change_requests` — external change identity and Gateway workflow state;
-- `workspaces` — workspace provenance, profile binding, validation evidence and reconciliation evidence;
+- `workspaces` — workspace provenance, profile binding, validation evidence, reconciliation evidence and optimistic-concurrency version;
 - `audit_events` — append-oriented governance audit trail.
 
 The workspace evidence fields are intentionally metadata rather than an engineering model:
