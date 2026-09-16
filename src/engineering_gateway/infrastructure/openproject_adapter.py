@@ -154,7 +154,7 @@ class LocalOpenProjectAdapter:
             if not isinstance(lock_version, int):
                 raise OpenProjectAdapterError(
                     "OpenProject work package has no lockVersion after conflict"
-                )
+                ) from None
             if self._status_href(current) == status_href:
                 return
             update_href = self._update_href(current, external_id)
