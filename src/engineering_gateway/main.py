@@ -54,7 +54,11 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     application.state.mcp_route = mcp_route
 
     try:
-        async with mcp_app.router.lifespan_context(mcp_app):
+        router = getattr(mcp_app, "router", None)
+        if router is not None:
+            async with router.lifespan_context(mcp_app):
+                yield
+        else:
             yield
     finally:
         routes = application.router.routes
