@@ -76,7 +76,7 @@ async def test_workspace_repository_allows_validation_reset_on_rejection_path(se
     await repository.create(workspace)
 
     ready = workspace.model_copy(update={"state": WorkspaceState.READY_FOR_APPROVAL})
-    await repository.update(ready)
+    ready = await repository.update(ready)
     reset = ready.model_copy(
         update={
             "state": WorkspaceState.ACTIVE,
