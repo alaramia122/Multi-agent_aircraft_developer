@@ -72,6 +72,8 @@ class FakeGit:
 
 
 class FakeOpenProject:
+    system_name = "openproject"
+
     async def create_change_request(self, title: str, description: str) -> str:
         return "CR-1"
 
