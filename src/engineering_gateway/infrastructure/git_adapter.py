@@ -22,7 +22,9 @@ class LocalGitAdapter:
 
     async def get_snapshot(self, repository: str, ref: str = "HEAD") -> GitSnapshot:
         """Resolve a repository ref to a reproducible commit snapshot."""
-        commit = self._run_required(repository, "rev-parse", "--verify", f"{ref}^{{commit}}")
+        commit = self._run_required(
+            repository, "rev-parse", "--verify", "--end-of-options", f"{ref}^{{commit}}"
+        )
         tag = self._run(repository, "describe", "--exact-match", "--tags", commit)
         return GitSnapshot(repository=str(Path(repository).resolve()), commit=commit, tag=tag)
 
@@ -36,6 +38,7 @@ class LocalGitAdapter:
             repository,
             "merge-base",
             "--is-ancestor",
+            "--",
             ancestor_commit,
             descendant_ref,
         )
@@ -55,7 +58,9 @@ class LocalGitAdapter:
         command fails.
         """
         self._validate_tag_name(repository, tag)
-        resolved_commit = self._run(repository, "rev-parse", "--verify", f"{commit}^{{commit}}")
+        resolved_commit = self._run(
+            repository, "rev-parse", "--verify", "--end-of-options", f"{commit}^{{commit}}"
+        )
         if resolved_commit is None:
             raise ValueError(f"commit '{commit}' does not exist")
 
@@ -63,6 +68,7 @@ class LocalGitAdapter:
             repository,
             "rev-parse",
             "--verify",
+            "--end-of-options",
             f"refs/tags/{tag}^{{commit}}",
         )
         if existing_commit is not None:
@@ -77,6 +83,7 @@ class LocalGitAdapter:
                 repository,
                 "rev-parse",
                 "--verify",
+                "--end-of-options",
                 f"refs/tags/{tag}^{{commit}}",
             )
             if raced_commit is not None:
