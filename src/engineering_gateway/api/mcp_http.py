@@ -9,6 +9,8 @@ from mcp.server.transport_security import TransportSecuritySettings
 
 from engineering_gateway.api.actor_provider import ActorProvider
 from engineering_gateway.api.mcp_server import GatewayServiceFactory, create_mcp_server
+from engineering_gateway.api.principal_mapper import PrincipalActorMapper
+from engineering_gateway.api.request_actor_middleware import TrustedPrincipalMiddleware
 
 
 def create_mcp_http_app(
@@ -19,13 +21,16 @@ def create_mcp_http_app(
     allowed_origins: Sequence[str] = (),
     streamable_http_path: str = "/mcp",
     json_response: bool = False,
+    principal_mapper: PrincipalActorMapper | None = None,
+    principal_claims_state_key: str = "trusted_principal_claims",
 ) -> Any:
     """Build the ASGI application used to expose Gateway MCP over HTTP.
 
-    The HTTP deployment boundary receives a trusted actor provider rather than an
-    actor supplied by MCP request data. Authentication and principal-to-actor
-    mapping remain deployment concerns. The Gateway service factory is invoked by
-    each MCP operation, so database sessions are never shared between requests.
+    The actor provider is queried for every MCP tool invocation. When a
+    ``principal_mapper`` is supplied, the MCP application binds an Actor from
+    claims that an upstream authentication layer has already placed in ASGI
+    request state. Token authentication and verification remain deployment
+    concerns and are intentionally not implemented here.
     """
     hosts = tuple(host.strip() for host in allowed_hosts if host.strip())
     if not hosts:
@@ -36,13 +41,19 @@ def create_mcp_http_app(
         allowed_hosts=list(hosts),
         allowed_origins=list(origins),
     )
-    actor = actor_provider.get_actor()
-    server = create_mcp_server(service_factory, actor)
-    return server.streamable_http_app(
+    server = create_mcp_server(service_factory, actor_provider)
+    app = server.streamable_http_app(
         streamable_http_path=streamable_http_path,
         json_response=json_response,
         transport_security=security,
     )
+    if principal_mapper is not None:
+        app = TrustedPrincipalMiddleware(
+            app,
+            principal_mapper,
+            claims_state_key=principal_claims_state_key,
+        )
+    return app
 
 
 __all__ = ["create_mcp_http_app"]
