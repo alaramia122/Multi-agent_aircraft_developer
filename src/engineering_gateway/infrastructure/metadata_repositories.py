@@ -1,9 +1,11 @@
 """Persistence implementations for Gateway metadata."""
 
 from collections.abc import Callable
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 from sqlalchemy import select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from engineering_gateway.application.profile_engine import StandardProfileEngine
@@ -302,26 +304,29 @@ class SqlAlchemyWorkspaceRegistry(_TransactionAware):
         if current_state is not workspace.state:
             WorkspaceGate.require_transition(current_state, workspace.state)
 
-        result = await self._session.execute(
-            update(WorkspaceRecord)
-            .where(
-                WorkspaceRecord.id == workspace.id,
-                WorkspaceRecord.version == workspace.version,
-            )
-            .values(
-                profile_id=workspace.profile_id,
-                profile_version=workspace.profile_version,
-                validation_graph_hash=workspace.validation_graph_hash,
-                validation_evidence=workspace.validation_evidence,
-                reconciled=workspace.reconciled,
-                reconciled_change_set_hash=workspace.reconciled_change_set_hash,
-                reconciliation_external_versions=[
-                    item.model_dump(mode="json")
-                    for item in workspace.reconciliation_external_versions
-                ],
-                state=workspace.state.value,
-                version=WorkspaceRecord.version + 1,
-            )
+        result = cast(
+            CursorResult[Any],
+            await self._session.execute(
+                update(WorkspaceRecord)
+                .where(
+                    WorkspaceRecord.id == workspace.id,
+                    WorkspaceRecord.version == workspace.version,
+                )
+                .values(
+                    profile_id=workspace.profile_id,
+                    profile_version=workspace.profile_version,
+                    validation_graph_hash=workspace.validation_graph_hash,
+                    validation_evidence=workspace.validation_evidence,
+                    reconciled=workspace.reconciled,
+                    reconciled_change_set_hash=workspace.reconciled_change_set_hash,
+                    reconciliation_external_versions=[
+                        item.model_dump(mode="json")
+                        for item in workspace.reconciliation_external_versions
+                    ],
+                    state=workspace.state.value,
+                    version=WorkspaceRecord.version + 1,
+                )
+            ),
         )
         if result.rowcount != 1:
             raise ValueError(
