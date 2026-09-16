@@ -7,6 +7,7 @@ from contextlib import AbstractAsyncContextManager
 from uuid import UUID
 
 from mcp.server import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
 from engineering_gateway.application.gateway_service import Actor, GatewayApplicationService
@@ -22,20 +23,20 @@ GatewayServiceFactory = Callable[[], AbstractAsyncContextManager[GatewayApplicat
 
 def _require_l2(actor: Actor) -> None:
     if actor.authorization_level is not AuthorizationLevel.L2_MODIFY_WORKSPACE:
-        raise ValueError("MCP workspace mutation requires L2 authorization")
+        raise ToolError("MCP workspace mutation requires L2 authorization")
 
 
 def _parse_uuid(value: str, field_name: str) -> UUID:
     try:
         return UUID(value)
     except (TypeError, ValueError) as exc:
-        raise ValueError(f"{field_name} must be a valid UUID") from exc
+        raise ToolError(f"{field_name} must be a valid UUID") from exc
 
 
 def _require_non_blank(value: str, field_name: str) -> str:
     normalized = value.strip()
     if not normalized:
-        raise ValueError(f"{field_name} must not be blank")
+        raise ToolError(f"{field_name} must not be blank")
     return normalized
 
 
@@ -258,6 +259,3 @@ def create_mcp_server(service_factory: GatewayServiceFactory, actor: Actor) -> M
             }
 
     return server
-
-
-__all__ = ["GatewayServiceFactory", "create_mcp_server"]
