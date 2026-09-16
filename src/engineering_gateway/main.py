@@ -21,12 +21,12 @@ from engineering_gateway.infrastructure.gateway_context import governed_gateway_
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     """Own process-level resources; application services remain operation-scoped."""
 
-    database = Database(settings.database_url)
+    database = Database(settings.database.url)
     actor_provider = StaticActorProvider(
         Actor(
-            actor_id=settings.mcp_actor_id,
-            actor_type=settings.mcp_actor_type,
-            authorization_level=settings.mcp_authorization_level,
+            actor_id=settings.mcp.static_actor_id,
+            actor_type=settings.mcp.static_actor_type,
+            authorization_level=settings.mcp.static_authorization_level,
         )
     )
 
@@ -36,8 +36,9 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     mcp_app = create_mcp_http_app(
         lambda: governed_gateway_context(database),
         actor_provider,
-        allowed_hosts=settings.parsed_mcp_allowed_hosts,
-        allowed_origins=settings.parsed_mcp_allowed_origins,
+        allowed_hosts=settings.mcp.allowed_hosts,
+        allowed_origins=settings.mcp.allowed_origins,
+        streamable_http_path=settings.mcp.path,
     )
     mcp_route = Mount("/", app=mcp_app)
     application.router.routes.append(mcp_route)
