@@ -63,7 +63,5 @@ def test_mcp_http_app_resolves_actor_only_from_trusted_provider() -> None:
         allowed_hosts=("mcp.example.com",),
     )
 
-    assert provider.calls == 1
-    tools = app.routes[-1].app.routes if hasattr(app.routes[-1], "app") else []
     assert app is not None
-    assert tools is not None
+    assert provider.calls == 1
