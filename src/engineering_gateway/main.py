@@ -18,7 +18,7 @@ from engineering_gateway.infrastructure.gateway_context import governed_gateway_
 
 @asynccontextmanager
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
-    """Own the production Gateway database and service lifetime."""
+    """Own process-level resources; application services remain operation-scoped."""
 
     database = Database(settings.database_url)
     actor_provider = StaticActorProvider(
@@ -29,25 +29,26 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         )
     )
 
-    async with governed_gateway_context(database) as service:
-        mcp_app = create_mcp_http_app(
-            service,
-            actor_provider,
-            allowed_hosts=settings.parsed_mcp_allowed_hosts,
-            allowed_origins=settings.parsed_mcp_allowed_origins,
-        )
-        application.mount("/mcp", mcp_app)
-        application.state.database = database
-        application.state.gateway_service = service
-        application.state.mcp_actor_provider = actor_provider
-        try:
-            yield
-        finally:
-            application.router.routes = [
-                route for route in application.router.routes if getattr(route, "path", None) != "/mcp"
-            ]
+    # ``governed_gateway_context`` creates a fresh AsyncSession, repositories and
+    # UnitOfWork for every MCP operation. The context manager itself is therefore
+    # passed as a factory instead of being held for the application lifetime.
+    mcp_app = create_mcp_http_app(
+        lambda: governed_gateway_context(database),
+        actor_provider,
+        allowed_hosts=settings.parsed_mcp_allowed_hosts,
+        allowed_origins=settings.parsed_mcp_allowed_origins,
+    )
+    application.mount("/", mcp_app)
+    application.state.database = database
+    application.state.mcp_actor_provider = actor_provider
 
-    await database.dispose()
+    try:
+        yield
+    finally:
+        application.router.routes = [
+            route for route in application.router.routes if getattr(route, "path", None) != ""
+        ]
+        await database.dispose()
 
 
 app = FastAPI(title=settings.app_name, version=__version__, lifespan=lifespan)
