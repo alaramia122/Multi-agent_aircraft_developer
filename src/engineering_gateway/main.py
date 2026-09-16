@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from starlette.routing import Mount
 
 from engineering_gateway import __version__
@@ -15,29 +15,28 @@ from engineering_gateway.application.gateway_service import Actor
 from engineering_gateway.config import settings
 from engineering_gateway.infrastructure.db import Database
 from engineering_gateway.infrastructure.gateway_context import governed_gateway_context
+from engineering_gateway.readiness import check_readiness
 
 
 @asynccontextmanager
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     """Own process-level resources; application services remain operation-scoped."""
 
-    database = Database(settings.database_url)
+    database = Database(settings.database.url)
     actor_provider = StaticActorProvider(
         Actor(
-            actor_id=settings.mcp_actor_id,
-            actor_type=settings.mcp_actor_type,
-            authorization_level=settings.mcp_authorization_level,
+            actor_id=settings.mcp.static_actor_id,
+            actor_type=settings.mcp.static_actor_type,
+            authorization_level=settings.mcp.static_authorization_level,
         )
     )
 
-    # ``governed_gateway_context`` creates a fresh AsyncSession, repositories and
-    # UnitOfWork for every MCP operation. The context manager itself is therefore
-    # passed as a factory instead of being held for the application lifetime.
     mcp_app = create_mcp_http_app(
         lambda: governed_gateway_context(database),
         actor_provider,
-        allowed_hosts=settings.parsed_mcp_allowed_hosts,
-        allowed_origins=settings.parsed_mcp_allowed_origins,
+        allowed_hosts=settings.mcp.allowed_hosts,
+        allowed_origins=settings.mcp.allowed_origins,
+        streamable_http_path=settings.mcp.path,
     )
     mcp_route = Mount("/", app=mcp_app)
     application.router.routes.append(mcp_route)
@@ -46,9 +45,6 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     application.state.mcp_route = mcp_route
 
     try:
-        # Mounted Starlette applications do not receive lifespan events from the
-        # parent automatically. Streamable HTTP needs its session manager task
-        # group initialized explicitly for the process lifetime.
         async with mcp_app.router.lifespan_context(mcp_app):
             yield
     finally:
@@ -63,6 +59,23 @@ app = FastAPI(title=settings.app_name, version=__version__, lifespan=lifespan)
 
 @app.get("/health", tags=["system"])
 def health() -> dict[str, str]:
-    """Return process-level health information."""
+    """Return process-level liveness information."""
 
     return {"status": "ok", "service": settings.app_name, "version": __version__}
+
+
+@app.get("/health/live", tags=["system"])
+def liveness() -> dict[str, str]:
+    """Return a lightweight process liveness response."""
+
+    return {"status": "ok", "service": settings.app_name, "version": __version__}
+
+
+@app.get("/health/ready", tags=["system"])
+async def readiness(response: Response) -> dict[str, object]:
+    """Return dependency readiness and use HTTP 503 while the service is not ready."""
+
+    report = await check_readiness(app.state.database, settings)
+    if not report.ready:
+        response.status_code = 503
+    return report.as_dict()

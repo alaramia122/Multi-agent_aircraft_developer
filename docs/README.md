@@ -16,6 +16,9 @@ The repository uses English as the canonical language for detailed engineering c
 | [`development/contract-implementation-matrix.md`](development/contract-implementation-matrix.md) | Contract → implementation → tests verification matrix |
 | [`verification-matrix.md`](verification-matrix.md) | Verification coverage and acceptance mapping |
 | [`development/testing-strategy.md`](development/testing-strategy.md) | Test organization and verification approach |
+| [`deployment/production-integration.md`](deployment/production-integration.md) | Post-Gateway production integration foundation and rollout order |
+| [`deployment/production-configuration.md`](deployment/production-configuration.md) | Typed runtime configuration groups, environment variables, validation and secret handling |
+| [`deployment/readiness.md`](deployment/readiness.md) | Container deployment, database initialization, liveness/readiness semantics and production rollout gate |
 | [`contracts/`](contracts/) | Stable interfaces and behavioral contracts |
 
 ## Documentation layers
@@ -34,6 +37,8 @@ Governance and validation
 Development and testing
       ↓
 Deployment and external integration
+      ↓
+AI Studio Agents / Workflows
 ```
 
 The first three documents are intended to give a new contributor the project mental model before they read implementation details.

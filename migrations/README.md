@@ -20,11 +20,14 @@ The current active migration sequence is:
 - `0010_workspace_validation_evidence.sql` — deterministic validation hash and evidence;
 - `0011_reconciliation_external_versions.sql` — authoritative external versions captured by reconciliation;
 - `0012_workspace_optimistic_concurrency.sql` — workspace optimistic-concurrency version token;
-- `0013_workspace_git_ref.sql` — immutable Gateway reference to the workspace Git ref.
+- `0013_workspace_git_ref.sql` — immutable Gateway reference to the workspace Git ref;
+- `0014_deployment_readiness_schema.sql` — deployment readiness schema-version marker.
 
 Migration `0007` is intentionally absent. Numeric gaps are historical and must not be reused.
 
 For a fresh database, apply `migrations/versions/*.sql` in lexical order first, then `migrations/*.sql` in lexical order. The CI workflow follows this bootstrap-plus-active-sequence order. The two directories must not be treated as parallel active migration sequences.
+
+The `gateway_schema_version` marker is Gateway deployment metadata. Readiness requires version `14`; application startup does not mutate the schema implicitly.
 
 Current schema responsibilities:
 
@@ -32,7 +35,8 @@ Current schema responsibilities:
 - `baselines` — immutable Git provenance and external-system versions;
 - `change_requests` — external change identity and Gateway workflow state;
 - `workspaces` — workspace provenance, profile binding, validation evidence, reconciliation evidence, optimistic-concurrency version, and Git reference;
-- `audit_events` — append-oriented governance audit trail.
+- `audit_events` — append-oriented governance audit trail;
+- `gateway_schema_version` — exact deployed Gateway schema version used by readiness checks.
 
 The workspace evidence fields are intentionally metadata rather than an engineering model:
 
