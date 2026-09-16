@@ -1,8 +1,8 @@
 """Deployment-side principal-to-Actor mapping contract.
 
-Authentication is intentionally outside the Gateway core.  A deployment may
+Authentication is intentionally outside the Gateway core. A deployment may
 verify a principal with its identity provider and then pass the trusted
-principal claims to this mapper.  Unverified request data must never be used
+principal claims to this mapper. Unverified request data must never be used
 as an Actor directly.
 """
 
@@ -10,7 +10,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Protocol
+from enum import Enum
+from typing import Protocol, TypeVar
 
 from engineering_gateway.application.gateway_service import Actor
 from engineering_gateway.domain.audit import ActorType
@@ -33,12 +34,15 @@ class ClaimMapping:
     authorization_level_claim: str = "authorization_level"
 
 
+EnumT = TypeVar("EnumT", bound=Enum)
+
+
 @dataclass(frozen=True)
 class TrustedClaimsActorMapper:
     """Deterministically map verified claims to an Actor.
 
     This class does not authenticate tokens, validate signatures, issuers or
-    audiences. Those responsibilities belong to the deployment identity
+    audiences. Those responsibilities belong to deployment identity
     middleware. Only that trusted layer should call ``map_actor``.
     """
 
@@ -64,14 +68,12 @@ class TrustedClaimsActorMapper:
         return value.strip()
 
     @staticmethod
-    def _enum_value[T: object](
-        claims: Mapping[str, object], claim: str, enum_type: type[T]
-    ) -> T:
-        value = claims.get(claim)
-        if not isinstance(value, str) or not value.strip():
-            raise ValueError(f"trusted identity claim '{claim}' must be a non-blank string")
+    def _enum_value(
+        claims: Mapping[str, object], claim: str, enum_type: type[EnumT]
+    ) -> EnumT:
+        value = TrustedClaimsActorMapper._required_string(claims, claim)
         try:
-            return enum_type(value.strip())  # type: ignore[call-arg]
+            return enum_type(value)
         except ValueError as exc:
             raise ValueError(f"unsupported value for trusted identity claim '{claim}'") from exc
 
