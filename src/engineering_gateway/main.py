@@ -27,7 +27,11 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     if settings.identity.enabled:
         actor_provider = RequestActorProvider()
         principal_mapper = TrustedClaimsActorMapper(
-            ClaimMapping(actor_id_claim=settings.identity.actor_claim)
+            ClaimMapping(
+                actor_id_claim=settings.identity.actor_id_claim,
+                actor_type_claim=settings.identity.actor_type_claim,
+                authorization_level_claim=settings.identity.authorization_level_claim,
+            )
         )
     else:
         actor_provider = StaticActorProvider(
@@ -46,6 +50,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         allowed_origins=settings.mcp.allowed_origins,
         streamable_http_path=settings.mcp.path,
         principal_mapper=principal_mapper,
+        principal_claims_state_key=settings.identity.principal_claims_state_key,
     )
     mcp_route = Mount("/", app=mcp_app)
     application.router.routes.append(mcp_route)
