@@ -43,10 +43,15 @@ async def test_create_change_request_recovers_from_concurrent_409(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[str] = []
+    get_calls = 0
 
     def fake_urlopen(request: Request, timeout: float) -> _Response:
+        nonlocal get_calls
         calls.append(request.method)
         if request.method == "GET":
+            get_calls += 1
+            if get_calls == 1:
+                return _response({"_embedded": {"elements": []}})
             return _response({"_embedded": {"elements": [{"id": 321}]}})
         raise HTTPError(request.full_url, 409, "conflict", {}, io.BytesIO())
 
