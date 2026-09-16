@@ -11,7 +11,7 @@ from uuid import uuid4
 
 import pytest
 
-from engineering_gateway.domain.models import ElementKind, EngineeringElement
+from engineering_gateway.domain.models import ElementKind, EngineeringElement, EngineeringRelation, RelationType
 from engineering_gateway.infrastructure.strictdoc_workspace_adapter import (
     LocalStrictDocWorkspaceAdapter,
     StrictDocBridgeConfig,
@@ -50,6 +50,11 @@ _BRIDGE = textwrap.dedent(
         if key not in state["elements"]:
             state["elements"].append(key)
             state["element_apply_count"] += 1
+    elif operation == "apply_relation":
+        key = workspace_id + ":" + payload["relation"]["id"]
+        if key not in state["relations"]:
+            state["relations"].append(key)
+            state["relation_apply_count"] += 1
 
     with open(state_path, "w", encoding="utf-8") as stream:
         json.dump(state, stream, sort_keys=True)
@@ -63,8 +68,10 @@ def _initial_state() -> dict[str, object]:
     return {
         "workspaces": {},
         "elements": [],
+        "relations": [],
         "create_count": 0,
         "element_apply_count": 0,
+        "relation_apply_count": 0,
     }
 
 
@@ -101,18 +108,27 @@ async def test_strictdoc_bridge_replay_is_durable_across_process_invocations(
         external_system="strictdoc",
         external_id="REQ-1",
     )
+    relation = EngineeringRelation(
+        id=uuid4(),
+        source_id=element.id,
+        relation_type=RelationType.SATISFIES,
+        target_id=element.id,
+    )
 
     await adapter.create_workspace(workspace_id, "source-revision", change_set_hash)
     await adapter.apply_element(workspace_id, element)
+    await adapter.apply_relation(workspace_id, relation)
 
     # Every adapter call starts a new bridge process. The persisted bridge state,
-    # not process memory, must make the replay safe.
+    # not process memory, must make the replay safe for elements and relations.
     await adapter.create_workspace(workspace_id, "source-revision", change_set_hash)
     await adapter.apply_element(workspace_id, element)
+    await adapter.apply_relation(workspace_id, relation)
 
     persisted = json.loads(state.read_text(encoding="utf-8"))
     assert persisted["create_count"] == 1
     assert persisted["element_apply_count"] == 1
+    assert persisted["relation_apply_count"] == 1
     assert persisted["workspaces"][str(workspace_id)] == change_set_hash
 
 
