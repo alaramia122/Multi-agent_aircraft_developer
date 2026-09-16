@@ -36,10 +36,40 @@ def test_default_configuration_is_safe_for_development() -> None:
     assert configured.mcp.static_actor_type is ActorType.AI
     assert configured.mcp.static_authorization_level is AuthorizationLevel.L0_READ
     assert configured.identity.enabled is False
+    assert configured.identity.actor_id_claim == "sub"
+    assert configured.identity.actor_type_claim == "actor_type"
+    assert configured.identity.authorization_level_claim == "authorization_level"
+    assert configured.identity.principal_claims_state_key == "trusted_principal_claims"
     assert configured.strictdoc.enabled is False
     assert configured.capella.enabled is False
     assert configured.openproject.enabled is False
     assert configured.object_storage.enabled is False
+
+
+def test_identity_claim_mapping_is_configurable() -> None:
+    configured = Settings(
+        identity={
+            "actor_id_claim": "uid",
+            "actor_type_claim": "kind",
+            "authorization_level_claim": "access_level",
+            "principal_claims_state_key": "verified_claims",
+        }
+    )
+
+    assert configured.identity.actor_id_claim == "uid"
+    assert configured.identity.actor_type_claim == "kind"
+    assert configured.identity.authorization_level_claim == "access_level"
+    assert configured.identity.principal_claims_state_key == "verified_claims"
+
+
+def test_blank_identity_claim_name_is_rejected() -> None:
+    with pytest.raises(ValidationError, match="identity claim names and state key must not be blank"):
+        Settings(identity={"actor_id_claim": "   "})
+
+
+def test_enabled_identity_requires_issuer_and_audience() -> None:
+    with pytest.raises(ValidationError, match="identity.issuer_url and identity.audience are required"):
+        Settings(identity={"enabled": True})
 
 
 def test_enabled_strictdoc_requires_project_path() -> None:
@@ -84,6 +114,8 @@ def test_nested_environment_variables_are_supported(monkeypatch: pytest.MonkeyPa
     monkeypatch.setenv("GATEWAY__PORT", "9000")
     monkeypatch.setenv("MCP__STATIC_AUTHORIZATION_LEVEL", "L1_PROPOSE")
     monkeypatch.setenv("DATABASE__POOL_SIZE", "8")
+    monkeypatch.setenv("IDENTITY__ACTOR_ID_CLAIM", "uid")
+    monkeypatch.setenv("IDENTITY__PRINCIPAL_CLAIMS_STATE_KEY", "verified_claims")
 
     configured = Settings(_env_file=None)
 
@@ -91,3 +123,5 @@ def test_nested_environment_variables_are_supported(monkeypatch: pytest.MonkeyPa
     assert configured.gateway.port == 9000
     assert configured.mcp.static_authorization_level is AuthorizationLevel.L1_PROPOSE
     assert configured.database.pool_size == 8
+    assert configured.identity.actor_id_claim == "uid"
+    assert configured.identity.principal_claims_state_key == "verified_claims"
