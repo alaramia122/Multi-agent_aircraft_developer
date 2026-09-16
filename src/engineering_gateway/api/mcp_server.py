@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncContextManager, Callable
+from contextlib import AbstractAsyncContextManager
+from typing import Callable
 from uuid import UUID
 
 from mcp.server import MCPServer
@@ -16,7 +17,7 @@ from engineering_gateway.domain.change_control import AuthorizationLevel
 from engineering_gateway.domain.models import EngineeringElement, EngineeringRelation
 
 
-GatewayServiceFactory = Callable[[], AsyncContextManager[GatewayApplicationService]]
+GatewayServiceFactory = Callable[[], AbstractAsyncContextManager[GatewayApplicationService]]
 
 
 def _require_l2(actor: Actor) -> None:
