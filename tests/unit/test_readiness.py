@@ -20,7 +20,7 @@ class _Result:
 
 
 class _Session:
-    async def __aenter__(self) -> "_Session":
+    async def __aenter__(self) -> _Session:
         return self
 
     async def __aexit__(self, *args) -> None:
