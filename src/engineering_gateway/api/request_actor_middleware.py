@@ -32,6 +32,12 @@ class TrustedPrincipalMiddleware:
         self.mapper = mapper
         self.claims_state_key = claims_state_key.strip()
 
+    @property
+    def router(self) -> Any:
+        """Expose the wrapped router so the composition root can manage lifespan."""
+
+        return self.app.router
+
     async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
         if scope.get("type") != "http":
             await self.app(scope, receive, send)
