@@ -46,7 +46,11 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     application.state.mcp_route = mcp_route
 
     try:
-        yield
+        # Mounted Starlette applications do not receive lifespan events from the
+        # parent automatically. Streamable HTTP needs its session manager task
+        # group initialized explicitly for the process lifetime.
+        async with mcp_app.router.lifespan_context(mcp_app):
+            yield
     finally:
         routes = application.router.routes
         if mcp_route in routes:
