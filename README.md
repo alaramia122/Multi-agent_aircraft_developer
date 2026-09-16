@@ -18,7 +18,9 @@ Engineering Gateway is an integration and governance layer, not a replacement fo
 
 ## Current implementation stage
 
-The infrastructure foundation is implemented incrementally behind stabilized contracts. The current Gateway slice includes canonical engineering graph persistence, configurable Standard Profiles, deterministic validation and traceability, workspace/change-control lifecycle, approval and baseline governance, audit persistence, Git/StrictDoc/Capella/OpenProject adapter boundaries, idempotent reconciliation, and a governed MCP surface.
+**Gateway infrastructure phase: complete.** The branch contains the complete pre-AI-Studio Gateway boundary: canonical engineering references and typed relations, PostgreSQL persistence, Standard Profile registration/activation/composition, deterministic traceability and validation, controlled Change Request/workspace lifecycle, human-only approval and immutable baseline governance, durable audit, Git/StrictDoc/Capella/OpenProject adapter boundaries, retry-safe reconciliation with PostgreSQL coordination, and the governed MCP surface.
+
+The Gateway is now treated as a frozen integration contract for the next project phase. New requirements that belong to AI Studio Agents/Workflows, knowledge retrieval, Object Storage deployment, production authentication, or concrete external-system deployment are not Gateway implementation gaps; they are subsequent integration/deployment work.
 
 MCP Streamable HTTP is exposed through an explicit trusted `ActorProvider` boundary. Authentication and identity-to-Actor mapping remain deployment concerns; MCP request data and tool annotations do not grant authorization. L3 approval and rejection are application operations and are not exposed as MCP tools.
 
@@ -52,6 +54,8 @@ MCP Streamable HTTP is exposed through an explicit trusted `ActorProvider` bound
 Python 3.12 is the initial implementation target. The Gateway is designed as a typed Python service with FastAPI, Pydantic, SQLAlchemy and Alembic. External engineering systems are accessed only through adapter contracts.
 
 The service is composed around transaction-scoped application operations. PostgreSQL provides durable Gateway state and cross-process reconciliation coordination; external side effects are protected by deterministic change-set identity and adapter-level idempotency contracts.
+
+See `docs/architecture/infrastructure-completion.md` and `docs/development/gateway-completion.md` for the frozen Gateway boundary and its acceptance criteria.
 
 ## Non-negotiable rules
 

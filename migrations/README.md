@@ -19,7 +19,8 @@ The current active migration sequence is:
 - `0009_reconciliation_evidence_hash.sql` — deterministic reconciliation evidence hash;
 - `0010_workspace_validation_evidence.sql` — deterministic validation hash and evidence;
 - `0011_reconciliation_external_versions.sql` — authoritative external versions captured by reconciliation;
-- `0012_workspace_optimistic_concurrency.sql` — workspace optimistic-concurrency version token.
+- `0012_workspace_optimistic_concurrency.sql` — workspace optimistic-concurrency version token;
+- `0013_workspace_git_ref.sql` — immutable Gateway reference to the workspace Git ref.
 
 Migration `0007` is intentionally absent. Numeric gaps are historical and must not be reused.
 
@@ -30,7 +31,7 @@ Current schema responsibilities:
 - `standard_profiles` — registered profile definitions and activation state;
 - `baselines` — immutable Git provenance and external-system versions;
 - `change_requests` — external change identity and Gateway workflow state;
-- `workspaces` — workspace provenance, profile binding, validation evidence, reconciliation evidence and optimistic-concurrency version;
+- `workspaces` — workspace provenance, profile binding, validation evidence, reconciliation evidence, optimistic-concurrency version, and Git reference;
 - `audit_events` — append-oriented governance audit trail.
 
 The workspace evidence fields are intentionally metadata rather than an engineering model:
