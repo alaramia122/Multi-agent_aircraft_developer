@@ -1,7 +1,5 @@
 """Regression coverage for retry-safe deterministic baseline tag publication."""
 
-import pytest
-
 from engineering_gateway.application.gateway_service import Actor
 from engineering_gateway.domain.adapters import GitSnapshot
 from engineering_gateway.domain.audit import ActorType
