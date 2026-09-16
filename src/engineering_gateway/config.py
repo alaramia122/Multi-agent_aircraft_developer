@@ -1,5 +1,6 @@
 """Gateway configuration."""
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from engineering_gateway.domain.audit import ActorType
@@ -25,6 +26,16 @@ class Settings(BaseSettings):
     mcp_actor_id: str = "gateway-service"
     mcp_actor_type: ActorType = ActorType.AI
     mcp_authorization_level: AuthorizationLevel = AuthorizationLevel.L0_READ
+
+    @field_validator("mcp_actor_id")
+    @classmethod
+    def validate_mcp_actor_id(cls, value: str) -> str:
+        """Reject an unusable static actor identity at the configuration boundary."""
+
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("mcp_actor_id must not be blank")
+        return normalized
 
     @property
     def parsed_mcp_allowed_hosts(self) -> tuple[str, ...]:
