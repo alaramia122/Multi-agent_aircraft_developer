@@ -9,7 +9,7 @@ It is a traceability document, not a claim that every production integration is 
 | Contract | Implementation | Tests / evidence | Status |
 |---|---|---|---|
 | `canonical-model.md` | `domain/models.py`; `domain/traceability.py`; SQLAlchemy metadata/repositories | `tests/unit/test_domain_models.py`; traceability tests; integration repository tests | **Implemented** |
-| `ports.md` | `domain/ports.py`; infrastructure adapters and repositories | `tests/contract/test_ports.py`; adapter contract/composition tests | **Implemented at Gateway boundary** |
+| `ports.md` | `domain/adapters.py`; infrastructure adapters and repositories | `tests/contract/test_ports.py`; adapter contract/composition tests | **Implemented at Gateway boundary** |
 | `standard-profiles.md` | `domain/profiles.py`; `application/profile_engine.py`; `application/profile_service.py`; `infrastructure/profile_loader.py`; profile persistence | profile-engine/profile-service unit tests; profile persistence/integration tests | **Implemented** |
 | `traceability-validation.md` | `domain/traceability.py`; `application/validation.py` | traceability and validation unit/integration tests | **Implemented** |
 | `change-control-audit.md` | `domain/change_control.py`; `domain/audit.py`; `application/governed_gateway_service.py`; audit repositories | change-control, audit, approval/idempotency, transaction-independence tests | **Implemented** |
@@ -18,9 +18,9 @@ It is a traceability document, not a claim that every production integration is 
 | `workspace-adapter-idempotency.md` | `domain/reconciliation.py`; `application/workspace_reconciliation.py`; adapter composition/bridge protocol | reconciliation/idempotency, adapter composition and bridge tests | **Implemented** |
 | `reconciliation-coordination.md` | `infrastructure/reconciliation.py` (production coordinator); `application/workspace_reconciliation.py`; Gateway composition | coordination/concurrency integration tests and reconciliation tests | **Implemented** |
 | `transaction-boundary.md` | `application/transactional_service.py`; Gateway composition; SQLAlchemy repositories | transaction-boundary and audit-independence tests | **Implemented** |
-| `strictdoc-adapter.md` | `infrastructure/strictdoc_adapter.py`; shared `bridge_protocol.py` for versioned external bridges | `tests/unit/test_strictdoc_adapter.py`; bridge protocol tests | **Read boundary implemented; controlled write-back remains deferred** |
-| `capella-adapter.md` | `infrastructure/capella_adapter.py`; `bridge_protocol.py` | `tests/unit/test_capella_adapter.py`; bridge protocol tests | **Read/bridge boundary implemented; production executable remains deployment concern** |
-| `openproject-adapter.md` | `infrastructure/openproject_adapter.py` | OpenProject adapter tests; adapter contract/composition tests | **Implemented at adapter boundary** |
+| `strictdoc-adapter.md` | `infrastructure/strictdoc_adapter.py` | `tests/unit/test_strictdoc_adapter.py`; adapter contract tests | **Read boundary implemented; controlled write-back/ReqIF remains deferred** |
+| `capella-adapter.md` | `infrastructure/capella_adapter.py`; `bridge_protocol.py` | `tests/unit/test_capella_adapter.py`; bridge protocol tests | **Read/workspace bridge boundary implemented; production bridge executable remains deployment concern** |
+| `openproject-adapter.md` | `infrastructure/openproject_adapter.py` | `tests/unit/test_openproject_adapter.py`; adapter contract/composition tests | **Implemented at adapter boundary** |
 | `mcp-gateway.md` | `api/mcp.py`; `main.py`; `infrastructure/gateway_context.py` | MCP gateway/auth/route/lifespan tests | **Implemented at Gateway boundary** |
 | `mcp-actor-provisioning.md` | MCP actor/identity provisioning support under `api`/`infrastructure` | actor provisioning and MCP authorization tests | **Implemented at Gateway boundary; production IdP deployment deferred** |
 
@@ -56,9 +56,14 @@ External side effects are not treated as part of a PostgreSQL transaction. Retry
 
 ### 6. External adapters
 
-The current code implements the Gateway-side integration boundaries and local/read or bridge mechanisms. It does **not** imply that a production StrictDoc/Capella executable bridge, production OpenProject endpoint, identity provider, object storage or deployment environment has been installed and configured.
+All four required adapter families now have an explicit, bounded implementation scope that matches the concrete code:
 
-In particular, the current StrictDoc adapter explicitly consumes the official CLI JSON export and is read-only. Controlled mutation/write-back is a later L2 integration concern. This is consistent with the adapter-specific scope, even though the generic port contract names publication/ReqIF as an adapter family capability.
+- **StrictDoc:** executable local read adapter using the official CLI JSON export; no silent write-back or ReqIF claim.
+- **Capella:** executable Gateway-side bridge adapter for element/version/workspace/element/relation operations using the versioned JSON bridge protocol; the actual Capella runtime remains an external deployment dependency.
+- **OpenProject:** executable API v3 adapter for work-package lookup, version discovery, idempotent Change Request creation and optimistic-lock status updates.
+- **Git:** executable local CLI adapter for reproducible ref snapshots, ancestry checks and immutable/idempotent tags.
+
+The repository tests cover adapter parsing, error boundaries, protocol validation, idempotency, optimistic locking and real temporary Git repositories. CI validates the complete test suite, but CI does not constitute proof that a customer's production StrictDoc/Capella/OpenProject installation is configured correctly.
 
 ### 7. MCP
 
@@ -66,12 +71,15 @@ The MCP surface is mounted through the Gateway composition root and uses trusted
 
 ## Remaining contract-level follow-up
 
-The verification pass found no reason to reopen the completed Gateway milestone solely because production external deployments are not present: those are explicitly outside the current boundary.
+No adapter currently has an implementation that silently claims capabilities outside its concrete boundary. The next production-integration phase should add explicit versioned contracts for any of the following if they become mandatory requirements:
 
-There is, however, one architectural follow-up worth retaining for the next phase:
+- StrictDoc controlled write-back/publication and ReqIF exchange;
+- a production Capella bridge executable and deployment packaging;
+- customer-specific OpenProject workflow/status configuration;
+- production Git hosting credentials/policies rather than the local CLI boundary.
 
-- the generic `ports.md` contract describes `StrictDocAdapter` as supporting requirements, relations, publication and ReqIF-oriented exchange, while the current concrete `LocalStrictDocAdapter` is intentionally read-only and consumes the StrictDoc JSON export. The repository already separates this read boundary from the later controlled write-back concern; if publication/ReqIF becomes an active requirement, it should be introduced as an explicit versioned L2 bridge contract rather than silently expanding the local read adapter.
+These are deployment/integration concerns rather than missing methods in the current Gateway adapter protocols.
 
 ## Result
 
-The current Gateway contracts have identifiable implementation and test anchors. The principal remaining work is therefore no longer reconstruction of the Gateway foundation, but the next system layer: production external bridge/deployment work and, separately, the AI Studio Agents/Workflows layer that consumes the Gateway through MCP.
+The Gateway contracts now align with the implemented adapter boundaries. The adapters are sufficiently complete for the current Gateway milestone: they expose the operations consumed by the application/reconciliation layer, validate external responses, and have dedicated failure/idempotency tests. Production-system availability and configuration remain explicitly outside repository-only CI.
