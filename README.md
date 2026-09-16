@@ -18,7 +18,9 @@ Engineering Gateway is an integration and governance layer, not a replacement fo
 
 ## Current implementation stage
 
-Stage 1 establishes the repository structure, architectural decision records, module boundaries, public contracts and executable test/CI skeleton. Business logic and external adapters are implemented incrementally after the contracts are stabilized.
+The infrastructure foundation is implemented incrementally behind stabilized contracts. The current Gateway slice includes canonical engineering graph persistence, configurable Standard Profiles, deterministic validation and traceability, workspace/change-control lifecycle, approval and baseline governance, audit persistence, Git/StrictDoc/Capella/OpenProject adapter boundaries, idempotent reconciliation, and a governed MCP surface.
+
+MCP Streamable HTTP is exposed through an explicit trusted `ActorProvider` boundary. Authentication and identity-to-Actor mapping remain deployment concerns; MCP request data and tool annotations do not grant authorization. L3 approval and rejection are application operations and are not exposed as MCP tools.
 
 ## Repository layout
 
@@ -36,6 +38,7 @@ Stage 1 establishes the repository structure, architectural decision records, mo
 │       └── infrastructure/
 ├── tests/
 │   ├── contract/
+│   ├── integration/
 │   └── unit/
 ├── profiles/
 │   └── examples/
@@ -48,7 +51,7 @@ Stage 1 establishes the repository structure, architectural decision records, mo
 
 Python 3.12 is the initial implementation target. The Gateway is designed as a typed Python service with FastAPI, Pydantic, SQLAlchemy and Alembic. External engineering systems are accessed only through adapter contracts.
 
-The first executable endpoint is a health check. Domain behavior is added behind application services and deterministic policies; adapters must not leak vendor-specific models into the domain.
+The service is composed around transaction-scoped application operations. PostgreSQL provides durable Gateway state and cross-process reconciliation coordination; external side effects are protected by deterministic change-set identity and adapter-level idempotency contracts.
 
 ## Non-negotiable rules
 
@@ -60,3 +63,5 @@ The first executable endpoint is a health check. Domain behavior is added behind
 6. Approved baselines are immutable. Changes require a Change Request/workspace and a new approval.
 7. Baseline Registry records the Git commit/tag and relevant external-system versions needed for reproducibility.
 8. Every state-changing Gateway action is auditable.
+9. Reconciliation is retry-safe: the canonical change-set identity is deterministic, cross-process coordination is transaction-scoped, and external adapters must preserve idempotency across process restarts.
+10. MCP authorization is a projection of Gateway authorization. Transport authentication and identity provisioning are outside the MCP tool layer.
