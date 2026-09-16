@@ -10,7 +10,7 @@ from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from engineering_gateway.api.actor_provider import ActorProvider
+from engineering_gateway.api.actor_provider import ActorProvider, StaticActorProvider
 from engineering_gateway.application.gateway_service import Actor, GatewayApplicationService
 from engineering_gateway.application.governed_gateway_service import (
     GovernedGatewayApplicationService,
@@ -41,18 +41,27 @@ def _require_non_blank(value: str, field_name: str) -> str:
     return normalized
 
 
-def create_mcp_server(service_factory: GatewayServiceFactory, actor_provider: ActorProvider) -> MCPServer:
+def create_mcp_server(
+    service_factory: GatewayServiceFactory, actor_provider: ActorProvider | Actor
+) -> MCPServer:
     """Create an MCP server backed by transaction-scoped Gateway services.
 
     The actor is resolved at tool invocation time, not when the MCP server is
     created. This is required for request-scoped identity and prevents one
     authenticated principal from being reused for another request.
 
+    Passing an ``Actor`` is retained as a compatibility convenience for tests
+    and trusted single-actor deployments; it is normalized to a static provider.
+    Production request-scoped deployments should pass an ``ActorProvider``.
+
     MCP is deliberately a projection of the Gateway authorization model, not a
     second governance layer. L3 approval/rejection operations are never exposed
     as MCP tools. Tool annotations describe behavior for clients; the Gateway
     remains the enforcement point.
     """
+    if isinstance(actor_provider, Actor):
+        actor_provider = StaticActorProvider(actor_provider)
+
     server = MCPServer("Engineering Gateway")
 
     @server.tool(
