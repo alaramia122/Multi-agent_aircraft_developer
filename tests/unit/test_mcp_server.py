@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from uuid import UUID, uuid4
 
 import pytest
+from mcp.server.mcpserver.exceptions import ToolError
 
 from engineering_gateway.api.mcp_server import create_mcp_server
 from engineering_gateway.application.gateway_service import Actor, GatewayApplicationService
@@ -140,7 +141,7 @@ async def test_mcp_tool_rejects_invalid_uuid_at_boundary() -> None:
     repository = _Repository()
     server = create_mcp_server(_factory(_service(repository)), _actor())
 
-    with pytest.raises(ValueError, match="element_id must be a valid UUID"):
+    with pytest.raises(ToolError, match="element_id must be a valid UUID"):
         await server.call_tool("get_engineering_element", {"element_id": "not-a-uuid"})
 
 
@@ -149,7 +150,7 @@ async def test_mcp_validation_rejects_blank_profile_identity_at_boundary() -> No
     repository = _Repository()
     server = create_mcp_server(_factory(_service(repository)), _actor())
 
-    with pytest.raises(ValueError, match="profile_id must not be blank"):
+    with pytest.raises(ToolError, match="profile_id must not be blank"):
         await server.call_tool(
             "validate_engineering_graph",
             {
