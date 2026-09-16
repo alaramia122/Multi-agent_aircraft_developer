@@ -8,12 +8,11 @@ from typing import Any
 from mcp.server.transport_security import TransportSecuritySettings
 
 from engineering_gateway.api.actor_provider import ActorProvider
-from engineering_gateway.api.mcp_server import create_mcp_server
-from engineering_gateway.application.gateway_service import GatewayApplicationService
+from engineering_gateway.api.mcp_server import GatewayServiceFactory, create_mcp_server
 
 
 def create_mcp_http_app(
-    service: GatewayApplicationService,
+    service_factory: GatewayServiceFactory,
     actor_provider: ActorProvider,
     *,
     allowed_hosts: Sequence[str],
@@ -25,8 +24,8 @@ def create_mcp_http_app(
 
     The HTTP deployment boundary receives a trusted actor provider rather than an
     actor supplied by MCP request data. Authentication and principal-to-actor
-    mapping remain deployment concerns. The resolved actor is the Gateway identity
-    used by this MCP endpoint; MCP metadata and tool annotations never grant rights.
+    mapping remain deployment concerns. The Gateway service factory is invoked by
+    each MCP operation, so database sessions are never shared between requests.
     """
     hosts = tuple(host.strip() for host in allowed_hosts if host.strip())
     if not hosts:
@@ -38,7 +37,7 @@ def create_mcp_http_app(
         allowed_origins=list(origins),
     )
     actor = actor_provider.get_actor()
-    server = create_mcp_server(service, actor)
+    server = create_mcp_server(service_factory, actor)
     return server.streamable_http_app(
         streamable_http_path=streamable_http_path,
         json_response=json_response,
