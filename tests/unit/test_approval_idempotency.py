@@ -1,11 +1,15 @@
 """Regression coverage for retry-safe deterministic baseline tag publication."""
 
+import pytest
+
 from engineering_gateway.application.gateway_service import Actor
 from engineering_gateway.domain.adapters import GitSnapshot
 from engineering_gateway.domain.audit import ActorType
 from engineering_gateway.domain.baselines import Baseline
 from engineering_gateway.domain.change_control import AuthorizationLevel
 from tests.unit.test_gateway_service import make_change_request, mark_workspace_ready
+
+pytest_plugins = ("tests.unit.test_gateway_service",)
 
 
 async def test_approval_reuses_existing_deterministic_git_tag(workflow_service) -> None:
