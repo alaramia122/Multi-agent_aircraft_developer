@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import FastAPI
+from starlette.routing import Mount
 from starlette.testclient import TestClient
 
 import engineering_gateway.main as main_module
@@ -49,6 +50,23 @@ def test_lifespan_owns_database_and_keeps_health_and_mcp_routes_available(monkey
 
     assert database.dispose_calls == 1
     assert not any(getattr(route, "path", None) == "" for route in application.router.routes)
+
+
+def test_lifespan_removes_only_its_own_mcp_mount(monkeypatch) -> None:
+    database = _Database("test://database")
+    monkeypatch.setattr(main_module, "Database", lambda url: database)
+    monkeypatch.setattr(main_module, "create_mcp_http_app", lambda *args, **kwargs: _mcp_app())
+
+    application = FastAPI(lifespan=main_module.lifespan)
+    unrelated_mount = Mount("/", app=FastAPI())
+    application.router.routes.append(unrelated_mount)
+
+    with TestClient(application):
+        assert sum(isinstance(route, Mount) and route.path == "" for route in application.router.routes) == 2
+
+    assert unrelated_mount in application.router.routes
+    assert sum(isinstance(route, Mount) and route.path == "" for route in application.router.routes) == 1
+    assert database.dispose_calls == 1
 
 
 def test_lifespan_disposes_database_when_application_body_fails(monkeypatch) -> None:
