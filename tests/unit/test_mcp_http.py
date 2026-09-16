@@ -85,7 +85,13 @@ def test_mcp_http_app_keeps_endpoint_at_root_mount_path() -> None:
         StaticActorProvider(_actor()),
         allowed_hosts=("testserver",),
     )
-    application = FastAPI()
+
+    @asynccontextmanager
+    async def lifespan(_application: FastAPI):
+        async with mcp_app.router.lifespan_context(mcp_app):
+            yield
+
+    application = FastAPI(lifespan=lifespan)
     application.mount("/", mcp_app)
 
     with TestClient(application) as client:
