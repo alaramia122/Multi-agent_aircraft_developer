@@ -389,6 +389,7 @@ async def test_composed_strictdoc_workspace_adapter_uses_real_bridge_protocol_an
 @pytest.mark.asyncio
 async def test_composed_reconciliation_replay_is_idempotent_without_external_calls(
     tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     bridge = tmp_path / "capella_bridge.py"
     bridge.write_text(_BRIDGE, encoding="utf-8")
@@ -396,7 +397,7 @@ async def test_composed_reconciliation_replay_is_idempotent_without_external_cal
     project = tmp_path / "model.aird"
     project.write_text("test project", encoding="utf-8")
     log = tmp_path / "bridge.log"
-    os.environ["BRIDGE_LOG"] = str(log)
+    monkeypatch.setenv("BRIDGE_LOG", str(log))
 
     adapter = LocalCapellaAdapter(
         CapellaBridgeConfig(executable=str(bridge), project_path=project)
@@ -438,5 +439,4 @@ async def test_composed_reconciliation_replay_is_idempotent_without_external_cal
             "get_version",
         ]
     finally:
-        os.environ.pop("BRIDGE_LOG", None)
         await database.dispose()
