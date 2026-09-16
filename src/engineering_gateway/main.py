@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from starlette.routing import BaseRoute
 
 from engineering_gateway import __version__
 from engineering_gateway.api.actor_provider import StaticActorProvider
@@ -38,16 +39,17 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         allowed_hosts=settings.parsed_mcp_allowed_hosts,
         allowed_origins=settings.parsed_mcp_allowed_origins,
     )
-    application.mount("/", mcp_app)
+    mcp_route = application.mount("/", mcp_app)
     application.state.database = database
     application.state.mcp_actor_provider = actor_provider
+    application.state.mcp_route = mcp_route
 
     try:
         yield
     finally:
-        application.router.routes = [
-            route for route in application.router.routes if getattr(route, "path", None) != ""
-        ]
+        routes: list[BaseRoute] = application.router.routes
+        if mcp_route in routes:
+            routes.remove(mcp_route)
         await database.dispose()
 
 
