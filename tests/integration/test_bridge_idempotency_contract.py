@@ -11,7 +11,7 @@ from uuid import uuid4
 
 import pytest
 
-from engineering_gateway.domain.models import ElementKind, EngineeringElement
+from engineering_gateway.domain.models import ElementKind, EngineeringElement, EngineeringRelation, RelationType
 from engineering_gateway.infrastructure.capella_adapter import (
     CapellaAdapterError,
     CapellaBridgeConfig,
@@ -64,34 +64,39 @@ _BRIDGE = textwrap.dedent(
 ).lstrip()
 
 
-@pytest.mark.asyncio
-async def test_capella_bridge_replay_is_durable_across_process_invocations(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def _initial_state() -> dict[str, object]:
+    return {
+        "workspaces": {},
+        "elements": [],
+        "relations": [],
+        "create_count": 0,
+        "element_apply_count": 0,
+        "relation_apply_count": 0,
+    }
+
+
+def _make_adapter(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[LocalCapellaAdapter, Path]:
     bridge = tmp_path / "capella_bridge.py"
     bridge.write_text(_BRIDGE, encoding="utf-8")
     bridge.chmod(bridge.stat().st_mode | stat.S_IXUSR)
     project = tmp_path / "model.aird"
     project.write_text("test project", encoding="utf-8")
     state = tmp_path / "bridge_state.json"
-    state.write_text(
-        json.dumps(
-            {
-                "workspaces": {},
-                "elements": [],
-                "relations": [],
-                "create_count": 0,
-                "element_apply_count": 0,
-                "relation_apply_count": 0,
-            }
-        ),
-        encoding="utf-8",
-    )
+    state.write_text(json.dumps(_initial_state()), encoding="utf-8")
     monkeypatch.setenv("BRIDGE_STATE", os.fspath(state))
-
-    adapter = LocalCapellaAdapter(
-        CapellaBridgeConfig(executable=str(bridge), project_path=project)
+    return (
+        LocalCapellaAdapter(
+            CapellaBridgeConfig(executable=str(bridge), project_path=project)
+        ),
+        state,
     )
+
+
+@pytest.mark.asyncio
+async def test_capella_bridge_replay_is_durable_across_process_invocations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    adapter, state = _make_adapter(tmp_path, monkeypatch)
     workspace_id = uuid4()
     change_set_hash = "a" * 64
     element = EngineeringElement(
@@ -102,18 +107,27 @@ async def test_capella_bridge_replay_is_durable_across_process_invocations(
         external_system="capella",
         external_id="COMP-1",
     )
+    relation = EngineeringRelation(
+        id=uuid4(),
+        source_id=element.id,
+        relation_type=RelationType.SATISFIES,
+        target_id=element.id,
+    )
 
     await adapter.create_workspace(workspace_id, "source-revision", change_set_hash)
     await adapter.apply_element(workspace_id, element)
+    await adapter.apply_relation(workspace_id, relation)
 
     # Each adapter call starts a new bridge process. The persisted bridge state,
-    # not process memory, must make the replay safe.
+    # not process memory, must make the replay safe for elements and relations.
     await adapter.create_workspace(workspace_id, "source-revision", change_set_hash)
     await adapter.apply_element(workspace_id, element)
+    await adapter.apply_relation(workspace_id, relation)
 
     persisted = json.loads(state.read_text(encoding="utf-8"))
     assert persisted["create_count"] == 1
     assert persisted["element_apply_count"] == 1
+    assert persisted["relation_apply_count"] == 1
     assert persisted["workspaces"][str(workspace_id)] == change_set_hash
 
 
@@ -121,30 +135,7 @@ async def test_capella_bridge_replay_is_durable_across_process_invocations(
 async def test_capella_bridge_rejects_change_set_conflict_for_existing_workspace(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    bridge = tmp_path / "capella_bridge.py"
-    bridge.write_text(_BRIDGE, encoding="utf-8")
-    bridge.chmod(bridge.stat().st_mode | stat.S_IXUSR)
-    project = tmp_path / "model.aird"
-    project.write_text("test project", encoding="utf-8")
-    state = tmp_path / "bridge_state.json"
-    state.write_text(
-        json.dumps(
-            {
-                "workspaces": {},
-                "elements": [],
-                "relations": [],
-                "create_count": 0,
-                "element_apply_count": 0,
-                "relation_apply_count": 0,
-            }
-        ),
-        encoding="utf-8",
-    )
-    monkeypatch.setenv("BRIDGE_STATE", os.fspath(state))
-
-    adapter = LocalCapellaAdapter(
-        CapellaBridgeConfig(executable=str(bridge), project_path=project)
-    )
+    adapter, _ = _make_adapter(tmp_path, monkeypatch)
     workspace_id = uuid4()
 
     await adapter.create_workspace(workspace_id, "source-revision", "a" * 64)
