@@ -9,6 +9,7 @@ The repository uses English as the canonical language for detailed engineering c
 | [`ru/system-overview.md`](ru/system-overview.md) | Краткая карта системы: что это, из чего состоит и где проходит граница Gateway |
 | [`ru/onboarding.md`](ru/onboarding.md) | Пошаговое введение нового разработчика в проект |
 | [`ru/architecture.md`](ru/architecture.md) | Русское описание архитектуры Engineering Gateway |
+| [`ru/contracts-map.md`](ru/contracts-map.md) | Русская карта интерфейсных и поведенческих контрактов Gateway |
 | [`architecture.md`](architecture.md) | English architecture reference |
 | [`architecture/infrastructure-completion.md`](architecture/infrastructure-completion.md) | Frozen Gateway completion boundary |
 | [`development/gateway-completion.md`](development/gateway-completion.md) | Gateway milestone, acceptance criteria and deferred work |
