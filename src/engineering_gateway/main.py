@@ -1,11 +1,56 @@
-"""FastAPI application entry point."""
+"""FastAPI application entry point and Gateway composition root."""
+
+from __future__ import annotations
+
+from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator
 
 from fastapi import FastAPI
 
 from engineering_gateway import __version__
+from engineering_gateway.api.actor_provider import StaticActorProvider
+from engineering_gateway.api.mcp_http import create_mcp_http_app
+from engineering_gateway.application.gateway_service import Actor
 from engineering_gateway.config import settings
+from engineering_gateway.infrastructure.db import Database
+from engineering_gateway.infrastructure.gateway_context import governed_gateway_context
 
-app = FastAPI(title=settings.app_name, version=__version__)
+
+@asynccontextmanager
+async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+    """Own the production Gateway database and service lifetime."""
+
+    database = Database(settings.database_url)
+    actor_provider = StaticActorProvider(
+        Actor(
+            actor_id=settings.mcp_actor_id,
+            actor_type=settings.mcp_actor_type,
+            authorization_level=settings.mcp_authorization_level,
+        )
+    )
+
+    async with governed_gateway_context(database) as service:
+        mcp_app = create_mcp_http_app(
+            service,
+            actor_provider,
+            allowed_hosts=settings.parsed_mcp_allowed_hosts,
+            allowed_origins=settings.parsed_mcp_allowed_origins,
+        )
+        application.mount("/mcp", mcp_app)
+        application.state.database = database
+        application.state.gateway_service = service
+        application.state.mcp_actor_provider = actor_provider
+        try:
+            yield
+        finally:
+            application.router.routes = [
+                route for route in application.router.routes if getattr(route, "path", None) != "/mcp"
+            ]
+
+    await database.dispose()
+
+
+app = FastAPI(title=settings.app_name, version=__version__, lifespan=lifespan)
 
 
 @app.get("/health", tags=["system"])
