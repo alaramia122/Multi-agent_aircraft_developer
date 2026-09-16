@@ -20,7 +20,7 @@ services:
     environment:
       GATEWAY__HOST: 0.0.0.0
       GATEWAY__PORT: 8000
-      GATEWAY__ENVIRONMENT: production
+      GATEWAY__ENVIRONMENT: staging
       DATABASE__URL: postgresql+psycopg://gateway:${POSTGRES_PASSWORD}@postgres:5432/engineering_gateway
       MCP__PATH: /mcp
       MCP__ALLOWED_HOSTS: '["localhost","localhost:8000"]'
@@ -29,8 +29,7 @@ services:
       MCP__STATIC_ACTOR_TYPE: AI
       MCP__STATIC_AUTHORIZATION_LEVEL: L0_READ
       IDENTITY__ENABLED: "false"
-      GIT__ENABLED: "true"
-      GIT__REPOSITORY_ROOT: /srv/gateway
+      GIT__ENABLED: "false"
     ports:
       - "8000:8000"
     depends_on:

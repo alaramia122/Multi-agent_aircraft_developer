@@ -59,6 +59,16 @@ async def _database_check(database: Database) -> ReadinessCheck:
         return ReadinessCheck("postgresql", "not_ready", type(exc).__name__)
 
 
+def _git_repository_check(path: str) -> ReadinessCheck:
+    candidate = Path(path)
+    if not candidate.exists():
+        return ReadinessCheck("git.repository", "not_ready", f"path does not exist: {candidate}")
+    git_metadata = candidate / ".git"
+    if not git_metadata.exists():
+        return ReadinessCheck("git.repository", "not_ready", f"Git metadata is missing: {git_metadata}")
+    return ReadinessCheck("git.repository", "ready", str(candidate))
+
+
 def _path_check(name: str, path: str | None) -> ReadinessCheck:
     if not path:
         return ReadinessCheck(name, "not_ready", "path is not configured")
@@ -110,7 +120,7 @@ async def check_readiness(database: Database, configuration: Settings) -> Readin
         checks.append(ReadinessCheck("identity", "disabled", "external identity mapping is disabled"))
 
     if configuration.git.enabled:
-        checks.append(_path_check("git.repository", configuration.git.repository_root))
+        checks.append(_git_repository_check(configuration.git.repository_root))
     else:
         checks.append(ReadinessCheck("git", "disabled", "Git integration is disabled"))
 
