@@ -51,6 +51,14 @@ async def test_get_snapshot_rejects_unknown_ref(git_repository: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_snapshot_does_not_treat_ref_as_git_option(git_repository: Path) -> None:
+    adapter = LocalGitAdapter()
+
+    with pytest.raises(RuntimeError, match="Git command failed"):
+        await adapter.get_snapshot(str(git_repository), "--help")
+
+
+@pytest.mark.asyncio
 async def test_create_tag_is_idempotent_for_same_commit(git_repository: Path) -> None:
     adapter = LocalGitAdapter()
     commit = _git(git_repository, "rev-parse", "HEAD")
@@ -106,3 +114,11 @@ async def test_is_ancestor_distinguishes_false_from_command_failure(git_reposito
 
     assert await adapter.is_ancestor(str(git_repository), first_commit, second_commit)
     assert not await adapter.is_ancestor(str(git_repository), second_commit, first_commit)
+
+
+@pytest.mark.asyncio
+async def test_is_ancestor_rejects_option_like_revision(git_repository: Path) -> None:
+    adapter = LocalGitAdapter()
+
+    with pytest.raises(RuntimeError, match="Git command failed"):
+        await adapter.is_ancestor(str(git_repository), "--help", "HEAD")
