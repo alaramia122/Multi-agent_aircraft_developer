@@ -125,6 +125,13 @@ class LocalGitAdapter:
             raise ValueError(f"invalid Git tag name: {tag}") from exc
 
     def _run(self, repository: str, *args: str) -> str | None:
+        """Run an optional-result Git command.
+
+        A non-zero Git exit status means the requested object/description is absent
+        and is represented by ``None``. Process-level failures are different: a
+        timeout or inability to start Git must not be mistaken for an absent ref,
+        otherwise callers could take an unsafe create/race-recovery path.
+        """
         try:
             result = subprocess.run(
                 ["git", "-C", str(Path(repository)), *args],
@@ -133,8 +140,10 @@ class LocalGitAdapter:
                 text=True,
                 timeout=self._timeout_seconds,
             )
-        except (OSError, subprocess.TimeoutExpired):
-            return None
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("Git command timed out") from exc
+        except OSError as exc:
+            raise RuntimeError("Git executable could not be started") from exc
         if result.returncode != 0:
             return None
         return result.stdout.strip()
