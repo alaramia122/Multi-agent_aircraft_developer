@@ -44,6 +44,39 @@ async def test_middleware_binds_mapped_actor_for_request() -> None:
 
 
 @pytest.mark.asyncio
+async def test_middleware_supports_custom_claims_state_key() -> None:
+    captured = None
+
+    async def app(scope, receive, send):
+        nonlocal captured
+        captured = RequestActorProvider().get_actor()
+
+    middleware = TrustedPrincipalMiddleware(
+        app,
+        TrustedClaimsActorMapper(),
+        claims_state_key="verified_claims",
+    )
+    await middleware(
+        {
+            "type": "http",
+            "state": {
+                "verified_claims": {
+                    "sub": "alice",
+                    "actor_type": "human",
+                    "authorization_level": "L1_PROPOSE",
+                }
+            },
+        },
+        None,
+        None,
+    )
+
+    assert captured is not None
+    assert captured.actor_id == "alice"
+    assert captured.authorization_level is AuthorizationLevel.L1_PROPOSE
+
+
+@pytest.mark.asyncio
 async def test_middleware_does_not_leak_actor_after_request() -> None:
     middleware = TrustedPrincipalMiddleware(_noop_app, TrustedClaimsActorMapper())
 
