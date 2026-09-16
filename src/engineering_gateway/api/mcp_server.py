@@ -112,14 +112,6 @@ def create_mcp_server(service_factory: GatewayServiceFactory, actor: Actor) -> M
             ],
         }
 
-    # Capability discovery is deliberately based on the service produced by the
-    # factory, rather than on a long-lived request/session object.
-    service_type = getattr(service_factory, "service_type", None)
-    if service_type is GovernedGatewayApplicationService:
-        governed = True
-    else:
-        governed = True
-
     if actor.authorization_level is AuthorizationLevel.L2_MODIFY_WORKSPACE:
 
         @server.tool(
