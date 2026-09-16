@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 import pytest
 
 from engineering_gateway.api.actor_provider import StaticActorProvider
@@ -32,14 +34,22 @@ def _actor() -> Actor:
     return Actor("mcp-ai", ActorType.AI, AuthorizationLevel.L0_READ)
 
 
+def _factory(service: GatewayApplicationService):
+    @asynccontextmanager
+    async def context():
+        yield service
+
+    return context
+
+
 def test_mcp_http_app_requires_explicit_allowed_host() -> None:
     with pytest.raises(ValueError, match="at least one allowed MCP host is required"):
-        create_mcp_http_app(_service(), StaticActorProvider(_actor()), allowed_hosts=())
+        create_mcp_http_app(_factory(_service()), StaticActorProvider(_actor()), allowed_hosts=())
 
 
 def test_mcp_http_app_is_created_with_streamable_http_endpoint() -> None:
     app = create_mcp_http_app(
-        _service(),
+        _factory(_service()),
         StaticActorProvider(_actor()),
         allowed_hosts=("mcp.example.com", "mcp.example.com:*"),
     )
@@ -58,7 +68,7 @@ def test_mcp_http_app_resolves_actor_only_from_trusted_provider() -> None:
 
     provider = _Provider()
     app = create_mcp_http_app(
-        _service(),
+        _factory(_service()),
         provider,
         allowed_hosts=("mcp.example.com",),
     )
