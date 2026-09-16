@@ -18,6 +18,7 @@ The repository uses English as the canonical language for detailed engineering c
 | [`development/testing-strategy.md`](development/testing-strategy.md) | Test organization and verification approach |
 | [`deployment/production-integration.md`](deployment/production-integration.md) | Post-Gateway production integration foundation and rollout order |
 | [`deployment/production-configuration.md`](deployment/production-configuration.md) | Typed runtime configuration groups, environment variables, validation and secret handling |
+| [`deployment/readiness.md`](deployment/readiness.md) | Container deployment, database initialization, liveness/readiness semantics and production rollout gate |
 | [`contracts/`](contracts/) | Stable interfaces and behavioral contracts |
 
 ## Documentation layers

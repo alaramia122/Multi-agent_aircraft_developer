@@ -4,10 +4,14 @@
 
 This document starts the post-Gateway phase. The Engineering Gateway is treated as a frozen contract; this phase makes the external deployment boundaries concrete without moving authoritative engineering data into the Gateway.
 
-The first implementation target is a deployable integration foundation for:
+The production integration foundation now includes:
 
 - Gateway MCP over Streamable HTTP;
-- production identity-to-Actor mapping;
+- typed deployment configuration;
+- explicit liveness/readiness endpoints;
+- PostgreSQL schema-version readiness gating;
+- a reproducible container image and staging composition;
+- production identity-to-Actor mapping boundary;
 - Git repository access;
 - StrictDoc CLI/read integration and the controlled write-back bridge;
 - Capella headless bridge deployment;
@@ -34,9 +38,11 @@ Yandex AI Studio Agents/Workflows will consume this foundation after the MCP end
 
 ### Gateway service
 
-The service exposes the governed MCP surface over Streamable HTTP. The HTTP boundary must be configured with an explicit allowed-host list and, where applicable, allowed origins.
+The service exposes the governed MCP surface over Streamable HTTP. The HTTP boundary is configured with an explicit allowed-host list and, where applicable, allowed origins.
 
 The service uses transaction-scoped database sessions. A database session must not be shared between MCP requests.
+
+The repository provides a Python 3.12 container image and a PostgreSQL + Gateway staging composition. Production orchestration may use another platform, but it must preserve the same configuration and readiness contracts.
 
 ### Identity provider / principal mapper
 
@@ -48,6 +54,8 @@ The deployment supplies the trusted `ActorProvider` implementation. The provider
 - `L3_APPROVE` — human approval only.
 
 AI principals must never receive L3. Approval and rejection remain outside the MCP tool surface.
+
+The current composition still uses the development static Actor provider. Consequently, enabling the identity configuration makes readiness fail until a trusted principal-to-Actor mapper is actually wired into the application.
 
 ### External bridges
 
@@ -90,58 +98,49 @@ Responses contain the protocol version, operation (when supplied), success flag 
 
 ## Configuration contract
 
-Production configuration should be supplied through environment variables or an equivalent secret/configuration service. The repository must not contain production credentials.
+Production configuration is supplied through the typed environment-variable groups documented in `deployment/production-configuration.md`. The repository contains `.env.example` only; production credentials are not committed.
 
-Required configuration groups:
-
-| Group | Examples of configuration | Owner |
-|---|---|---|
-| Gateway HTTP | bind address, MCP path, allowed hosts/origins | deployment |
-| PostgreSQL | DSN, pool limits, migration policy | deployment |
-| Identity | issuer, audience, JWKS/introspection endpoint, actor mapping | deployment |
-| Git | repository path/URL, credentials, tag policy | deployment |
-| StrictDoc | executable, project root, bridge/write-back endpoint if enabled | deployment |
-| Capella | executable, project path, timeout, bridge endpoint | deployment |
-| OpenProject | base URL, credentials, project/type/status mapping | deployment |
-| Object Storage | endpoint, bucket/container, credentials, retention policy | deployment |
-
-Exact variable names should be frozen together with the deployment manifests, not invented independently by individual agents.
+The variable naming convention is frozen as `GROUP__FIELD`, including `GATEWAY__*`, `DATABASE__*`, `MCP__*`, `IDENTITY__*`, `GIT__*`, `STRICTDOC__*`, `CAPELLA__*`, `OPENPROJECT__*` and `OBJECT_STORAGE__*`.
 
 ## Startup and readiness
 
-A production deployment must distinguish:
+The deployment distinguishes:
 
-- process liveness — the Gateway process is running;
-- readiness — PostgreSQL is reachable and required schema/migrations are available;
-- integration readiness — configured external adapters and bridges can execute their contract-level health checks.
+- process liveness — `GET /health/live` confirms the process is serving HTTP;
+- readiness — `GET /health/ready` verifies PostgreSQL connectivity, the exact Gateway schema version, enabled local/external integration prerequisites and the identity boundary;
+- integration readiness — adapter-specific protocol/contract tests remain a separate staging acceptance gate.
 
-A failure of an optional external integration must not be hidden as a healthy engineering capability. The deployment status must make unavailable integrations explicit.
+A disabled optional integration is reported as `disabled`, not silently as a successful integration. An enabled dependency that fails its readiness check produces HTTP `503`.
+
+The application does not run migrations implicitly at startup. PostgreSQL must be migrated before readiness can become healthy.
 
 ## Rollout order
 
 1. PostgreSQL and migration execution.
 2. Gateway service without AI clients.
-3. Trusted identity-to-Actor mapping.
-4. Git integration.
-5. StrictDoc read integration.
-6. Capella bridge integration.
-7. OpenProject integration.
-8. Object Storage integration.
-9. End-to-end MCP authorization and reconciliation tests against staging systems.
-10. Yandex AI Studio Agent/Workflow configuration.
+3. Wait for process liveness.
+4. Wait for readiness HTTP 200.
+5. Trusted identity-to-Actor mapping.
+6. Git integration.
+7. StrictDoc read integration.
+8. Capella bridge integration.
+9. OpenProject integration.
+10. Object Storage integration.
+11. End-to-end MCP authorization and reconciliation tests against staging systems.
+12. Yandex AI Studio Agent/Workflow configuration.
 
 ## Acceptance criteria for this phase
 
 The production integration foundation is ready when:
 
 1. the Gateway has a reproducible deployment configuration;
-2. identity mapping is external to MCP request data and tested for every authorization level;
+2. identity mapping is external to MCP request data and readiness cannot claim it is active before the trusted mapper is wired;
 3. all configured external adapters have explicit credentials/configuration boundaries;
 4. StrictDoc, Capella and OpenProject staging integrations pass contract tests;
 5. bridge replay/idempotency survives process restart;
 6. object-storage references are persisted without copying large binaries into PostgreSQL;
 7. readiness reports missing or unavailable integrations explicitly;
-8. the MCP endpoint is reachable from the intended AI Studio integration boundary without weakening Gateway authorization;
+8. the MCP endpoint is exposed to the intended AI Studio integration boundary only after readiness succeeds;
 9. no production secret is committed to Git.
 
 ## Not implemented by this document
