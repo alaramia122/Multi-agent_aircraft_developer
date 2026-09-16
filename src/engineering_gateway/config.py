@@ -56,7 +56,23 @@ class IdentityConfig(BaseModel):
     enabled: bool = False
     issuer_url: str | None = None
     audience: str | None = None
-    actor_claim: str = "sub"
+    actor_id_claim: str = "sub"
+    actor_type_claim: str = "actor_type"
+    authorization_level_claim: str = "authorization_level"
+    principal_claims_state_key: str = "trusted_principal_claims"
+
+    @field_validator(
+        "actor_id_claim",
+        "actor_type_claim",
+        "authorization_level_claim",
+        "principal_claims_state_key",
+    )
+    @classmethod
+    def validate_claim_names(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("identity claim names and state key must not be blank")
+        return normalized
 
     @model_validator(mode="after")
     def validate_enabled(self) -> IdentityConfig:
