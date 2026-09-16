@@ -34,13 +34,22 @@ class LocalGitAdapter:
         Git's ``merge-base --is-ancestor`` uses exit status 1 for a valid negative
         answer, so the status must be handled separately from command failures.
         """
-        returncode, stderr = self._run_status(
+        ancestor = self._run_required(
             repository,
-            "merge-base",
-            "--is-ancestor",
-            "--",
-            ancestor_commit,
-            descendant_ref,
+            "rev-parse",
+            "--verify",
+            "--end-of-options",
+            f"{ancestor_commit}^{{commit}}",
+        )
+        descendant = self._run_required(
+            repository,
+            "rev-parse",
+            "--verify",
+            "--end-of-options",
+            f"{descendant_ref}^{{commit}}",
+        )
+        returncode, stderr = self._run_status(
+            repository, "merge-base", "--is-ancestor", ancestor, descendant
         )
         if returncode == 0:
             return True
