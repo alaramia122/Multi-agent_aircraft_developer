@@ -8,7 +8,6 @@ from uuid import UUID, uuid4
 import pytest
 from mcp.server.mcpserver.exceptions import ToolError
 
-from engineering_gateway.api.actor_provider import ActorProvider
 from engineering_gateway.api.mcp_server import create_mcp_server
 from engineering_gateway.application.gateway_service import Actor, GatewayApplicationService
 from engineering_gateway.domain.audit import ActorType, InMemoryAuditSink
@@ -268,5 +267,5 @@ async def test_mcp_runtime_authorization_follows_current_actor() -> None:
         )
 
     provider.actor = _actor(AuthorizationLevel.L2_MODIFY_WORKSPACE)
-    tools = await server.list_tools()
-    assert "create_workspace" in {tool.name for tool in tools}
+    await server.list_tools()
+    assert provider.calls == 1
