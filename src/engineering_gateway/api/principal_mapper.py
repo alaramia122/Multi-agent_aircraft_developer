@@ -54,6 +54,8 @@ class TrustedClaimsActorMapper:
         authorization_level = self._enum_value(
             claims, self.mapping.authorization_level_claim, AuthorizationLevel
         )
+        if actor_type is ActorType.AI and authorization_level is AuthorizationLevel.L3_APPROVE:
+            raise ValueError("AI actors cannot be assigned L3_APPROVE")
         return Actor(
             actor_id=actor_id,
             actor_type=actor_type,
