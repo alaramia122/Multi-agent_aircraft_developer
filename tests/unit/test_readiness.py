@@ -99,3 +99,4 @@ async def test_readiness_fails_when_identity_is_enabled() -> None:
     assert report.ready is False
     identity = next(check for check in report.checks if check.name == "identity")
     assert identity.status == "not_ready"
+    assert "upstream authentication layer" in identity.detail
