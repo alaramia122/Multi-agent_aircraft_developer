@@ -46,16 +46,22 @@ The repository provides a Python 3.12 container image and a PostgreSQL + Gateway
 
 ### Identity provider / principal mapper
 
-The deployment supplies the trusted `ActorProvider` implementation. The provider must map an authenticated principal to one of the Gateway authorization levels:
+Authentication and token verification are deployment responsibilities. The upstream authentication layer must establish a verified principal and place its claims in the configured ASGI request-state key before the Gateway identity middleware runs.
+
+The Gateway then maps those trusted claims to its existing `Actor` model using configurable claim names. The Actor is request-scoped and is resolved at MCP operation time rather than when the long-lived MCP application is created.
+
+The provider must map an authenticated principal to one of the Gateway authorization levels:
 
 - `L0_READ` — read-only;
 - `L1_PROPOSE` — proposals only;
 - `L2_MODIFY_WORKSPACE` — workspace mutation/reconciliation;
 - `L3_APPROVE` — human approval only.
 
-AI principals must never receive L3. Approval and rejection remain outside the MCP tool surface.
+AI principals must never receive L3. The identity mapper rejects an AI + L3 mapping, and approval/rejection remain outside the MCP tool surface.
 
-The current composition still uses the development static Actor provider. Consequently, enabling the identity configuration makes readiness fail until a trusted principal-to-Actor mapper is actually wired into the application.
+When identity is disabled, the composition may use the configured static Actor for development/trusted single-actor deployments. This mode must not be mistaken for production authentication.
+
+See [`production-identity.md`](production-identity.md) for the complete authentication trust boundary and claims contract.
 
 ### External bridges
 
@@ -119,15 +125,16 @@ The application does not run migrations implicitly at startup. PostgreSQL must b
 1. PostgreSQL and migration execution.
 2. Gateway service without AI clients.
 3. Wait for process liveness.
-4. Wait for readiness HTTP 200.
-5. Trusted identity-to-Actor mapping.
-6. Git integration.
-7. StrictDoc read integration.
-8. Capella bridge integration.
-9. OpenProject integration.
-10. Object Storage integration.
-11. End-to-end MCP authorization and reconciliation tests against staging systems.
-12. Yandex AI Studio Agent/Workflow configuration.
+4. Wait for readiness HTTP 200 with the intended identity deployment contract.
+5. Deploy the upstream authentication boundary and trusted principal-to-Actor mapping.
+6. Verify identity and MCP authorization with multiple principals.
+7. Git integration.
+8. StrictDoc read integration.
+9. Capella bridge integration.
+10. OpenProject integration.
+11. Object Storage integration.
+12. End-to-end MCP authorization and reconciliation tests against staging systems.
+13. Yandex AI Studio Agent/Workflow configuration.
 
 ## Acceptance criteria for this phase
 
