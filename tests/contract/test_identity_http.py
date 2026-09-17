@@ -20,6 +20,7 @@ class _FakeMcpServer:
     def __init__(self) -> None:
         self.startup_count = 0
         self.shutdown_count = 0
+        self.app: Starlette | None = None
 
     def streamable_http_app(self, **_: Any) -> Starlette:
         @asynccontextmanager
@@ -40,10 +41,11 @@ class _FakeMcpServer:
                 }
             )
 
-        return Starlette(
+        self.app = Starlette(
             routes=[Route("/mcp", mcp_endpoint, methods=["POST"])],
             lifespan=lifespan,
         )
+        return self.app
 
 
 class _FakeMcpFactory:
@@ -52,6 +54,41 @@ class _FakeMcpFactory:
 
     def __call__(self, *_: Any, **__: Any) -> _FakeMcpServer:
         return self.server
+
+
+class _VerifiedPrincipalMiddleware:
+    """Test-only stand-in for an upstream layer that has already verified identity."""
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+
+        headers = dict(scope.get("headers", []))
+        principal = headers.get(b"x-test-principal")
+        if principal == b"alice":
+            claims = {
+                "sub": "alice",
+                "actor_type": "human",
+                "authorization_level": "L2_MODIFY_WORKSPACE",
+            }
+        elif principal == b"bob":
+            claims = {
+                "sub": "bob",
+                "actor_type": "human",
+                "authorization_level": "L1_PROPOSE",
+            }
+        else:
+            claims = None
+
+        state = dict(scope.get("state") or {})
+        if claims is not None:
+            state["trusted_principal_claims"] = claims
+        scope["state"] = state
+        await self.app(scope, receive, send)
 
 
 @pytest.fixture
@@ -64,12 +101,13 @@ def fake_mcp_server(monkeypatch: pytest.MonkeyPatch) -> _FakeMcpServer:
 
 
 def _build_app(fake_mcp_server: _FakeMcpServer) -> Any:
-    return create_mcp_http_app(
+    mcp_app = create_mcp_http_app(
         lambda: None,
         RequestActorProvider(),
         allowed_hosts=("testserver",),
         principal_mapper=TrustedClaimsActorMapper(),
     )
+    return _VerifiedPrincipalMiddleware(mcp_app)
 
 
 @pytest.mark.asyncio
@@ -80,20 +118,7 @@ async def test_http_request_binds_verified_claims_to_mcp_operation(
     transport = httpx.ASGITransport(app=app)
 
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-        response = await client.post(
-            "/mcp",
-            extensions={
-                "scope": {
-                    "state": {
-                        "trusted_principal_claims": {
-                            "sub": "alice",
-                            "actor_type": "human",
-                            "authorization_level": "L2_MODIFY_WORKSPACE",
-                        }
-                    }
-                }
-            },
-        )
+        response = await client.post("/mcp", headers={"x-test-principal": "alice"})
 
     assert response.status_code == 200
     assert response.json() == {
@@ -111,37 +136,13 @@ async def test_sequential_http_requests_use_different_actors(
     transport = httpx.ASGITransport(app=app)
 
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-        first = await client.post(
-            "/mcp",
-            extensions={
-                "scope": {
-                    "state": {
-                        "trusted_principal_claims": {
-                            "sub": "alice",
-                            "actor_type": "human",
-                            "authorization_level": "L0_READ",
-                        }
-                    }
-                }
-            },
-        )
-        second = await client.post(
-            "/mcp",
-            extensions={
-                "scope": {
-                    "state": {
-                        "trusted_principal_claims": {
-                            "sub": "bob",
-                            "actor_type": "human",
-                            "authorization_level": "L1_PROPOSE",
-                        }
-                    }
-                }
-            },
-        )
+        first = await client.post("/mcp", headers={"x-test-principal": "alice"})
+        second = await client.post("/mcp", headers={"x-test-principal": "bob"})
 
     assert first.json()["actor_id"] == "alice"
+    assert first.json()["authorization_level"] == AuthorizationLevel.L2_MODIFY_WORKSPACE.value
     assert second.json()["actor_id"] == "bob"
+    assert second.json()["authorization_level"] == AuthorizationLevel.L1_PROPOSE.value
 
 
 @pytest.mark.asyncio
@@ -153,7 +154,7 @@ async def test_missing_trusted_claims_fail_before_mcp_operation(
 
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
         with pytest.raises(RuntimeError, match="trusted principal claims are missing"):
-            await client.post("/mcp")
+            await client.post("/mcp", headers={"x-test-principal": "unknown"})
 
 
 @pytest.mark.asyncio
@@ -162,4 +163,5 @@ async def test_mcp_router_lifecycle_is_exposed_through_identity_wrapper(
 ) -> None:
     app = _build_app(fake_mcp_server)
 
-    assert app.router is fake_mcp_server.streamable_http_app().router
+    assert fake_mcp_server.app is not None
+    assert app.app.router is fake_mcp_server.app.router
