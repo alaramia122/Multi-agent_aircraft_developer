@@ -17,6 +17,7 @@ The repository uses English as the canonical language for detailed engineering c
 | [`verification-matrix.md`](verification-matrix.md) | Verification coverage and acceptance mapping |
 | [`development/testing-strategy.md`](development/testing-strategy.md) | Test organization and verification approach |
 | [`deployment/production-integration.md`](deployment/production-integration.md) | Post-Gateway production integration foundation and rollout order |
+| [`deployment/production-identity.md`](deployment/production-identity.md) | Production authentication trust boundary, claims contract, request-scoped Actor and MCP identity rules |
 | [`deployment/production-configuration.md`](deployment/production-configuration.md) | Typed runtime configuration groups, environment variables, validation and secret handling |
 | [`deployment/readiness.md`](deployment/readiness.md) | Container deployment, database initialization, liveness/readiness semantics and production rollout gate |
 | [`contracts/`](contracts/) | Stable interfaces and behavioral contracts |
