@@ -113,7 +113,7 @@ async def check_readiness(database: Database, configuration: Settings) -> Readin
             ReadinessCheck(
                 "identity",
                 "not_ready",
-                "production principal-to-Actor mapper is not wired into the composition root",
+                "upstream authentication layer is not connected to the trusted claims boundary",
             )
         )
     else:
