@@ -54,6 +54,26 @@ def test_missing_claims_are_rejected(claims: dict[str, str], message: str) -> No
         TrustedClaimsActorMapper().map_actor(claims)
 
 
+@pytest.mark.parametrize(
+    "claim, value",
+    [
+        ("sub", 123),
+        ("actor_type", 123),
+        ("authorization_level", 123),
+    ],
+)
+def test_non_string_claims_are_rejected(claim: str, value: object) -> None:
+    claims: dict[str, object] = {
+        "sub": "alice",
+        "actor_type": "human",
+        "authorization_level": "L0_READ",
+    }
+    claims[claim] = value
+
+    with pytest.raises(ValueError, match=claim):
+        TrustedClaimsActorMapper().map_actor(claims)
+
+
 def test_invalid_enum_claim_is_rejected() -> None:
     with pytest.raises(ValueError, match="authorization_level"):
         TrustedClaimsActorMapper().map_actor(
@@ -61,6 +81,17 @@ def test_invalid_enum_claim_is_rejected() -> None:
                 "sub": "alice",
                 "actor_type": "human",
                 "authorization_level": "L9_ADMIN",
+            }
+        )
+
+
+def test_ai_actor_cannot_receive_l3_approval() -> None:
+    with pytest.raises(ValueError, match="AI actors cannot be assigned L3_APPROVE"):
+        TrustedClaimsActorMapper().map_actor(
+            {
+                "sub": "agent-1",
+                "actor_type": "ai",
+                "authorization_level": "L3_APPROVE",
             }
         )
 
