@@ -11,7 +11,7 @@ from starlette.routing import Route
 
 from engineering_gateway.api.actor_provider import RequestActorProvider
 from engineering_gateway.api.mcp_http import create_mcp_http_app
-from engineering_gateway.api.principal_mapper import TrustedClaimsActorMapper
+from engineering_gateway.api.principal_mapper import ClaimMapping, TrustedClaimsActorMapper
 from engineering_gateway.domain.audit import ActorType
 from engineering_gateway.domain.change_control import AuthorizationLevel
 
@@ -59,8 +59,9 @@ class _FakeMcpFactory:
 class _VerifiedPrincipalMiddleware:
     """Test-only stand-in for an upstream layer that has already verified identity."""
 
-    def __init__(self, app: Any) -> None:
+    def __init__(self, app: Any, *, claims_state_key: str = "trusted_principal_claims") -> None:
         self.app = app
+        self.claims_state_key = claims_state_key
 
     async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
         if scope.get("type") != "http":
@@ -86,7 +87,7 @@ class _VerifiedPrincipalMiddleware:
 
         state = dict(scope.get("state") or {})
         if claims is not None:
-            state["trusted_principal_claims"] = claims
+            state[self.claims_state_key] = claims
         scope["state"] = state
         await self.app(scope, receive, send)
 
@@ -100,14 +101,25 @@ def fake_mcp_server(monkeypatch: pytest.MonkeyPatch) -> _FakeMcpServer:
     return server
 
 
-def _build_app(fake_mcp_server: _FakeMcpServer) -> Any:
+def _build_app(
+    fake_mcp_server: _FakeMcpServer,
+    *,
+    claims_state_key: str = "trusted_principal_claims",
+) -> Any:
     mcp_app = create_mcp_http_app(
         lambda: None,
         RequestActorProvider(),
         allowed_hosts=("testserver",),
-        principal_mapper=TrustedClaimsActorMapper(),
+        principal_mapper=TrustedClaimsActorMapper(
+            ClaimMapping(
+                actor_id_claim="sub",
+                actor_type_claim="actor_type",
+                authorization_level_claim="authorization_level",
+            )
+        ),
+        principal_claims_state_key=claims_state_key,
     )
-    return _VerifiedPrincipalMiddleware(mcp_app)
+    return _VerifiedPrincipalMiddleware(mcp_app, claims_state_key=claims_state_key)
 
 
 @pytest.mark.asyncio
@@ -143,6 +155,20 @@ async def test_sequential_http_requests_use_different_actors(
     assert first.json()["authorization_level"] == AuthorizationLevel.L2_MODIFY_WORKSPACE.value
     assert second.json()["actor_id"] == "bob"
     assert second.json()["authorization_level"] == AuthorizationLevel.L1_PROPOSE.value
+
+
+@pytest.mark.asyncio
+async def test_custom_claims_state_key_is_used_over_http(
+    fake_mcp_server: _FakeMcpServer,
+) -> None:
+    app = _build_app(fake_mcp_server, claims_state_key="verified_claims")
+    transport = httpx.ASGITransport(app=app)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post("/mcp", headers={"x-test-principal": "alice"})
+
+    assert response.status_code == 200
+    assert response.json()["actor_id"] == "alice"
 
 
 @pytest.mark.asyncio
