@@ -38,6 +38,7 @@ def _build_adapter_config() -> LocalAdapterConfig:
             LocalStrictDocAdapter(
                 settings.strictdoc.project_path,
                 timeout_seconds=settings.strictdoc.timeout_seconds,
+                executable=settings.strictdoc.executable,
             )
             if settings.strictdoc.enabled and settings.strictdoc.project_path
             else None
