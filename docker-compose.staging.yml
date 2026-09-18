@@ -1,0 +1,74 @@
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: engineering_gateway
+      POSTGRES_USER: gateway
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gateway -d engineering_gateway"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  migrate:
+    image: postgres:16
+    restart: "no"
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - ./migrations:/migrations:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        for migration in /migrations/versions/*.sql; do
+          psql --set ON_ERROR_STOP=1             --host=postgres --username=gateway --dbname=engineering_gateway             --file="$${migration}"
+        done
+        for migration in /migrations/*.sql; do
+          psql --set ON_ERROR_STOP=1             --host=postgres --username=gateway --dbname=engineering_gateway             --file="$${migration}"
+        done
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      GATEWAY__HOST: 0.0.0.0
+      GATEWAY__PORT: 8000
+      GATEWAY__ENVIRONMENT: staging
+      DATABASE__URL: postgresql+psycopg://gateway:${POSTGRES_PASSWORD}@postgres:5432/engineering_gateway
+      MCP__PATH: /mcp
+      MCP__ALLOWED_HOSTS: '["localhost","localhost:8000"]'
+      MCP__ALLOWED_ORIGINS: '[]'
+      MCP__STATIC_ACTOR_ID: staging-gateway
+      MCP__STATIC_ACTOR_TYPE: AI
+      MCP__STATIC_AUTHORIZATION_LEVEL: L0_READ
+      IDENTITY__ENABLED: "false"
+      GIT__ENABLED: "true"
+      GIT__REPOSITORY_ROOT: /srv/source
+      STRICTDOC__ENABLED: "false"
+      CAPELLA__ENABLED: "false"
+      OPENPROJECT__ENABLED: "false"
+      OBJECT_STORAGE__ENABLED: "false"
+    volumes:
+      - .:/srv/source:ro
+    ports:
+      - "8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=2)"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  postgres-data:
