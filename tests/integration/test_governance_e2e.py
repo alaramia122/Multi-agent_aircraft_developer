@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -53,13 +53,15 @@ class FakeWorkspaceAdapter:
         self.operations.append("get_version")
         return ExternalVersion(system=self.system_name, version="integration-rev-1")
 
-    async def create_workspace(self, workspace_id, source_version, change_set_hash) -> None:
+    async def create_workspace(
+        self, workspace_id: UUID, source_version: str, change_set_hash: str
+    ) -> None:
         self.operations.append("create_workspace")
 
-    async def apply_element(self, workspace_id, element) -> None:
+    async def apply_element(self, workspace_id: UUID, element: EngineeringElement) -> None:
         self.operations.append("apply_element")
 
-    async def apply_relation(self, workspace_id, relation) -> None:
+    async def apply_relation(self, workspace_id: UUID, relation) -> None:
         self.operations.append("apply_relation")
 
 
