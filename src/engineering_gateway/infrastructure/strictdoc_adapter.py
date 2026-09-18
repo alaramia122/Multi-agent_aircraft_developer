@@ -28,8 +28,13 @@ class LocalStrictDocAdapter:
 
     system_name = "strictdoc"
 
-    def __init__(self, project_path: str | Path, timeout_seconds: float = 60.0) -> None:
+    def __init__(
+        self, project_path: str | Path, timeout_seconds: float = 60.0, executable: str = "strictdoc"
+    ) -> None:
         self._project_path = Path(project_path)
+        if not executable.strip():
+            raise ValueError("executable must be non-empty")
+        self._executable = executable
         if not self._project_path.exists():
             raise ValueError(f"StrictDoc project does not exist: {self._project_path}")
         if timeout_seconds <= 0:
@@ -56,7 +61,7 @@ class LocalStrictDocAdapter:
         with tempfile.TemporaryDirectory(prefix="engineering-gateway-strictdoc-") as temp_dir:
             output_dir = Path(temp_dir)
             command = [
-                "strictdoc",
+                self._executable,
                 "export",
                 str(self._project_path),
                 "--formats=json",
