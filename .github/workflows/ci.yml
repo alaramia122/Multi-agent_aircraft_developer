@@ -45,7 +45,7 @@ jobs:
         run: python -m pip install --upgrade pip && python -m pip install -e .
 
       - name: Install development tools
-        run: python -m pip install 'pytest>=8.3,<9.0' 'pytest-asyncio>=0.24,<1.0' 'httpx>=0.27,<1.0' 'ruff>=0.8,<1.0' 'mypy>=1.13,<2.0'
+        run: python -m pip install 'pytest>=8.3,<9.0' 'pytest-asyncio>=0.24,<1.0' 'httpx>=0.27,<1.0' 'ruff>=0.16.8,<0.17.0' 'mypy>=1.13,<2.0'
 
       - name: Verify PostgreSQL service
         env:
