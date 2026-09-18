@@ -85,3 +85,41 @@ jobs:
           name: pytest-results
           path: test-results.xml
           if-no-files-found: ignore
+
+
+  staging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and start staging stack
+        env:
+          POSTGRES_PASSWORD: postgres
+        run: docker compose -f docker-compose.staging.yml up --build --detach
+
+      - name: Wait for Gateway
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8000/health/live >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose -f docker-compose.staging.yml ps
+          docker compose -f docker-compose.staging.yml logs --no-color gateway migrate
+          exit 1
+
+      - name: Run staging smoke test
+        env:
+          GATEWAY_URL: http://127.0.0.1:8000
+        run: python scripts/staging_smoke.py
+
+      - name: Show staging logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.staging.yml logs --no-color
+
+      - name: Stop staging stack
+        if: always()
+        run: docker compose -f docker-compose.staging.yml down --volumes
