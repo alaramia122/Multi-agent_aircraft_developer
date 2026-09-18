@@ -17,7 +17,7 @@ from engineering_gateway.domain.change_control import (
     ChangeRequest,
     ChangeRequestState,
 )
-from engineering_gateway.domain.models import ElementKind, EngineeringElement
+from engineering_gateway.domain.models import ElementKind, EngineeringElement, EngineeringRelation
 from engineering_gateway.domain.profiles import ElementTypeDefinition, StandardProfile
 from engineering_gateway.domain.workspaces import WorkspaceState
 from engineering_gateway.infrastructure.adapter_composition import ExternalAdapterSet
@@ -61,7 +61,7 @@ class FakeWorkspaceAdapter:
     async def apply_element(self, workspace_id: UUID, element: EngineeringElement) -> None:
         self.operations.append("apply_element")
 
-    async def apply_relation(self, workspace_id: UUID, relation) -> None:
+    async def apply_relation(self, workspace_id: UUID, relation: EngineeringRelation) -> None:
         self.operations.append("apply_relation")
 
 
