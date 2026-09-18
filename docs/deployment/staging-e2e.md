@@ -124,6 +124,6 @@ The staging E2E must use the authoritative external systems rather than replacin
 
 ## Current boundary
 
-The repository now contains the reproducible core staging stack and CI smoke gate. This does **not** claim that customer-specific external systems or a production IdP are available.
+The repository now contains the reproducible core staging stack, CI smoke gate, and a composition root that wires every enabled local external adapter into the Gateway service. StrictDoc, Capella and OpenProject remain disabled in the core stack, so their real protocols are not exercised by the core smoke run. This does **not** claim that customer-specific external systems or a production IdP are available.
 
-The remaining work after the core staging gate is to supply deployment-specific endpoints/credentials and execute the external integration E2E.
+The remaining work after the core staging gate is to supply deployment-specific endpoints/credentials and execute the external integration E2E. Before that, adapter contract tests should be run against deterministic local fixtures where the real systems are not yet available.
