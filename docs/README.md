@@ -20,6 +20,7 @@ The repository uses English as the canonical language for detailed engineering c
 | [`deployment/production-identity.md`](deployment/production-identity.md) | Production authentication trust boundary, claims contract, request-scoped Actor and MCP identity rules |
 | [`deployment/production-configuration.md`](deployment/production-configuration.md) | Typed runtime configuration groups, environment variables, validation and secret handling |
 | [`deployment/readiness.md`](deployment/readiness.md) | Container deployment, database initialization, liveness/readiness semantics and production rollout gate |
+| [`deployment/staging-e2e.md`](deployment/staging-e2e.md) | Reproducible Docker staging stack, smoke gate and external E2E rollout order |
 | [`contracts/`](contracts/) | Stable interfaces and behavioral contracts |
 
 ## Documentation layers
