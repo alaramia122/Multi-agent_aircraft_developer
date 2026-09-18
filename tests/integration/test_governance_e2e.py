@@ -27,9 +27,8 @@ from engineering_gateway.infrastructure.git_adapter import LocalGitAdapter
 from engineering_gateway.infrastructure.metadata_repositories import (
     SqlAlchemyBaselineRegistry,
     SqlAlchemyChangeRequestRepository,
-    SqlAlchemyWorkspaceRegistry,
+    SqlAlchemyStandardProfileRegistry,
 )
-from engineering_gateway.infrastructure.profile_registry import InMemoryStandardProfileRegistry
 
 
 POSTGRES_TEST_URL = os.getenv("POSTGRES_TEST_URL")
@@ -65,12 +64,26 @@ class FakeWorkspaceAdapter:
 
 
 def _git_commit(repository) -> str:
-    subprocess.run(["git", "init", "--initial-branch=main", str(repository)], check=True, capture_output=True)
-    subprocess.run(["git", "-C", str(repository), "config", "user.email", "integration@example.test"], check=True)
-    subprocess.run(["git", "-C", str(repository), "config", "user.name", "Integration Test"], check=True)
+    subprocess.run(
+        ["git", "init", "--initial-branch=main", str(repository)],
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(repository), "config", "user.email", "integration@example.test"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(repository), "config", "user.name", "Integration Test"],
+        check=True,
+    )
     (repository / "README.md").write_text("integration baseline\\n", encoding="utf-8")
     subprocess.run(["git", "-C", str(repository), "add", "README.md"], check=True)
-    subprocess.run(["git", "-C", str(repository), "commit", "-m", "initial baseline"], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(repository), "commit", "-m", "initial baseline"],
+        check=True,
+        capture_output=True,
+    )
     return subprocess.run(
         ["git", "-C", str(repository), "rev-parse", "HEAD"],
         check=True,
@@ -84,7 +97,6 @@ async def test_change_request_workspace_validation_reconciliation_and_approval_e
     repository = tmp_path / "engineering.git"
     source_commit = _git_commit(repository)
     database = Database(POSTGRES_TEST_URL)
-    profiles = InMemoryStandardProfileRegistry()
     profile = StandardProfile(
         id="integration-governance",
         version="1.0.0",
@@ -93,17 +105,15 @@ async def test_change_request_workspace_validation_reconciliation_and_approval_e
             ElementTypeDefinition(id="system_requirement", kind=ElementKind.REQUIREMENT),
         ],
     )
-    await profiles.register(profile)
-    await profiles.activate(profile.id, profile.version)
-
     change_request_id = uuid4()
     baseline_id = uuid4()
     adapter = FakeWorkspaceAdapter()
 
     try:
         async with database.session_factory() as session:
-            baselines = SqlAlchemyBaselineRegistry(session)
-            await baselines.register(
+            await SqlAlchemyStandardProfileRegistry(session).register(profile)
+            await SqlAlchemyStandardProfileRegistry(session).activate(profile.id, profile.version)
+            await SqlAlchemyBaselineRegistry(session).register(
                 Baseline(
                     id=baseline_id,
                     name="source-baseline",
@@ -125,7 +135,6 @@ async def test_change_request_workspace_validation_reconciliation_and_approval_e
         async with governed_gateway_context(
             database,
             git=LocalGitAdapter(),
-            profiles=profiles,
             adapter_set=ExternalAdapterSet(
                 read_adapters=(adapter,), workspace_adapters=(adapter,)
             ),
@@ -149,7 +158,7 @@ async def test_change_request_workspace_validation_reconciliation_and_approval_e
             )
             assert prepared.valid
 
-            with pytest.raises(GatewayServiceError, match="approval"):
+            with pytest.raises(GatewayServiceError, match="L3|human"):
                 await service.approve_workspace(ai, workspace.id)
 
             reconciliation = await service.reconcile_workspace(l2, workspace.id)
