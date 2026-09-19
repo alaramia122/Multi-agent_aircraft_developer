@@ -271,7 +271,11 @@ class SqlAlchemyWorkspaceRegistry(_TransactionAware):
             and not resetting_validation
         ):
             raise ValueError("validation evidence is immutable once bound outside active reset")
-        if record.validation_evidence != workspace.validation_evidence and not resetting_validation:
+        if (
+            (record.validation_graph_hash is not None or bool(record.validation_evidence))
+            and record.validation_evidence != workspace.validation_evidence
+            and not resetting_validation
+        ):
             raise ValueError("validation evidence is immutable once bound outside active reset")
         if (
             record.reconciled
