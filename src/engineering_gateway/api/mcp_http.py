@@ -42,7 +42,7 @@ def create_mcp_http_app(
         allowed_origins=list(origins),
     )
     server = create_mcp_server(service_factory, actor_provider)
-    app = server.streamable_http_app(
+    app: Any = server.streamable_http_app(
         streamable_http_path=streamable_http_path,
         json_response=json_response,
         transport_security=security,
