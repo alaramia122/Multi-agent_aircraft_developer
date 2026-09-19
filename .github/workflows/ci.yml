@@ -90,6 +90,8 @@ jobs:
   staging:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      POSTGRES_PASSWORD: postgres
     steps:
       - uses: actions/checkout@v4
 
