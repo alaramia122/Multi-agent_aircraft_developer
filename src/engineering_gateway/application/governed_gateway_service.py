@@ -242,6 +242,10 @@ class GovernedGatewayApplicationService(
         )
 
     async def approve_workspace(self, actor: Actor, workspace_id: UUID) -> Baseline:
+        try:
+            ChangeGate.require_approval(actor.authorization_level, actor_is_ai=actor.is_ai)
+        except ValueError as exc:
+            raise GatewayServiceError(str(exc)) from exc
         if self._workspaces is None or self._workspace_changes is None:
             raise GatewayServiceError("workspace/change-set services are not configured")
         workspace = await self._workspaces.get(workspace_id)
