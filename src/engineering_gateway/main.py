@@ -9,7 +9,7 @@ from fastapi import FastAPI, Response
 from starlette.routing import Mount
 
 from engineering_gateway import __version__
-from engineering_gateway.api.actor_provider import RequestActorProvider, StaticActorProvider
+from engineering_gateway.api.actor_provider import ActorProvider, RequestActorProvider, StaticActorProvider
 from engineering_gateway.api.mcp_http import create_mcp_http_app
 from engineering_gateway.api.principal_mapper import ClaimMapping, TrustedClaimsActorMapper
 from engineering_gateway.application.gateway_service import Actor
@@ -86,7 +86,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     git = LocalGitAdapter(settings.git.timeout_seconds) if settings.git.enabled else None
 
     if settings.identity.enabled:
-        actor_provider = RequestActorProvider()
+        actor_provider: ActorProvider = RequestActorProvider()
         principal_mapper = TrustedClaimsActorMapper(
             ClaimMapping(
                 actor_id_claim=settings.identity.actor_id_claim,
