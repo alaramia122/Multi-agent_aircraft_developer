@@ -59,7 +59,7 @@ def test_mcp_http_app_is_created_with_streamable_http_endpoint() -> None:
     assert any(getattr(route, "path", None) == "/mcp" for route in app.routes)
 
 
-def test_mcp_http_app_resolves_actor_only_from_trusted_provider() -> None:
+def test_mcp_http_app_does_not_resolve_actor_at_construction_time() -> None:
     class _Provider:
         def __init__(self) -> None:
             self.calls = 0
@@ -76,7 +76,7 @@ def test_mcp_http_app_resolves_actor_only_from_trusted_provider() -> None:
     )
 
     assert app is not None
-    assert provider.calls == 1
+    assert provider.calls == 0
 
 
 def test_mcp_http_app_keeps_endpoint_at_root_mount_path() -> None:
