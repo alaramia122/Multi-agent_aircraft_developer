@@ -166,8 +166,8 @@ class GatewayApplicationService:
                     "workspace_id": workspace.id,
                 }
             )
-            await self._change_requests.update(change_request)
             created = await self._workspaces.create(workspace)
+            await self._change_requests.update(change_request)
         except ValueError as exc:
             await self._record(
                 actor,
