@@ -113,7 +113,7 @@ The variable naming convention is frozen as `GROUP__FIELD`, including `GATEWAY__
 The deployment distinguishes:
 
 - process liveness — `GET /health/live` confirms the process is serving HTTP;
-- readiness — `GET /health/ready` verifies PostgreSQL connectivity, the exact Gateway schema version, enabled local/external integration prerequisites and the identity boundary;
+- readiness — `GET /health/ready` verifies PostgreSQL connectivity, the exact Gateway schema version, enabled local/external integration prerequisites and the configured upstream identity readiness endpoint;
 - integration readiness — adapter-specific protocol/contract tests remain a separate staging acceptance gate.
 
 A disabled optional integration is reported as `disabled`, not silently as a successful integration. An enabled dependency that fails its readiness check produces HTTP `503`.
