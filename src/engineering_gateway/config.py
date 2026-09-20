@@ -56,6 +56,7 @@ class IdentityConfig(BaseModel):
     enabled: bool = False
     issuer_url: str | None = None
     audience: str | None = None
+    readiness_url: str | None = None
     actor_id_claim: str = "sub"
     actor_type_claim: str = "actor_type"
     authorization_level_claim: str = "authorization_level"
@@ -76,8 +77,10 @@ class IdentityConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_enabled(self) -> IdentityConfig:
-        if self.enabled and (not self.issuer_url or not self.audience):
-            raise ValueError("identity.issuer_url and identity.audience are required when identity is enabled")
+        if self.enabled and (not self.issuer_url or not self.audience or not self.readiness_url):
+            raise ValueError(
+                "identity.issuer_url, identity.audience and identity.readiness_url are required when identity is enabled"
+            )
         return self
 
 
