@@ -60,6 +60,7 @@ def test_identity_claim_mapping_is_configurable() -> None:
     assert configured.identity.actor_type_claim == "kind"
     assert configured.identity.authorization_level_claim == "access_level"
     assert configured.identity.principal_claims_state_key == "verified_claims"
+    assert configured.identity.readiness_url == "https://identity.example.test/health/ready"
 
 
 def test_blank_identity_claim_name_is_rejected() -> None:
@@ -116,6 +117,7 @@ def test_nested_environment_variables_are_supported(monkeypatch: pytest.MonkeyPa
     monkeypatch.setenv("DATABASE__POOL_SIZE", "8")
     monkeypatch.setenv("IDENTITY__ACTOR_ID_CLAIM", "uid")
     monkeypatch.setenv("IDENTITY__PRINCIPAL_CLAIMS_STATE_KEY", "verified_claims")
+    monkeypatch.setenv("IDENTITY__READINESS_URL", "https://identity.example.test/health/ready")
 
     configured = Settings(_env_file=None)
 
