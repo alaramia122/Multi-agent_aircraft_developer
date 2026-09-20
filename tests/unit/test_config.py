@@ -68,7 +68,7 @@ def test_blank_identity_claim_name_is_rejected() -> None:
 
 
 def test_enabled_identity_requires_issuer_and_audience() -> None:
-    with pytest.raises(ValidationError, match="identity.issuer_url and identity.audience are required"):
+    with pytest.raises(ValidationError, match="identity.issuer_url, identity.audience and identity.readiness_url are required"):
         Settings(identity={"enabled": True})
 
 
