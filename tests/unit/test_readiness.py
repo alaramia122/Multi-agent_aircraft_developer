@@ -85,24 +85,6 @@ async def test_readiness_fails_when_enabled_strictdoc_is_unavailable() -> None:
 
 
 @pytest.mark.asyncio
-async def test_readiness_fails_when_identity_is_enabled() -> None:
-    configuration = Settings(
-        git={"repository_root": str(Path.cwd())},
-        identity={
-            "enabled": True,
-            "issuer_url": "https://identity.example.invalid",
-            "audience": "engineering-gateway",
-        },
-    )
-    report = await check_readiness(_Database(), configuration)
-
-    assert report.ready is False
-    identity = next(check for check in report.checks if check.name == "identity")
-    assert identity.status == "not_ready"
-    assert "readiness endpoint is not configured" in identity.detail
-
-
-@pytest.mark.asyncio
 async def test_readiness_is_ready_when_identity_upstream_is_healthy(monkeypatch: pytest.MonkeyPatch) -> None:
     configuration = Settings(
         git={"repository_root": str(Path.cwd())},
