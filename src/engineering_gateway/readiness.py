@@ -103,19 +103,28 @@ async def _http_endpoint_check(name: str, url: str | None) -> ReadinessCheck:
         return ReadinessCheck(name, "not_ready", type(exc).__name__)
 
 
+async def _identity_readiness_check(url: str | None) -> ReadinessCheck:
+    """Verify the deployment-side authentication boundary is operational."""
+
+    if not url:
+        return ReadinessCheck("identity", "not_ready", "readiness endpoint is not configured")
+    try:
+        async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
+            response = await client.get(url)
+        if 200 <= response.status_code < 300:
+            return ReadinessCheck("identity", "ready", f"upstream authentication HTTP {response.status_code}")
+        return ReadinessCheck("identity", "not_ready", f"upstream authentication HTTP {response.status_code}")
+    except httpx.HTTPError as exc:
+        return ReadinessCheck("identity", "not_ready", type(exc).__name__)
+
+
 async def check_readiness(database: Database, configuration: Settings) -> ReadinessReport:
     """Evaluate process-critical and explicitly enabled integration prerequisites."""
 
     checks: list[ReadinessCheck] = [await _database_check(database)]
 
     if configuration.identity.enabled:
-        checks.append(
-            ReadinessCheck(
-                "identity",
-                "not_ready",
-                "upstream authentication layer is not connected to the trusted claims boundary",
-            )
-        )
+        checks.append(await _identity_readiness_check(configuration.identity.readiness_url))
     else:
         checks.append(ReadinessCheck("identity", "disabled", "external identity mapping is disabled"))
 
