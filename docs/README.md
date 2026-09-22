@@ -13,6 +13,7 @@ The repository uses English as the canonical language for detailed engineering c
 | [`architecture.md`](architecture.md) | English architecture reference |
 | [`architecture/infrastructure-completion.md`](architecture/infrastructure-completion.md) | Frozen Gateway completion boundary |
 | [`development/gateway-completion.md`](development/gateway-completion.md) | Gateway milestone, acceptance criteria and deferred work |
+| [`development/project-completion-plan-2026-09-22.md`](development/project-completion-plan-2026-09-22.md) | Current full-project assessment, technical-specification gap map and phased completion plan |
 | [`development/contract-implementation-matrix.md`](development/contract-implementation-matrix.md) | Contract → implementation → tests verification matrix |
 | [`verification-matrix.md`](verification-matrix.md) | Verification coverage and acceptance mapping |
 | [`development/testing-strategy.md`](development/testing-strategy.md) | Test organization and verification approach |
