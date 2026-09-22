@@ -136,6 +136,13 @@ async def check_readiness(database: Database, configuration: Settings) -> Readin
     if configuration.strictdoc.enabled:
         checks.append(_executable_check("strictdoc.executable", configuration.strictdoc.executable))
         checks.append(_path_check("strictdoc.project", configuration.strictdoc.project_path))
+        if configuration.strictdoc.workspace_mutations_enabled:
+            checks.append(
+                _executable_check(
+                    "strictdoc.workspace_bridge",
+                    configuration.strictdoc.workspace_bridge_executable,
+                )
+            )
     else:
         checks.append(ReadinessCheck("strictdoc", "disabled", "StrictDoc integration is disabled"))
 

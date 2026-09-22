@@ -40,7 +40,10 @@ def test_default_configuration_is_safe_for_development() -> None:
     assert configured.identity.actor_type_claim == "actor_type"
     assert configured.identity.authorization_level_claim == "authorization_level"
     assert configured.identity.principal_claims_state_key == "trusted_principal_claims"
+    assert configured.identity.trusted_proxy_headers_enabled is False
+    assert configured.identity.trusted_proxy_shared_secret is None
     assert configured.strictdoc.enabled is False
+    assert configured.strictdoc.workspace_mutations_enabled is False
     assert configured.capella.enabled is False
     assert configured.openproject.enabled is False
     assert configured.object_storage.enabled is False
@@ -74,9 +77,55 @@ def test_enabled_identity_requires_issuer_and_audience() -> None:
         Settings(identity={"enabled": True})
 
 
+def test_trusted_proxy_headers_require_identity_and_secret() -> None:
+    with pytest.raises(ValidationError, match="identity must be enabled"):
+        Settings(identity={"trusted_proxy_headers_enabled": True})
+
+    with pytest.raises(ValidationError, match="trusted_proxy_shared_secret is required"):
+        Settings(
+            identity={
+                "enabled": True,
+                "issuer_url": "https://identity.example.test/realms/staging",
+                "audience": "engineering-gateway",
+                "readiness_url": "http://identity-proxy:4180/ping",
+                "trusted_proxy_headers_enabled": True,
+            }
+        )
+
+
+def test_trusted_proxy_secret_is_masked() -> None:
+    configured = Settings(
+        identity={
+            "enabled": True,
+            "issuer_url": "https://identity.example.test/realms/staging",
+            "audience": "engineering-gateway",
+            "readiness_url": "http://identity-proxy:4180/ping",
+            "trusted_proxy_headers_enabled": True,
+            "trusted_proxy_shared_secret": "deployment-secret-at-least-32-bytes",
+        }
+    )
+
+    assert "deployment-secret-at-least-32-bytes" not in str(configured.model_dump())
+    assert configured.identity.trusted_proxy_shared_secret is not None
+
+
 def test_enabled_strictdoc_requires_project_path() -> None:
     with pytest.raises(ValidationError, match="strictdoc.project_path is required"):
         Settings(strictdoc={"enabled": True})
+
+
+def test_strictdoc_workspace_mutations_require_enabled_bridge() -> None:
+    with pytest.raises(ValidationError, match="StrictDoc must be enabled"):
+        Settings(strictdoc={"workspace_mutations_enabled": True})
+
+    with pytest.raises(ValidationError, match="workspace_bridge_executable is required"):
+        Settings(
+            strictdoc={
+                "enabled": True,
+                "project_path": "/srv/strictdoc/project",
+                "workspace_mutations_enabled": True,
+            }
+        )
 
 
 def test_enabled_capella_requires_bridge_configuration() -> None:

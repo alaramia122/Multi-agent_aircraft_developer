@@ -158,3 +158,4 @@ The next repository change is Phase 1. Phase 4 becomes a hard external dependenc
 - Phase 1 was completed and merged: identity-enabled ASGI composition, wrapped MCP lifecycle and startup-failure cleanup are now covered by CI.
 - Phase 2 adds `arp4754a@2.0` and `do-178c@2.0` complete acceptance chains while preserving the 1.0 vertical slices.
 - MCP validation and approval preparation now accept typed attributes, artifact evidence, lifecycle states and lifecycle transitions, so the declarative profile contract is usable by future agents rather than only by direct Python calls.
+- The Phase 4 deployment target is fixed as a single Yandex Cloud VM. The repository now includes a network-isolated Caddy + Keycloak + OAuth2 Proxy + Gateway + PostgreSQL + OpenProject staging topology and a fail-closed trusted-proxy-to-ASGI identity adapter. Real DNS, secrets, OpenProject bootstrap and the Capella executable remain external activation prerequisites.

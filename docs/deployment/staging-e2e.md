@@ -70,6 +70,11 @@ This proves the deployable Gateway can start with its database and repository bo
 
 ## External integration stage
 
+The selected external staging target is one Yandex Cloud VM. The reproducible
+topology, secret/DNS prerequisites and bootstrap procedure are in
+`deploy/yandex-vm/README.md`. The Gateway is reachable only through Caddy and
+OAuth2 Proxy; its container port is not published.
+
 The next staging environment must enable integrations one at a time:
 
 1. identity provider / trusted-principal boundary;

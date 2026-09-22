@@ -95,6 +95,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validate Yandex VM staging configuration
+        run: >-
+          docker compose
+          --env-file deploy/yandex-vm/.env.example
+          -f deploy/yandex-vm/compose.yml
+          config --quiet
+
+      - name: Validate Yandex VM Caddy configuration
+        run: >-
+          docker run --rm
+          --env-file deploy/yandex-vm/.env.example
+          --volume "$PWD/deploy/yandex-vm/Caddyfile:/etc/caddy/Caddyfile:ro"
+          caddy:2.10-alpine
+          caddy validate --config /etc/caddy/Caddyfile
+
       - name: Build and start staging stack
         env:
           POSTGRES_PASSWORD: postgres
