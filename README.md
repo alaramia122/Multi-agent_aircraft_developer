@@ -57,6 +57,11 @@ The service is composed around transaction-scoped application operations. Postgr
 
 See `docs/architecture/infrastructure-completion.md` and `docs/development/gateway-completion.md` for the frozen Gateway boundary and its acceptance criteria.
 
+The initial private Docker staging slice is documented in
+`docs/deployment/staging.md`. It runs the Gateway and PostgreSQL with the Gateway
+bound to loopback and the MCP actor restricted to `L0_READ` until TLS and a
+production identity provider are configured.
+
 ## Non-negotiable rules
 
 1. PostgreSQL stores Gateway state, references, profiles, audit records and validation results; it does not become a duplicate engineering model.
