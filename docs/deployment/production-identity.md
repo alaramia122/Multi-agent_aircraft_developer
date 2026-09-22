@@ -152,7 +152,7 @@ IDENTITY__AUTHORIZATION_LEVEL_CLAIM
 IDENTITY__PRINCIPAL_CLAIMS_STATE_KEY
 ```
 
-When identity is enabled, `IDENTITY__ISSUER_URL` and `IDENTITY__AUDIENCE` are required configuration values. They describe the expected deployment identity provider and audience; the current Gateway does not itself perform the corresponding token verification.
+When identity is enabled, `IDENTITY__ISSUER_URL`, `IDENTITY__AUDIENCE` and `IDENTITY__READINESS_URL` are required configuration values. The issuer and audience describe the expected deployment identity provider; the current Gateway does not itself perform the corresponding token verification. The readiness URL is an internal deployment health signal and does not authenticate requests.
 
 Claim names and the trusted-claims state key must be non-blank.
 

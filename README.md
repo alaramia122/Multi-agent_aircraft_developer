@@ -60,7 +60,7 @@ The documentation is bilingual by design: detailed engineering contracts remain 
 
 ## Development
 
-Python 3.12 is the initial implementation target. The Gateway is designed as a typed Python service with FastAPI, Pydantic, SQLAlchemy and Alembic. External engineering systems are accessed only through adapter contracts.
+Python 3.12 is the initial implementation target. The Gateway is designed as a typed Python service with FastAPI, Pydantic and SQLAlchemy. Database changes use the repository's ordered SQL migrations; Alembic is not part of the current architecture. External engineering systems are accessed only through adapter contracts.
 
 The service is composed around transaction-scoped application operations. PostgreSQL provides durable Gateway state and cross-process reconciliation coordination; external side effects are protected by deterministic change-set identity and adapter-level idempotency contracts.
 
