@@ -58,6 +58,10 @@ services:
       MCP_ACTOR_ID: ${MCP_ACTOR_ID:-staging-readonly-agent}
       MCP_ACTOR_TYPE: ai
       MCP_AUTHORIZATION_LEVEL: L0_READ
+      OPENPROJECT_BASE_URL: ${OPENPROJECT_BASE_URL:?Set OPENPROJECT_BASE_URL in .env}
+      OPENPROJECT_API_TOKEN: ${OPENPROJECT_API_TOKEN:?Set OPENPROJECT_API_TOKEN in .env}
+      OPENPROJECT_PROJECT_ID: ${OPENPROJECT_PROJECT_ID:?Set OPENPROJECT_PROJECT_ID in .env}
+      OPENPROJECT_CHANGE_REQUEST_TYPE_ID: ${OPENPROJECT_CHANGE_REQUEST_TYPE_ID:?Set OPENPROJECT_CHANGE_REQUEST_TYPE_ID in .env}
     ports:
       - "127.0.0.1:${GATEWAY_PORT:-8000}:8000"
     read_only: true
@@ -79,6 +83,7 @@ services:
       start_period: 10s
     networks:
       - gateway-internal
+      - openproject-frontend
 
 volumes:
   gateway-postgres-data:
@@ -86,3 +91,6 @@ volumes:
 networks:
   gateway-internal:
     driver: bridge
+  openproject-frontend:
+    external: true
+    name: ${OPENPROJECT_NETWORK:-openproject_frontend}

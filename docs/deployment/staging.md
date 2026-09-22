@@ -1,10 +1,12 @@
 # Staging deployment
 
 This deployment slice runs the Engineering Gateway and its PostgreSQL state
-database on one Docker host. It is intentionally private by default:
+database on one Docker host and connects it to the separately deployed
+OpenProject stack. It is intentionally private by default:
 
 - PostgreSQL has no host port;
 - Gateway is bound to `127.0.0.1:8000` only;
+- OpenProject is reached over its private Docker frontend network;
 - the MCP actor is an AI identity with `L0_READ` authorization;
 - access is provided through an SSH tunnel until a domain, TLS termination and
   production identity provider are configured.
@@ -13,6 +15,7 @@ database on one Docker host. It is intentionally private by default:
 
 - Docker Engine with the Compose plugin;
 - the repository checked out on the target host;
+- OpenProject Compose running with the `openproject_frontend` network;
 - at least 8 GiB RAM and swap for the wider staging stack.
 
 ## Configure
@@ -28,7 +31,19 @@ chmod 600 .env
 ```
 
 The generated password is hexadecimal so it is safe inside the PostgreSQL URL
-assembled by Compose. Do not commit `.env`.
+assembled by Compose. Replace `REPLACE_WITH_OPENPROJECT_SERVICE_TOKEN` in `.env`
+with the API token of the dedicated non-administrator OpenProject service user.
+The staging object identifiers are `OPENPROJECT_PROJECT_ID=3` and
+`OPENPROJECT_CHANGE_REQUEST_TYPE_ID=8`. Do not commit `.env`.
+
+Confirm the private network name if the OpenProject Compose project was started
+under a non-default project name:
+
+```bash
+docker network ls --format '{{.Name}}' | grep openproject
+```
+
+Set `OPENPROJECT_NETWORK` in `.env` to the reported frontend network name.
 
 ## Start
 
@@ -49,6 +64,13 @@ Verify the process from the VM:
 ```bash
 curl --fail http://127.0.0.1:8000/health
 docker compose logs --tail=100 gateway migrate postgres
+```
+
+Verify the authenticated server-to-server OpenProject connection without
+printing the API token:
+
+```bash
+docker compose exec gateway python -c 'import asyncio; from engineering_gateway.config import settings; from engineering_gateway.main import build_external_adapter_set; adapters = build_external_adapter_set(settings); assert adapters is not None; print(asyncio.run(adapters.as_read_adapters()[0].get_version()))'
 ```
 
 ## Access through SSH

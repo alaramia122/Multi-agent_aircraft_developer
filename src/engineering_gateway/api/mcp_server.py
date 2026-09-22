@@ -10,6 +10,7 @@ from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
+from engineering_gateway import __version__
 from engineering_gateway.application.gateway_service import Actor, GatewayApplicationService
 from engineering_gateway.application.governed_gateway_service import (
     GovernedGatewayApplicationService,
@@ -52,7 +53,7 @@ def create_mcp_server(service_factory: GatewayServiceFactory, actor: Actor) -> M
     as MCP tools. Tool annotations describe behavior for clients; the Gateway
     remains the enforcement point.
     """
-    server = MCPServer("Engineering Gateway")
+    server = MCPServer("Engineering Gateway", version=__version__)
 
     @server.tool(
         name="get_engineering_element",

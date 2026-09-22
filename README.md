@@ -60,7 +60,9 @@ See `docs/architecture/infrastructure-completion.md` and `docs/development/gatew
 The initial private Docker staging slice is documented in
 `docs/deployment/staging.md`. It runs the Gateway and PostgreSQL with the Gateway
 bound to loopback and the MCP actor restricted to `L0_READ` until TLS and a
-production identity provider are configured.
+production identity provider are configured. The deployment composition can
+also connect the existing OpenProject API v3 adapter through a private Docker
+network using a dedicated least-privilege service token.
 
 ## Non-negotiable rules
 

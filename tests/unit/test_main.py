@@ -7,6 +7,7 @@ from starlette.routing import Mount
 from starlette.testclient import TestClient
 
 import engineering_gateway.main as main_module
+from engineering_gateway.config import Settings
 
 
 class _Database:
@@ -26,6 +27,26 @@ def _mcp_app() -> FastAPI:
         return {"status": "mcp"}
 
     return application
+
+
+def test_external_adapter_set_is_disabled_without_configuration() -> None:
+    assert main_module.build_external_adapter_set(Settings()) is None
+
+
+def test_external_adapter_set_contains_configured_openproject_adapter() -> None:
+    configured = Settings(
+        openproject_base_url="http://web:8080",
+        openproject_api_token="secret-token",
+        openproject_project_id=3,
+        openproject_change_request_type_id=8,
+    )
+
+    adapter_set = main_module.build_external_adapter_set(configured)
+
+    assert adapter_set is not None
+    adapters = adapter_set.as_read_adapters()
+    assert len(adapters) == 1
+    assert adapters[0].system_name == "openproject"
 
 
 def test_lifespan_owns_database_and_keeps_health_and_mcp_routes_available(monkeypatch) -> None:

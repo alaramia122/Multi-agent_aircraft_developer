@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 import pytest
 from mcp.server.mcpserver.exceptions import ToolError
 
+from engineering_gateway import __version__
 from engineering_gateway.api.mcp_server import create_mcp_server
 from engineering_gateway.application.gateway_service import Actor, GatewayApplicationService
 from engineering_gateway.domain.audit import ActorType, InMemoryAuditSink
@@ -70,6 +71,14 @@ def _factory(service: GatewayApplicationService):
 
 def _actor(level: AuthorizationLevel = AuthorizationLevel.L0_READ) -> Actor:
     return Actor("mcp-ai", ActorType.AI, level)
+
+
+def test_mcp_server_advertises_gateway_version() -> None:
+    repository = _Repository()
+    server = create_mcp_server(_factory(_service(repository)), _actor())
+
+    assert server.name == "Engineering Gateway"
+    assert server.version == __version__
 
 
 @pytest.mark.asyncio
