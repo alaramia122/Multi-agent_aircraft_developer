@@ -91,36 +91,46 @@ def _validation_evidence(
     dict[UUID, tuple[str, str]],
 ]:
     attributes: dict[UUID, dict[str, object]] = {}
-    for item in validation_attributes or ():
-        element_id = _parse_uuid(item.element_id, "validation_attributes.element_id")
+    for attributes_item in validation_attributes or ():
+        element_id = _parse_uuid(
+            attributes_item.element_id, "validation_attributes.element_id"
+        )
         if element_id in attributes:
             raise ToolError(f"duplicate validation attributes for element '{element_id}'")
-        attributes[element_id] = dict(item.attributes)
+        attributes[element_id] = dict(attributes_item.attributes)
 
     artifacts: set[tuple[UUID, str]] = set()
-    for item in artifact_evidence or ():
+    for artifact_item in artifact_evidence or ():
         artifacts.add(
             (
-                _parse_uuid(item.element_id, "artifact_evidence.element_id"),
-                _require_non_blank(item.artifact_type, "artifact_evidence.artifact_type"),
+                _parse_uuid(artifact_item.element_id, "artifact_evidence.element_id"),
+                _require_non_blank(
+                    artifact_item.artifact_type, "artifact_evidence.artifact_type"
+                ),
             )
         )
 
     states: dict[UUID, str] = {}
-    for item in lifecycle_states or ():
-        element_id = _parse_uuid(item.element_id, "lifecycle_states.element_id")
+    for state_item in lifecycle_states or ():
+        element_id = _parse_uuid(state_item.element_id, "lifecycle_states.element_id")
         if element_id in states:
             raise ToolError(f"duplicate lifecycle state for element '{element_id}'")
-        states[element_id] = _require_non_blank(item.state, "lifecycle_states.state")
+        states[element_id] = _require_non_blank(state_item.state, "lifecycle_states.state")
 
     transitions: dict[UUID, tuple[str, str]] = {}
-    for item in lifecycle_transitions or ():
-        element_id = _parse_uuid(item.element_id, "lifecycle_transitions.element_id")
+    for transition_item in lifecycle_transitions or ():
+        element_id = _parse_uuid(
+            transition_item.element_id, "lifecycle_transitions.element_id"
+        )
         if element_id in transitions:
             raise ToolError(f"duplicate lifecycle transition for element '{element_id}'")
         transitions[element_id] = (
-            _require_non_blank(item.source_state, "lifecycle_transitions.source_state"),
-            _require_non_blank(item.target_state, "lifecycle_transitions.target_state"),
+            _require_non_blank(
+                transition_item.source_state, "lifecycle_transitions.source_state"
+            ),
+            _require_non_blank(
+                transition_item.target_state, "lifecycle_transitions.target_state"
+            ),
         )
     return attributes, artifacts, states, transitions
 
