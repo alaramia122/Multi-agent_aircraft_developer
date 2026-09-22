@@ -109,12 +109,25 @@ class GatewayApplicationService:
         relations: list[EngineeringRelation],
         profile_id: str,
         profile_version: str,
+        *,
+        validation_attributes: dict[UUID, dict[str, object]] | None = None,
+        artifact_evidence: set[tuple[UUID, str]] | frozenset[tuple[UUID, str]] = frozenset(),
+        lifecycle_states: dict[UUID, str] | None = None,
+        lifecycle_transitions: dict[UUID, tuple[str, str]] | None = None,
     ) -> ValidationResult:
         self._require_read(actor)
         profile = await self._get_active_profile(
             profile_id, profile_version, actor=actor, action="validate"
         )
-        result = self._validator.validate(elements, relations, profile)
+        result = self._validator.validate(
+            elements,
+            relations,
+            profile,
+            attributes=validation_attributes,
+            artifact_evidence=artifact_evidence,
+            lifecycle_states=lifecycle_states,
+            lifecycle_transitions=lifecycle_transitions,
+        )
         await self._record(
             actor,
             "validate",

@@ -47,3 +47,11 @@ Multiple profile versions may coexist and may be active simultaneously. A worksp
 ## Example
 
 `profiles/examples/verification-baseline.json` is intentionally illustrative and is **not** a normative interpretation of ARP4754A, DO-178C, ARP4761, or any other standard.
+
+The repository also carries two generations of executable project profiles:
+
+- `arp4754a@1.0` and `do-178c@1.0` preserve the initial narrow vertical slices;
+- `arp4754a@2.0` implements the complete MVP-1 function/requirement/architecture/allocation/safety/verification/evidence chain;
+- `do-178c@2.0` implements the complete MVP-2 system requirement/HLR/software architecture/LLR/source/executable/verification/evidence chain.
+
+These profiles are project process definitions and executable traceability semantics. They do not reproduce normative text and do not claim tool qualification or certification credit.

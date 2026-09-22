@@ -26,6 +26,15 @@ In addition to the read/validation tools:
 
 The mutation tools are intentionally scoped to workspace state. Reconciliation publishes a prepared workspace to configured authoritative external systems and remains an L2 operation.
 
+Both `validate_engineering_graph` and `prepare_workspace_for_approval` accept typed validation evidence:
+
+- profile-defined scalar attributes by element UUID;
+- artifact-evidence bindings by element UUID and artifact type;
+- current lifecycle states;
+- lifecycle transitions.
+
+The MCP boundary validates UUIDs, rejects duplicate per-element evidence records and forwards the normalized evidence to the deterministic Validation Engine. Evidence remains data for deterministic checks; it is not an LLM compliance decision.
+
 ### Approval boundary
 
 No MCP actor receives `approve_workspace` or `reject_workspace`. Human L3 approval is an application-service operation outside the AI tool surface.

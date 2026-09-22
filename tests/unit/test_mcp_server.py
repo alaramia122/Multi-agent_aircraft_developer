@@ -10,6 +10,8 @@ from mcp.server.mcpserver.exceptions import ToolError
 
 from engineering_gateway.api.mcp_server import create_mcp_server
 from engineering_gateway.application.gateway_service import Actor, GatewayApplicationService
+from engineering_gateway.application.governed_gateway_service import GovernedGatewayApplicationService
+from engineering_gateway.application.validation import ValidationResult
 from engineering_gateway.domain.audit import ActorType, InMemoryAuditSink
 from engineering_gateway.domain.change_control import AuthorizationLevel
 from engineering_gateway.domain.models import (
@@ -80,6 +82,34 @@ class _MutableActorProvider:
     def get_actor(self) -> Actor:
         self.calls += 1
         return self.actor
+
+
+class _EvidenceService(GatewayApplicationService):
+    def __init__(self, repository: _Repository) -> None:
+        super().__init__(
+            repository,
+            InMemoryStandardProfileRegistry(),
+            InMemoryAuditSink(),
+        )
+        self.validation_evidence = None
+
+    async def validate(self, actor, elements, relations, profile_id, profile_version, **kwargs):
+        self.validation_evidence = kwargs
+        return ValidationResult(profile_id, profile_version, "graph-hash", ())
+
+
+class _EvidenceGovernedService(GovernedGatewayApplicationService):
+    def __init__(self, repository: _Repository) -> None:
+        super().__init__(
+            repository,
+            InMemoryStandardProfileRegistry(),
+            InMemoryAuditSink(),
+        )
+        self.approval_evidence = None
+
+    async def prepare_for_approval(self, actor, workspace_id, **kwargs):
+        self.approval_evidence = kwargs
+        return ValidationResult(kwargs["profile_id"], kwargs["profile_version"], "graph-hash", ())
 
 
 @pytest.mark.asyncio
@@ -177,6 +207,75 @@ async def test_mcp_validation_rejects_blank_profile_identity_at_boundary() -> No
                 "profile_version": "1.0",
             },
         )
+
+
+@pytest.mark.asyncio
+async def test_mcp_validation_forwards_typed_profile_evidence() -> None:
+    repository = _Repository()
+    service = _EvidenceService(repository)
+    server = create_mcp_server(_factory(service), _actor())
+    element_id = repository.element.id
+
+    await server.call_tool(
+        "validate_engineering_graph",
+        {
+            "elements": [repository.element.model_dump(mode="json")],
+            "relations": [],
+            "profile_id": "profile",
+            "profile_version": "2.0",
+            "validation_attributes": [
+                {"element_id": str(element_id), "attributes": {"dal": "A"}}
+            ],
+            "artifact_evidence": [
+                {"element_id": str(element_id), "artifact_type": "review_record"}
+            ],
+            "lifecycle_states": [{"element_id": str(element_id), "state": "reviewed"}],
+            "lifecycle_transitions": [
+                {
+                    "element_id": str(element_id),
+                    "source_state": "draft",
+                    "target_state": "reviewed",
+                }
+            ],
+        },
+    )
+
+    assert service.validation_evidence == {
+        "validation_attributes": {element_id: {"dal": "A"}},
+        "artifact_evidence": {(element_id, "review_record")},
+        "lifecycle_states": {element_id: "reviewed"},
+        "lifecycle_transitions": {element_id: ("draft", "reviewed")},
+    }
+
+
+@pytest.mark.asyncio
+async def test_mcp_approval_preparation_forwards_typed_profile_evidence() -> None:
+    repository = _Repository()
+    service = _EvidenceGovernedService(repository)
+    server = create_mcp_server(
+        _factory(service), _actor(AuthorizationLevel.L2_MODIFY_WORKSPACE)
+    )
+    workspace_id = uuid4()
+    element_id = repository.element.id
+
+    await server.call_tool(
+        "prepare_workspace_for_approval",
+        {
+            "workspace_id": str(workspace_id),
+            "profile_id": "profile",
+            "profile_version": "2.0",
+            "lifecycle_states": [{"element_id": str(element_id), "state": "reviewed"}],
+        },
+    )
+
+    assert service.approval_evidence == {
+        "profile_id": "profile",
+        "profile_version": "2.0",
+        "validation_attributes": {},
+        "artifact_evidence": set(),
+        "lifecycle_states": {element_id: "reviewed"},
+        "lifecycle_transitions": {},
+    }
 
 
 @pytest.mark.asyncio
