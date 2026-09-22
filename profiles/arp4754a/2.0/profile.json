@@ -1,0 +1,58 @@
+{
+  "id": "arp4754a",
+  "version": "2.0",
+  "name": "ARP4754A complete MVP-1 traceability profile",
+  "description": "Executable Gateway profile for the complete MVP-1 acceptance chain. It models project semantics without reproducing copyrighted standard text.",
+  "element_types": [
+    {"id": "aircraft_function", "kind": "architecture", "attributes": []},
+    {"id": "system_function", "kind": "architecture", "attributes": []},
+    {"id": "system_requirement", "kind": "requirement", "attributes": []},
+    {"id": "system_architecture", "kind": "architecture", "attributes": []},
+    {"id": "hardware_item", "kind": "architecture", "attributes": []},
+    {"id": "software_item", "kind": "architecture", "attributes": []},
+    {"id": "hazard", "kind": "safety", "attributes": []},
+    {"id": "safety_requirement", "kind": "requirement", "attributes": []},
+    {"id": "verification_activity", "kind": "verification", "attributes": []},
+    {"id": "verification_evidence", "kind": "verification", "attributes": []}
+  ],
+  "relations": [
+    {"id": "arp-system-function-refines-aircraft-function", "relation_type": "refines", "source_type_ids": ["system_function"], "target_type_ids": ["aircraft_function"]},
+    {"id": "arp-system-requirement-derived-from-function", "relation_type": "derives_from", "source_type_ids": ["system_requirement"], "target_type_ids": ["system_function"]},
+    {"id": "arp-requirement-allocated-to-architecture", "relation_type": "allocated_to", "source_type_ids": ["system_requirement"], "target_type_ids": ["system_architecture"]},
+    {"id": "arp-architecture-allocated-to-item", "relation_type": "allocated_to", "source_type_ids": ["system_architecture"], "target_type_ids": ["hardware_item", "software_item"]},
+    {"id": "arp-hazard-affects-system-function", "relation_type": "affects", "source_type_ids": ["hazard"], "target_type_ids": ["system_function"]},
+    {"id": "arp-safety-requirement-derived-from-system-requirement", "relation_type": "derives_from", "source_type_ids": ["safety_requirement"], "target_type_ids": ["system_requirement"]},
+    {"id": "arp-safety-requirement-mitigates-hazard", "relation_type": "mitigates", "source_type_ids": ["safety_requirement"], "target_type_ids": ["hazard"]},
+    {"id": "arp-safety-requirement-allocated-to-architecture", "relation_type": "allocated_to", "source_type_ids": ["safety_requirement"], "target_type_ids": ["system_architecture"]},
+    {"id": "arp-requirement-verified-by-activity", "relation_type": "verified_by", "source_type_ids": ["system_requirement", "safety_requirement"], "target_type_ids": ["verification_activity"]},
+    {"id": "arp-activity-verified-by-evidence", "relation_type": "verified_by", "source_type_ids": ["verification_activity"], "target_type_ids": ["verification_evidence"]}
+  ],
+  "lifecycles": [
+    {"id": "arp-system-requirement-lifecycle", "element_type_id": "system_requirement", "states": ["draft", "reviewed", "approved"], "transitions": {"draft": ["reviewed"], "reviewed": ["approved"], "approved": []}},
+    {"id": "arp-safety-requirement-lifecycle", "element_type_id": "safety_requirement", "states": ["draft", "reviewed", "approved"], "transitions": {"draft": ["reviewed"], "reviewed": ["approved"], "approved": []}},
+    {"id": "arp-verification-evidence-lifecycle", "element_type_id": "verification_evidence", "states": ["draft", "accepted"], "transitions": {"draft": ["accepted"], "accepted": []}}
+  ],
+  "artifacts": [],
+  "traceability": [
+    {"id": "arp-system-function-has-aircraft-parent", "source_type_id": "system_function", "relation_type": "refines", "target_type_id": "aircraft_function", "required": true},
+    {"id": "arp-system-requirement-has-function-parent", "source_type_id": "system_requirement", "relation_type": "derives_from", "target_type_id": "system_function", "required": true},
+    {"id": "arp-system-requirement-has-architecture-allocation", "source_type_id": "system_requirement", "relation_type": "allocated_to", "target_type_id": "system_architecture", "required": true},
+    {"id": "arp-architecture-has-software-allocation", "source_type_id": "system_architecture", "relation_type": "allocated_to", "target_type_id": "software_item", "required": true},
+    {"id": "arp-hazard-has-functional-effect", "source_type_id": "hazard", "relation_type": "affects", "target_type_id": "system_function", "required": true},
+    {"id": "arp-safety-requirement-has-system-source", "source_type_id": "safety_requirement", "relation_type": "derives_from", "target_type_id": "system_requirement", "required": true},
+    {"id": "arp-safety-requirement-mitigates-hazard", "source_type_id": "safety_requirement", "relation_type": "mitigates", "target_type_id": "hazard", "required": true},
+    {"id": "arp-safety-requirement-has-allocation", "source_type_id": "safety_requirement", "relation_type": "allocated_to", "target_type_id": "system_architecture", "required": true},
+    {"id": "arp-system-requirement-has-verification", "source_type_id": "system_requirement", "relation_type": "verified_by", "target_type_id": "verification_activity", "required": true},
+    {"id": "arp-safety-requirement-has-verification", "source_type_id": "safety_requirement", "relation_type": "verified_by", "target_type_id": "verification_activity", "required": true},
+    {"id": "arp-verification-has-evidence", "source_type_id": "verification_activity", "relation_type": "verified_by", "target_type_id": "verification_evidence", "required": true}
+  ],
+  "verification": [
+    {"id": "arp-system-requirement-verification", "element_type_id": "system_requirement", "required_relation_type": "verified_by", "verification_type_id": "verification_activity"},
+    {"id": "arp-safety-requirement-verification", "element_type_id": "safety_requirement", "required_relation_type": "verified_by", "verification_type_id": "verification_activity"}
+  ],
+  "metadata": {
+    "standard": "SAE ARP4754A",
+    "profile_role": "complete_mvp1_acceptance_chain",
+    "normative_text_included": false
+  }
+}

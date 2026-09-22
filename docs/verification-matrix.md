@@ -14,6 +14,9 @@
 | State-changing and denied actions are auditable | Gateway tests verify audit records; independent audit session protects failure/denial evidence | `tests/unit/test_gateway_service.py`, audit infrastructure |
 | Profile can be replaced without Gateway-core branching | Profile engine consumes declarative `StandardProfile`; ARP4754A and DO-178C are external profile data | `application/profile_engine.py`, `profiles/*/profile.json` |
 | DO-178C lifecycle traceability is executable | Profile defines HLR/LLR/verification lifecycles and traceability; integration test executes governed slice | `profiles/do-178c/1.0/profile.json`, `tests/integration/test_do_178c_vertical_slice.py` |
+| Complete MVP-1 chain is executable | Versioned ARP4754A profile covers aircraft/system functions, requirements, architecture allocation, safety, verification and evidence | `profiles/arp4754a/2.0/profile.json`, `tests/integration/test_complete_mvp_profiles.py` |
+| Complete MVP-2 chain is executable | Versioned DO-178C profile covers system input, HLR, software architecture, LLR, source, executable, verification result and evidence | `profiles/do-178c/2.0/profile.json`, `tests/integration/test_complete_mvp_profiles.py` |
+| MCP can supply complete deterministic validation evidence | MCP tests prove attributes, artifacts, lifecycle states and transitions reach validation and approval preparation | `tests/unit/test_mcp_server.py` |
 | Vector Store is not authoritative | Gateway persistence model stores metadata/references; external systems remain authoritative | architecture documentation |
 
 ## CI quality gate
@@ -25,14 +28,12 @@ The repository CI executes:
 3. mypy type checking;
 4. pytest.
 
-The latest completed verification run for commit `d9b67abde843b229b56d1ae6dcafd5c2953fd416` passed all four stages:
+The latest completed verification run on `main` before the complete-profile change is run `35732060251` for commit `14449b96091470c1398ce1685200d30cefc71abb`. Both `quality` and `staging` succeeded. The complete-profile change is accepted only after its own PR and post-merge CI succeed.
 
 - Ruff: passed;
-- mypy: passed, 46 source files checked;
-- pytest: **147 passed**, 1 deprecation warning;
-- test execution time: 2.53 s.
-
-The warning comes from Starlette's test client and is not a Gateway test failure. The subsequent commits only update runtime-version metadata and documentation; their own CI runs remain the regression gate.
+- mypy: passed;
+- pytest, including PostgreSQL integration: passed;
+- staging smoke job: passed.
 
 ## Test interpretation
 

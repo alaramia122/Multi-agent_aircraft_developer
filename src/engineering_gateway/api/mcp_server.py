@@ -9,6 +9,7 @@ from uuid import UUID
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
+from pydantic import BaseModel, ConfigDict, Field
 
 from engineering_gateway.api.actor_provider import ActorProvider, StaticActorProvider
 from engineering_gateway.application.gateway_service import Actor, GatewayApplicationService
@@ -20,6 +21,43 @@ from engineering_gateway.domain.models import EngineeringElement, EngineeringRel
 
 
 GatewayServiceFactory = Callable[[], AbstractAsyncContextManager[GatewayApplicationService]]
+
+
+class ElementAttributesInput(BaseModel):
+    """Profile-defined scalar attributes for one canonical element."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    element_id: str
+    attributes: dict[str, str | int | float | bool] = Field(default_factory=dict)
+
+
+class ArtifactEvidenceInput(BaseModel):
+    """One authoritative artifact-evidence binding."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    element_id: str
+    artifact_type: str
+
+
+class LifecycleStateInput(BaseModel):
+    """Current lifecycle state for one canonical element."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    element_id: str
+    state: str
+
+
+class LifecycleTransitionInput(BaseModel):
+    """Requested lifecycle transition for one canonical element."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    element_id: str
+    source_state: str
+    target_state: str
 
 
 def _require_l2(actor: Actor) -> None:
@@ -39,6 +77,62 @@ def _require_non_blank(value: str, field_name: str) -> str:
     if not normalized:
         raise ToolError(f"{field_name} must not be blank")
     return normalized
+
+
+def _validation_evidence(
+    validation_attributes: list[ElementAttributesInput] | None,
+    artifact_evidence: list[ArtifactEvidenceInput] | None,
+    lifecycle_states: list[LifecycleStateInput] | None,
+    lifecycle_transitions: list[LifecycleTransitionInput] | None,
+) -> tuple[
+    dict[UUID, dict[str, object]],
+    set[tuple[UUID, str]],
+    dict[UUID, str],
+    dict[UUID, tuple[str, str]],
+]:
+    attributes: dict[UUID, dict[str, object]] = {}
+    for attributes_item in validation_attributes or ():
+        element_id = _parse_uuid(
+            attributes_item.element_id, "validation_attributes.element_id"
+        )
+        if element_id in attributes:
+            raise ToolError(f"duplicate validation attributes for element '{element_id}'")
+        attributes[element_id] = dict(attributes_item.attributes)
+
+    artifacts: set[tuple[UUID, str]] = set()
+    for artifact_item in artifact_evidence or ():
+        artifacts.add(
+            (
+                _parse_uuid(artifact_item.element_id, "artifact_evidence.element_id"),
+                _require_non_blank(
+                    artifact_item.artifact_type, "artifact_evidence.artifact_type"
+                ),
+            )
+        )
+
+    states: dict[UUID, str] = {}
+    for state_item in lifecycle_states or ():
+        element_id = _parse_uuid(state_item.element_id, "lifecycle_states.element_id")
+        if element_id in states:
+            raise ToolError(f"duplicate lifecycle state for element '{element_id}'")
+        states[element_id] = _require_non_blank(state_item.state, "lifecycle_states.state")
+
+    transitions: dict[UUID, tuple[str, str]] = {}
+    for transition_item in lifecycle_transitions or ():
+        element_id = _parse_uuid(
+            transition_item.element_id, "lifecycle_transitions.element_id"
+        )
+        if element_id in transitions:
+            raise ToolError(f"duplicate lifecycle transition for element '{element_id}'")
+        transitions[element_id] = (
+            _require_non_blank(
+                transition_item.source_state, "lifecycle_transitions.source_state"
+            ),
+            _require_non_blank(
+                transition_item.target_state, "lifecycle_transitions.target_state"
+            ),
+        )
+    return attributes, artifacts, states, transitions
 
 
 def create_mcp_server(
@@ -99,9 +193,19 @@ def create_mcp_server(
         relations: list[EngineeringRelation],
         profile_id: str,
         profile_version: str,
+        validation_attributes: list[ElementAttributesInput] | None = None,
+        artifact_evidence: list[ArtifactEvidenceInput] | None = None,
+        lifecycle_states: list[LifecycleStateInput] | None = None,
+        lifecycle_transitions: list[LifecycleTransitionInput] | None = None,
     ) -> dict[str, object]:
         """Run deterministic validation against an activated Standard Profile."""
         actor = actor_provider.get_actor()
+        attributes, artifacts, states, transitions = _validation_evidence(
+            validation_attributes,
+            artifact_evidence,
+            lifecycle_states,
+            lifecycle_transitions,
+        )
         async with service_factory() as service:
             result = await service.validate(
                 actor,
@@ -109,6 +213,10 @@ def create_mcp_server(
                 relations,
                 _require_non_blank(profile_id, "profile_id"),
                 _require_non_blank(profile_version, "profile_version"),
+                validation_attributes=attributes,
+                artifact_evidence=artifacts,
+                lifecycle_states=states,
+                lifecycle_transitions=transitions,
             )
         return {
             "profile_id": result.profile_id,
@@ -214,11 +322,23 @@ def create_mcp_server(
         structured_output=True,
     )
     async def prepare_workspace_for_approval(
-        workspace_id: str, profile_id: str, profile_version: str
+        workspace_id: str,
+        profile_id: str,
+        profile_version: str,
+        validation_attributes: list[ElementAttributesInput] | None = None,
+        artifact_evidence: list[ArtifactEvidenceInput] | None = None,
+        lifecycle_states: list[LifecycleStateInput] | None = None,
+        lifecycle_transitions: list[LifecycleTransitionInput] | None = None,
     ) -> dict[str, object]:
         """Run deterministic validation and bind evidence before human approval."""
         actor = actor_provider.get_actor()
         _require_l2(actor)
+        attributes, artifacts, states, transitions = _validation_evidence(
+            validation_attributes,
+            artifact_evidence,
+            lifecycle_states,
+            lifecycle_transitions,
+        )
         async with service_factory() as service:
             if not isinstance(service, GovernedGatewayApplicationService):
                 raise TypeError("workspace approval preparation requires governed service")
@@ -227,6 +347,10 @@ def create_mcp_server(
                 _parse_uuid(workspace_id, "workspace_id"),
                 profile_id=_require_non_blank(profile_id, "profile_id"),
                 profile_version=_require_non_blank(profile_version, "profile_version"),
+                validation_attributes=attributes,
+                artifact_evidence=artifacts,
+                lifecycle_states=states,
+                lifecycle_transitions=transitions,
             )
         return {
             "profile_id": result.profile_id,

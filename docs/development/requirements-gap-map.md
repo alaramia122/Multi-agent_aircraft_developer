@@ -64,8 +64,8 @@
 | StrictDoc | Чтение требований | Реализован CLI JSON export boundary | 🟢 | Реальная установка; controlled write-back/ReqIF при необходимости |
 | Capella | Архитектурные элементы/связи через bridge | Реализован versioned bridge boundary | 🟡 | Реальный headless bridge executable и deployment |
 | OpenProject | Change Request / workflow | Реализован API v3 adapter, lockVersion, idempotency | 🟢 | Реальный instance и workflow configuration |
-| MCP | Streamable HTTP + operation-scoped authorization | Реализовано | 🟢 | Production authentication boundary |
-| Identity | Trusted upstream claims → request-scoped Actor | Реализовано в Gateway | 🟢 | Подключить реальный IdP/auth proxy |
+| MCP | Streamable HTTP + operation-scoped authorization | Реализовано; typed attributes/artifacts/lifecycle evidence доступно validation и approval preparation | 🟢 | Подключить AI Studio после external E2E |
+| Identity | Trusted upstream claims → request-scoped Actor | Gateway contract и ASGI/MCP lifecycle проверены | 🟢 | Подключить реальный IdP/auth proxy |
 | Production configuration | Typed settings, env groups, readiness | Реализовано | 🟢 | Staging deployment |
 | Object Storage | Крупные бинарные артефакты | Контракт/архитектурная роль определены, production storage не подключён | 🟡 | Выбрать и подключить staging backend |
 | Vector Store / RAG | Retrieval поверх инженерной базы | Не реализован | 🔴 | После стабилизации Gateway; не делать Source of Truth |
@@ -73,11 +73,11 @@
 | AI Studio Workflows | Оркестрация агентных шагов | Не реализована | 🔴 | После определения agent contracts |
 | Agent contracts | Контракты входов/выходов/границ ответственности агентов | Не реализованы | 🔴 | Спроектировать после фиксации Gateway API |
 | Agent governance | AI не может обходить Gateway и выполнять L3 | Gateway-side invariant готов; AI layer отсутствует | 🟡 | Реализовать agent tools только через MCP |
-| MVP-1 | Function → System Function → Requirement → Architecture → Allocation → Safety → Verification → Baseline | Отдельные Gateway/integration slices существуют; полного production E2E нет | 🟡 | E2E на staging |
-| MVP-2 | System Requirement → SW HLR → SW Architecture → SW LLR → Source → Verification → Evidence | DO-178C profile/vertical slice есть; полного внешнего E2E нет | 🟡 | E2E на staging |
+| MVP-1 | Function → System Function → Requirement → Architecture → Allocation → Safety → Verification → Baseline | Полная versioned profile/test chain реализована в `arp4754a@2.0`; production E2E нет | 🟡 | E2E на реальных системах |
+| MVP-2 | System Requirement → SW HLR → SW Architecture → SW LLR → Source → Verification → Evidence | Полная versioned profile/test chain реализована в `do-178c@2.0`; production E2E нет | 🟡 | E2E на реальных системах |
 | Cost/Budget | Cost Agent / бюджетная модель | В текущем Gateway отсутствует | 🔴 | Отдельно определить контракт и границу ответственности |
 | Observability / Operations | Production monitoring, backup, operational procedures | Не является завершённой частью текущего Gateway milestone | 🟡 | После staging E2E |
-| Acceptance | Полный quality gate | Контракты и тесты существуют, но последний CI quality run был failure на lint | 🟡 | Исправить lint и выполнить полный gate |
+| Acceptance | Полный quality gate | Production Identity и lifecycle merge подтверждены успешными `quality` и `staging` на `main`; новые этапы требуют собственного CI | 🟢 | Сохранять gate для каждого PR |
 
 ## 3. Что уже можно считать закрытым
 
@@ -204,10 +204,10 @@ Evidence
 
 Порядок не менять без отдельного решения:
 
-1. **Production Identity deployment contract**
-2. **HTTP/ASGI + MCP lifecycle verification**
-3. **Identity documentation**
-4. **Полный quality gate**
+1. **Production Identity deployment contract** — завершено
+2. **HTTP/ASGI + MCP lifecycle verification** — завершено
+3. **Identity documentation** — завершено
+4. **Полный quality gate** — подтверждён на `main`
 5. **Реальные staging-интеграции Git / StrictDoc / Capella / OpenProject**
 6. **Gateway E2E**
 7. **Yandex AI Studio Agent contracts**

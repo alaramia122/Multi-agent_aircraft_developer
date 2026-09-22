@@ -152,3 +152,9 @@ Exit criteria: full-system E2E, operational evidence and the technical-specifica
 Use one reviewable PR per phase or independently deployable contract. Every PR must include the relevant tests and documentation. Do not combine production deployment claims with repository-only test evidence.
 
 The next repository change is Phase 1. Phase 4 becomes a hard external dependency: it cannot be marked complete without actual service endpoints and credentials. Phase 5 additionally requires Yandex AI Studio project access and its current deployment format/API.
+
+## Progress after the baseline assessment
+
+- Phase 1 was completed and merged: identity-enabled ASGI composition, wrapped MCP lifecycle and startup-failure cleanup are now covered by CI.
+- Phase 2 adds `arp4754a@2.0` and `do-178c@2.0` complete acceptance chains while preserving the 1.0 vertical slices.
+- MCP validation and approval preparation now accept typed attributes, artifact evidence, lifecycle states and lifecycle transitions, so the declarative profile contract is usable by future agents rather than only by direct Python calls.

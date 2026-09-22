@@ -1,0 +1,58 @@
+{
+  "id": "do-178c",
+  "version": "2.0",
+  "name": "DO-178C complete MVP-2 traceability profile",
+  "description": "Executable Gateway profile for the complete MVP-2 acceptance chain. It models project semantics without reproducing copyrighted standard text.",
+  "element_types": [
+    {"id": "system_requirement", "kind": "requirement", "attributes": []},
+    {"id": "software_item", "kind": "architecture", "attributes": []},
+    {"id": "high_level_requirement", "kind": "requirement", "attributes": []},
+    {"id": "software_architecture", "kind": "architecture", "attributes": []},
+    {"id": "low_level_requirement", "kind": "requirement", "attributes": []},
+    {"id": "source_code", "kind": "configuration", "attributes": []},
+    {"id": "executable", "kind": "configuration", "attributes": []},
+    {"id": "verification_case", "kind": "verification", "attributes": []},
+    {"id": "verification_result", "kind": "verification", "attributes": []},
+    {"id": "evidence", "kind": "verification", "attributes": []}
+  ],
+  "relations": [
+    {"id": "do-hlr-derived-from-system-requirement", "relation_type": "derives_from", "source_type_ids": ["high_level_requirement"], "target_type_ids": ["system_requirement"]},
+    {"id": "do-hlr-allocated-to-software-item", "relation_type": "allocated_to", "source_type_ids": ["high_level_requirement"], "target_type_ids": ["software_item"]},
+    {"id": "do-llr-refines-hlr", "relation_type": "refines", "source_type_ids": ["low_level_requirement"], "target_type_ids": ["high_level_requirement"]},
+    {"id": "do-llr-allocated-to-software-architecture", "relation_type": "allocated_to", "source_type_ids": ["low_level_requirement"], "target_type_ids": ["software_architecture"]},
+    {"id": "do-architecture-implements-source", "relation_type": "implements", "source_type_ids": ["software_architecture"], "target_type_ids": ["source_code"]},
+    {"id": "do-source-implements-executable", "relation_type": "implements", "source_type_ids": ["source_code"], "target_type_ids": ["executable"]},
+    {"id": "do-requirement-verified-by-case", "relation_type": "verified_by", "source_type_ids": ["high_level_requirement", "low_level_requirement"], "target_type_ids": ["verification_case"]},
+    {"id": "do-case-verified-by-result", "relation_type": "verified_by", "source_type_ids": ["verification_case"], "target_type_ids": ["verification_result"]},
+    {"id": "do-result-verified-by-evidence", "relation_type": "verified_by", "source_type_ids": ["verification_result"], "target_type_ids": ["evidence"]}
+  ],
+  "lifecycles": [
+    {"id": "do-hlr-lifecycle", "element_type_id": "high_level_requirement", "states": ["draft", "reviewed", "approved"], "transitions": {"draft": ["reviewed"], "reviewed": ["approved"], "approved": []}},
+    {"id": "do-llr-lifecycle", "element_type_id": "low_level_requirement", "states": ["draft", "reviewed", "approved"], "transitions": {"draft": ["reviewed"], "reviewed": ["approved"], "approved": []}},
+    {"id": "do-verification-case-lifecycle", "element_type_id": "verification_case", "states": ["draft", "executed", "accepted"], "transitions": {"draft": ["executed"], "executed": ["accepted"], "accepted": []}},
+    {"id": "do-verification-result-lifecycle", "element_type_id": "verification_result", "states": ["draft", "accepted"], "transitions": {"draft": ["accepted"], "accepted": []}},
+    {"id": "do-evidence-lifecycle", "element_type_id": "evidence", "states": ["draft", "accepted"], "transitions": {"draft": ["accepted"], "accepted": []}}
+  ],
+  "artifacts": [],
+  "traceability": [
+    {"id": "do-hlr-has-system-source", "source_type_id": "high_level_requirement", "relation_type": "derives_from", "target_type_id": "system_requirement", "required": true},
+    {"id": "do-hlr-has-software-allocation", "source_type_id": "high_level_requirement", "relation_type": "allocated_to", "target_type_id": "software_item", "required": true},
+    {"id": "do-llr-has-hlr-parent", "source_type_id": "low_level_requirement", "relation_type": "refines", "target_type_id": "high_level_requirement", "required": true},
+    {"id": "do-llr-has-architecture-allocation", "source_type_id": "low_level_requirement", "relation_type": "allocated_to", "target_type_id": "software_architecture", "required": true},
+    {"id": "do-architecture-has-source", "source_type_id": "software_architecture", "relation_type": "implements", "target_type_id": "source_code", "required": true},
+    {"id": "do-source-has-executable", "source_type_id": "source_code", "relation_type": "implements", "target_type_id": "executable", "required": true},
+    {"id": "do-hlr-has-verification", "source_type_id": "high_level_requirement", "relation_type": "verified_by", "target_type_id": "verification_case", "required": true},
+    {"id": "do-llr-has-verification", "source_type_id": "low_level_requirement", "relation_type": "verified_by", "target_type_id": "verification_case", "required": true},
+    {"id": "do-case-has-result", "source_type_id": "verification_case", "relation_type": "verified_by", "target_type_id": "verification_result", "required": true},
+    {"id": "do-result-has-evidence", "source_type_id": "verification_result", "relation_type": "verified_by", "target_type_id": "evidence", "required": true}
+  ],
+  "verification": [
+    {"id": "do-hlr-verification", "element_type_id": "high_level_requirement", "required_relation_type": "verified_by", "verification_type_id": "verification_case"},
+    {"id": "do-llr-verification", "element_type_id": "low_level_requirement", "required_relation_type": "verified_by", "verification_type_id": "verification_case"}
+  ],
+  "metadata": {
+    "standard": "RTCA DO-178C",
+    "profile_role": "complete_mvp2_acceptance_chain",
+    "normative_text_included": false
+  }
+}
