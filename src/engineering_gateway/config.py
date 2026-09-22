@@ -61,12 +61,22 @@ class IdentityConfig(BaseModel):
     actor_type_claim: str = "actor_type"
     authorization_level_claim: str = "authorization_level"
     principal_claims_state_key: str = "trusted_principal_claims"
+    trusted_proxy_headers_enabled: bool = False
+    trusted_proxy_shared_secret: SecretStr | None = Field(default=None, min_length=32)
+    trusted_proxy_secret_header: str = "x-gateway-proxy-secret"
+    trusted_proxy_actor_id_header: str = "x-gateway-actor-id"
+    trusted_proxy_actor_type_header: str = "x-gateway-actor-type"
+    trusted_proxy_authorization_level_header: str = "x-gateway-authorization-level"
 
     @field_validator(
         "actor_id_claim",
         "actor_type_claim",
         "authorization_level_claim",
         "principal_claims_state_key",
+        "trusted_proxy_secret_header",
+        "trusted_proxy_actor_id_header",
+        "trusted_proxy_actor_type_header",
+        "trusted_proxy_authorization_level_header",
     )
     @classmethod
     def validate_claim_names(cls, value: str) -> str:
@@ -80,6 +90,12 @@ class IdentityConfig(BaseModel):
         if self.enabled and (not self.issuer_url or not self.audience or not self.readiness_url):
             raise ValueError(
                 "identity.issuer_url, identity.audience and identity.readiness_url are required when identity is enabled"
+            )
+        if self.trusted_proxy_headers_enabled and not self.enabled:
+            raise ValueError("identity must be enabled when trusted proxy headers are enabled")
+        if self.trusted_proxy_headers_enabled and self.trusted_proxy_shared_secret is None:
+            raise ValueError(
+                "identity.trusted_proxy_shared_secret is required when trusted proxy headers are enabled"
             )
         return self
 
@@ -132,11 +148,19 @@ class StrictDocConfig(BaseModel):
     executable: str = "strictdoc"
     project_path: str | None = None
     timeout_seconds: float = Field(default=60.0, gt=0)
+    workspace_mutations_enabled: bool = False
+    workspace_bridge_executable: str | None = None
 
     @model_validator(mode="after")
     def validate_enabled(self) -> StrictDocConfig:
         if self.enabled and not self.project_path:
             raise ValueError("strictdoc.project_path is required when StrictDoc is enabled")
+        if self.workspace_mutations_enabled and not self.enabled:
+            raise ValueError("StrictDoc must be enabled when workspace mutations are enabled")
+        if self.workspace_mutations_enabled and not self.workspace_bridge_executable:
+            raise ValueError(
+                "strictdoc.workspace_bridge_executable is required when workspace mutations are enabled"
+            )
         return self
 
 

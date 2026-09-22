@@ -50,7 +50,12 @@ The upstream authentication layer MUST:
 
 The Gateway assumes these conditions. The claims mapping is therefore not an authorization credential by itself; it is trusted only because of its position behind the deployment authentication boundary.
 
-The Gateway MUST NOT treat raw HTTP headers, query parameters, MCP arguments, model output, or unverified bearer-token data as a trusted principal.
+The Gateway MUST NOT treat raw public HTTP headers, query parameters, MCP
+arguments, model output, or unverified bearer-token data as a trusted principal.
+A deployment may use `TrustedProxyPrincipalMiddleware` as the adapter between a
+network-isolated, authenticated reverse-proxy hop and ASGI request state. That
+mode is valid only when the public proxy overwrites every trusted header, adds a
+shared hop secret, and the Gateway listener is not directly reachable by clients.
 
 ## Claims contract
 
@@ -69,6 +74,12 @@ IDENTITY__ACTOR_ID_CLAIM
 IDENTITY__ACTOR_TYPE_CLAIM
 IDENTITY__AUTHORIZATION_LEVEL_CLAIM
 IDENTITY__PRINCIPAL_CLAIMS_STATE_KEY
+IDENTITY__TRUSTED_PROXY_HEADERS_ENABLED
+IDENTITY__TRUSTED_PROXY_SHARED_SECRET
+IDENTITY__TRUSTED_PROXY_SECRET_HEADER
+IDENTITY__TRUSTED_PROXY_ACTOR_ID_HEADER
+IDENTITY__TRUSTED_PROXY_ACTOR_TYPE_HEADER
+IDENTITY__TRUSTED_PROXY_AUTHORIZATION_LEVEL_HEADER
 ```
 
 All three Actor claims are mandatory for the mapper. Values must be strings; blank strings are rejected. Unknown `ActorType` or `AuthorizationLevel` values are rejected rather than coerced or downgraded.
@@ -154,7 +165,10 @@ IDENTITY__PRINCIPAL_CLAIMS_STATE_KEY
 
 When identity is enabled, `IDENTITY__ISSUER_URL`, `IDENTITY__AUDIENCE` and `IDENTITY__READINESS_URL` are required configuration values. The issuer and audience describe the expected deployment identity provider; the current Gateway does not itself perform the corresponding token verification. The readiness URL is an internal deployment health signal and does not authenticate requests.
 
-Claim names and the trusted-claims state key must be non-blank.
+Claim names and the trusted-claims state key must be non-blank. Trusted proxy
+mode also requires identity mode and a secret of at least 32 characters.
+Duplicate, missing or invalid trusted proxy headers fail closed and are removed
+before the request reaches the MCP application.
 
 ## Readiness and rollout
 
@@ -178,6 +192,9 @@ A static development Actor is retained only for the explicitly configured non-id
 Production deployments MUST:
 
 - place the trusted-principal middleware after verified authentication;
+- keep the Gateway listener private when trusted proxy headers are enabled;
+- overwrite trusted identity headers at the proxy and authenticate the internal
+  hop with an independently generated secret;
 - prevent clients from directly writing the trusted claims state;
 - use TLS and deployment-appropriate transport protection;
 - restrict MCP hosts/origins to the intended deployment;

@@ -17,6 +17,7 @@ venv/
 # Local infrastructure
 postgres-data/
 object-storage-data/
+deploy/yandex-vm/data/
 
 # Coverage
 .coverage

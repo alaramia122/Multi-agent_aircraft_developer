@@ -1,0 +1,198 @@
+name: engineering-staging
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: platform
+      POSTGRES_PASSWORD: ${PLATFORM_POSTGRES_PASSWORD:?set PLATFORM_POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init-databases.sql:/docker-entrypoint-initdb.d/01-databases.sql:ro
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U platform -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    image: postgres:16
+    restart: "no"
+    environment:
+      PGPASSWORD: ${PLATFORM_POSTGRES_PASSWORD:?set PLATFORM_POSTGRES_PASSWORD}
+    volumes:
+      - ../../migrations:/migrations:ro
+    networks: [backend]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        for migration in /migrations/versions/*.sql; do
+          psql --set ON_ERROR_STOP=1 --host=postgres --username=platform \
+            --dbname=engineering_gateway --file="$${migration}"
+        done
+        for migration in /migrations/*.sql; do
+          psql --set ON_ERROR_STOP=1 --host=postgres --username=platform \
+            --dbname=engineering_gateway --file="$${migration}"
+        done
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:${KEYCLOAK_VERSION:-26.0}
+    restart: unless-stopped
+    command: start --import-realm --health-enabled=true --proxy-headers=xforwarded
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:?set KEYCLOAK_ADMIN}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD}
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: platform
+      KC_DB_PASSWORD: ${PLATFORM_POSTGRES_PASSWORD}
+      KC_HOSTNAME: https://${IDP_DOMAIN:?set IDP_DOMAIN}
+      KC_HTTP_ENABLED: "true"
+    volumes:
+      - ./keycloak/engineering-staging-realm.json:/opt/keycloak/data/import/engineering-staging-realm.json:ro
+    networks: [edge, backend]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:${OAUTH2_PROXY_VERSION:-v7.7.1}
+    restart: unless-stopped
+    environment:
+      OAUTH2_PROXY_HTTP_ADDRESS: 0.0.0.0:4180
+      OAUTH2_PROXY_PROVIDER: oidc
+      OAUTH2_PROXY_OIDC_ISSUER_URL: https://${IDP_DOMAIN}/realms/engineering-staging
+      OAUTH2_PROXY_CLIENT_ID: ${OAUTH2_PROXY_CLIENT_ID:?set OAUTH2_PROXY_CLIENT_ID}
+      OAUTH2_PROXY_CLIENT_SECRET: ${OAUTH2_PROXY_CLIENT_SECRET:?set OAUTH2_PROXY_CLIENT_SECRET}
+      OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_PROXY_COOKIE_SECRET:?set OAUTH2_PROXY_COOKIE_SECRET}
+      OAUTH2_PROXY_COOKIE_SECURE: "true"
+      OAUTH2_PROXY_EMAIL_DOMAINS: "*"
+      OAUTH2_PROXY_REDIRECT_URL: https://${GATEWAY_DOMAIN}/oauth2/callback
+      OAUTH2_PROXY_REVERSE_PROXY: "true"
+      OAUTH2_PROXY_SET_XAUTHREQUEST: "true"
+      OAUTH2_PROXY_PASS_ACCESS_TOKEN: "true"
+      OAUTH2_PROXY_SKIP_PROVIDER_BUTTON: "true"
+      OAUTH2_PROXY_SKIP_JWT_BEARER_TOKENS: "true"
+      OAUTH2_PROXY_UPSTREAMS: static://202
+    networks: [edge]
+    depends_on: [keycloak]
+
+  gateway:
+    build:
+      context: ../..
+      dockerfile: deploy/yandex-vm/gateway.Dockerfile
+      args:
+        STRICTDOC_PACKAGE: ${STRICTDOC_PACKAGE:-strictdoc}
+    restart: unless-stopped
+    environment:
+      GATEWAY__HOST: 0.0.0.0
+      GATEWAY__PORT: 8000
+      GATEWAY__ENVIRONMENT: staging
+      DATABASE__URL: postgresql+psycopg://platform:${PLATFORM_POSTGRES_PASSWORD}@postgres:5432/engineering_gateway
+      MCP__PATH: /mcp
+      MCP__ALLOWED_HOSTS: '["${GATEWAY_DOMAIN}","${GATEWAY_DOMAIN}:443"]'
+      MCP__ALLOWED_ORIGINS: '[]'
+      IDENTITY__ENABLED: "true"
+      IDENTITY__ISSUER_URL: https://${IDP_DOMAIN}/realms/engineering-staging
+      IDENTITY__AUDIENCE: ${OAUTH2_PROXY_CLIENT_ID}
+      IDENTITY__READINESS_URL: http://oauth2-proxy:4180/ping
+      IDENTITY__TRUSTED_PROXY_HEADERS_ENABLED: "true"
+      IDENTITY__TRUSTED_PROXY_SHARED_SECRET: ${TRUSTED_PROXY_SHARED_SECRET:?set TRUSTED_PROXY_SHARED_SECRET}
+      GIT__ENABLED: "true"
+      GIT__REPOSITORY_ROOT: /srv/source
+      STRICTDOC__ENABLED: ${STRICTDOC_ENABLED:-false}
+      STRICTDOC__EXECUTABLE: strictdoc
+      STRICTDOC__PROJECT_PATH: /srv/strictdoc/project
+      STRICTDOC__WORKSPACE_MUTATIONS_ENABLED: ${STRICTDOC_WORKSPACE_MUTATIONS_ENABLED:-false}
+      STRICTDOC__WORKSPACE_BRIDGE_EXECUTABLE: /srv/strictdoc-bridge/strictdoc-bridge
+      CAPELLA__ENABLED: ${CAPELLA_ENABLED:-false}
+      CAPELLA__EXECUTABLE: /srv/capella-bridge/capella-bridge
+      CAPELLA__PROJECT_PATH: /srv/capella/project.aird
+      OPENPROJECT__ENABLED: ${OPENPROJECT_ENABLED:-false}
+      OPENPROJECT__BASE_URL: http://openproject
+      OPENPROJECT__API_TOKEN: ${OPENPROJECT_API_TOKEN:-not-configured}
+      OPENPROJECT__PROJECT_ID: ${OPENPROJECT_PROJECT_ID:-1}
+      OPENPROJECT__CHANGE_REQUEST_TYPE_ID: ${OPENPROJECT_CHANGE_REQUEST_TYPE_ID:-1}
+      OBJECT_STORAGE__ENABLED: "false"
+    volumes:
+      - ../..:/srv/source:ro
+      - ${STRICTDOC_PROJECT_DIR:-./data/strictdoc}:/srv/strictdoc/project:ro
+      - ${STRICTDOC_BRIDGE_DIR:-./data/strictdoc-bridge}:/srv/strictdoc-bridge:ro
+      - ${CAPELLA_PROJECT_DIR:-./data/capella}:/srv/capella:rw
+      - ${CAPELLA_BRIDGE_DIR:-./data/capella-bridge}:/srv/capella-bridge:ro
+    networks: [edge, backend]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      oauth2-proxy:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  memcached:
+    image: memcached:1.6-alpine
+    restart: unless-stopped
+    command: memcached -m 128
+    networks: [backend]
+
+  openproject:
+    image: openproject/openproject:${OPENPROJECT_VERSION:-16-slim}
+    restart: unless-stopped
+    environment:
+      OPENPROJECT_HOST__NAME: ${OPENPROJECT_DOMAIN:?set OPENPROJECT_DOMAIN}
+      OPENPROJECT_HTTPS: "true"
+      OPENPROJECT_HSTS: "true"
+      OPENPROJECT_SECRET_KEY_BASE: ${OPENPROJECT_SECRET_KEY_BASE:?set OPENPROJECT_SECRET_KEY_BASE}
+      OPENPROJECT_CACHE__MEMCACHE__SERVER: memcached:11211
+      DATABASE_URL: postgres://platform:${PLATFORM_POSTGRES_PASSWORD}@postgres:5432/openproject
+      RAILS_MIN_THREADS: 4
+      RAILS_MAX_THREADS: 16
+    volumes:
+      - openproject-assets:/var/openproject/assets
+    networks: [edge, backend]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      memcached:
+        condition: service_started
+
+  caddy:
+    image: caddy:${CADDY_VERSION:-2.10-alpine}
+    restart: unless-stopped
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}
+      IDP_DOMAIN: ${IDP_DOMAIN}
+      OPENPROJECT_DOMAIN: ${OPENPROJECT_DOMAIN}
+      GATEWAY_DOMAIN: ${GATEWAY_DOMAIN:?set GATEWAY_DOMAIN}
+      TRUSTED_PROXY_SHARED_SECRET: ${TRUSTED_PROXY_SHARED_SECRET}
+      GATEWAY_MCP_ACTOR_TYPE: ${GATEWAY_MCP_ACTOR_TYPE:-ai}
+      GATEWAY_MCP_AUTHORIZATION_LEVEL: ${GATEWAY_MCP_AUTHORIZATION_LEVEL:-L2_MODIFY_WORKSPACE}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    networks: [edge]
+
+networks:
+  edge:
+  backend:
+    internal: true
+
+volumes:
+  postgres-data:
+  openproject-assets:
+  caddy-data:
+  caddy-config:

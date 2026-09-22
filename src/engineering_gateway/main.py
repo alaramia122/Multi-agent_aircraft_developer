@@ -12,6 +12,10 @@ from engineering_gateway import __version__
 from engineering_gateway.api.actor_provider import ActorProvider, RequestActorProvider, StaticActorProvider
 from engineering_gateway.api.mcp_http import create_mcp_http_app
 from engineering_gateway.api.principal_mapper import ClaimMapping, TrustedClaimsActorMapper
+from engineering_gateway.api.trusted_proxy_middleware import (
+    TrustedProxyHeaderConfig,
+    TrustedProxyPrincipalMiddleware,
+)
 from engineering_gateway.application.gateway_service import Actor
 from engineering_gateway.config import settings
 from engineering_gateway.infrastructure.adapter_composition import (
@@ -27,22 +31,38 @@ from engineering_gateway.infrastructure.openproject_adapter import (
     OpenProjectConfig,
 )
 from engineering_gateway.infrastructure.strictdoc_adapter import LocalStrictDocAdapter
+from engineering_gateway.infrastructure.strictdoc_workspace_adapter import (
+    LocalStrictDocWorkspaceAdapter,
+    StrictDocBridgeConfig,
+)
 from engineering_gateway.readiness import check_readiness
 
 
 def _build_adapter_config() -> LocalAdapterConfig:
     """Construct enabled external adapters from validated deployment settings."""
 
-    return LocalAdapterConfig(
-        strictdoc=(
-            LocalStrictDocAdapter(
+    strictdoc_adapter: LocalStrictDocAdapter | LocalStrictDocWorkspaceAdapter | None = None
+    if settings.strictdoc.enabled and settings.strictdoc.project_path:
+        if (
+            settings.strictdoc.workspace_mutations_enabled
+            and settings.strictdoc.workspace_bridge_executable
+        ):
+            strictdoc_adapter = LocalStrictDocWorkspaceAdapter(
+                StrictDocBridgeConfig(
+                    executable=settings.strictdoc.workspace_bridge_executable,
+                    project_path=settings.strictdoc.project_path,
+                    timeout_seconds=settings.strictdoc.timeout_seconds,
+                )
+            )
+        else:
+            strictdoc_adapter = LocalStrictDocAdapter(
                 settings.strictdoc.project_path,
                 timeout_seconds=settings.strictdoc.timeout_seconds,
                 executable=settings.strictdoc.executable,
             )
-            if settings.strictdoc.enabled and settings.strictdoc.project_path
-            else None
-        ),
+
+    return LocalAdapterConfig(
+        strictdoc=strictdoc_adapter,
         capella=(
             LocalCapellaAdapter(
                 CapellaBridgeConfig(
@@ -117,6 +137,26 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         principal_mapper=principal_mapper,
         principal_claims_state_key=settings.identity.principal_claims_state_key,
     )
+    if (
+        settings.identity.trusted_proxy_headers_enabled
+        and settings.identity.trusted_proxy_shared_secret is not None
+    ):
+        mcp_app = TrustedProxyPrincipalMiddleware(
+            mcp_app,
+            TrustedProxyHeaderConfig(
+                shared_secret=settings.identity.trusted_proxy_shared_secret.get_secret_value(),
+                claims_state_key=settings.identity.principal_claims_state_key,
+                secret_header=settings.identity.trusted_proxy_secret_header,
+                actor_id_header=settings.identity.trusted_proxy_actor_id_header,
+                actor_type_header=settings.identity.trusted_proxy_actor_type_header,
+                authorization_level_header=(
+                    settings.identity.trusted_proxy_authorization_level_header
+                ),
+                actor_id_claim=settings.identity.actor_id_claim,
+                actor_type_claim=settings.identity.actor_type_claim,
+                authorization_level_claim=settings.identity.authorization_level_claim,
+            ),
+        )
     mcp_route = Mount("/", app=mcp_app)
     application.router.routes.append(mcp_route)
     application.state.database = database

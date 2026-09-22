@@ -1,0 +1,11 @@
+{
+  "realm": "engineering-staging",
+  "enabled": true,
+  "displayName": "Engineering staging",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": true,
+  "rememberMe": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "bruteForceProtected": true
+}

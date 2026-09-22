@@ -1,0 +1,48 @@
+{
+  email {$ACME_EMAIL}
+}
+
+{$IDP_DOMAIN} {
+  encode zstd gzip
+  reverse_proxy keycloak:8080
+}
+
+{$OPENPROJECT_DOMAIN} {
+  encode zstd gzip
+  reverse_proxy openproject:80
+}
+
+{$GATEWAY_DOMAIN} {
+  encode zstd gzip
+
+  handle /oauth2/* {
+    reverse_proxy oauth2-proxy:4180
+  }
+
+  handle /health/live {
+    reverse_proxy gateway:8000
+  }
+
+  handle /mcp* {
+    request_header -X-Auth-Request-User
+    request_header -X-Auth-Request-Email
+    request_header -X-Gateway-Proxy-Secret
+    request_header -X-Gateway-Actor-Id
+    request_header -X-Gateway-Actor-Type
+    request_header -X-Gateway-Authorization-Level
+
+    forward_auth oauth2-proxy:4180 {
+      uri /oauth2/auth
+      copy_headers X-Auth-Request-User X-Auth-Request-Email
+    }
+
+    reverse_proxy gateway:8000 {
+      header_up X-Gateway-Proxy-Secret {$TRUSTED_PROXY_SHARED_SECRET}
+      header_up X-Gateway-Actor-Id {http.request.header.X-Auth-Request-User}
+      header_up X-Gateway-Actor-Type {$GATEWAY_MCP_ACTOR_TYPE}
+      header_up X-Gateway-Authorization-Level {$GATEWAY_MCP_AUTHORIZATION_LEVEL}
+    }
+  }
+
+  respond 404
+}

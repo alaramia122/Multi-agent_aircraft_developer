@@ -12,7 +12,11 @@ from starlette.testclient import TestClient
 import engineering_gateway.main as main_module
 from engineering_gateway.api.actor_provider import RequestActorProvider
 from engineering_gateway.api.request_actor_middleware import TrustedPrincipalMiddleware
+from engineering_gateway.api.trusted_proxy_middleware import TrustedProxyPrincipalMiddleware
 from engineering_gateway.config import Settings
+from engineering_gateway.infrastructure.strictdoc_workspace_adapter import (
+    LocalStrictDocWorkspaceAdapter,
+)
 
 
 class _Database:
@@ -22,6 +26,24 @@ class _Database:
 
     async def dispose(self) -> None:
         self.dispose_calls += 1
+
+
+def test_adapter_config_uses_strictdoc_workspace_bridge_when_enabled(
+    monkeypatch, tmp_path
+) -> None:
+    configuration = Settings(
+        strictdoc={
+            "enabled": True,
+            "project_path": str(tmp_path),
+            "workspace_mutations_enabled": True,
+            "workspace_bridge_executable": "/opt/strictdoc-bridge",
+        }
+    )
+    monkeypatch.setattr(main_module, "settings", configuration)
+
+    adapters = main_module._build_adapter_config()
+
+    assert isinstance(adapters.strictdoc, LocalStrictDocWorkspaceAdapter)
 
 
 def _mcp_app() -> FastAPI:
@@ -137,6 +159,29 @@ def test_identity_enabled_lifespan_preserves_wrapped_mcp_lifecycle(monkeypatch) 
     assert lifecycle_calls == ["startup", "shutdown"]
     assert database.dispose_calls == 1
     assert not any(getattr(route, "path", None) == "" for route in application.router.routes)
+
+
+def test_lifespan_installs_trusted_proxy_adapter_when_configured(monkeypatch) -> None:
+    database = _Database("test://database")
+    configuration = Settings(
+        identity={
+            "enabled": True,
+            "issuer_url": "https://identity.example.test/",
+            "audience": "engineering-gateway",
+            "readiness_url": "http://oauth2-proxy:4180/ping",
+            "trusted_proxy_headers_enabled": True,
+            "trusted_proxy_shared_secret": "deployment-secret-with-32-characters",
+        }
+    )
+    monkeypatch.setattr(main_module, "settings", configuration)
+    monkeypatch.setattr(main_module, "Database", lambda url: database)
+    monkeypatch.setattr(main_module, "create_mcp_http_app", lambda *args, **kwargs: _mcp_app())
+
+    application = FastAPI(lifespan=main_module.lifespan)
+    with TestClient(application):
+        assert isinstance(application.state.mcp_route.app, TrustedProxyPrincipalMiddleware)
+
+    assert database.dispose_calls == 1
 
 
 def test_lifespan_cleans_up_when_mcp_startup_fails(monkeypatch) -> None:
