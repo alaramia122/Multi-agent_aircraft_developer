@@ -85,18 +85,67 @@ async def test_readiness_fails_when_enabled_strictdoc_is_unavailable() -> None:
 
 
 @pytest.mark.asyncio
-async def test_readiness_fails_when_identity_is_enabled() -> None:
+async def test_readiness_is_ready_when_identity_upstream_is_healthy(monkeypatch: pytest.MonkeyPatch) -> None:
     configuration = Settings(
         git={"repository_root": str(Path.cwd())},
         identity={
             "enabled": True,
             "issuer_url": "https://identity.example.invalid",
             "audience": "engineering-gateway",
+            "readiness_url": "https://identity.example.invalid/health/ready",
         },
     )
+
+    class _Response:
+        status_code = 200
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def get(self, url):
+            assert url == "https://identity.example.invalid/health/ready"
+            return _Response()
+
+    monkeypatch.setattr(readiness_module.httpx, "AsyncClient", lambda **kwargs: _Client())
     report = await check_readiness(_Database(), configuration)
 
-    assert report.ready is False
     identity = next(check for check in report.checks if check.name == "identity")
+    assert report.ready is True
+    assert identity.status == "ready"
+
+
+@pytest.mark.asyncio
+async def test_readiness_fails_when_identity_upstream_is_unhealthy(monkeypatch: pytest.MonkeyPatch) -> None:
+    configuration = Settings(
+        git={"repository_root": str(Path.cwd())},
+        identity={
+            "enabled": True,
+            "issuer_url": "https://identity.example.invalid",
+            "audience": "engineering-gateway",
+            "readiness_url": "https://identity.example.invalid/health/ready",
+        },
+    )
+
+    class _Response:
+        status_code = 503
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def get(self, url):
+            return _Response()
+
+    monkeypatch.setattr(readiness_module.httpx, "AsyncClient", lambda **kwargs: _Client())
+    report = await check_readiness(_Database(), configuration)
+
+    identity = next(check for check in report.checks if check.name == "identity")
+    assert report.ready is False
     assert identity.status == "not_ready"
-    assert "upstream authentication layer" in identity.detail

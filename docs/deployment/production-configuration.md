@@ -40,6 +40,7 @@ The configuration layer fails fast for invalid deployment input:
 - ports are within the TCP port range;
 - timeouts are positive;
 - required enabled integrations have their mandatory fields;
+- enabled identity requires issuer, audience and an upstream readiness endpoint;
 - MCP path is absolute and static Actor ID is non-blank;
 - database URL is non-blank;
 - OpenProject and Object Storage credentials use `SecretStr`;
@@ -52,6 +53,10 @@ The integration adapters retain their own protocol-specific validation. Configur
 Secrets are typed as `SecretStr` where the configuration owns credentials. Pydantic serialization masks these values. Secrets must still be supplied through the deployment secret mechanism rather than Git, source code, or command-line arguments where the platform can expose them.
 
 The configuration model does not log or print secret values.
+
+## Identity readiness boundary
+
+When identity is enabled, `IDENTITY__READINESS_URL` points to an internal health endpoint owned by the upstream authentication deployment. The Gateway marks the identity dependency ready only for a 2xx response. This is a deployment health signal, not token verification; authentication and claims verification remain outside the Gateway.
 
 ## Static Actor boundary
 

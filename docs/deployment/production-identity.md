@@ -35,7 +35,7 @@ Gateway authorization
 
 `TrustedPrincipalMiddleware` is a trust-boundary adapter, not an authentication mechanism. It is safe to consume the claims state only when the deployment guarantees that the middleware runs after the verified authentication boundary and that the configured state key cannot be populated by untrusted request data.
 
-The default state key is `trusted_principal_claims`; deployments may configure another key through `IDENTITY__PRINCIPAL_CLAIMS_STATE_KEY`.
+The default state key is `trusted_principal_claims`; deployments may configure another key through `IDENTITY__PRINCIPAL_CLAIMS_STATE_KEY`. The deployment also supplies `IDENTITY__READINESS_URL`, an internal health endpoint for the upstream authentication boundary.
 
 ## Upstream authentication contract
 
@@ -145,6 +145,7 @@ The identity configuration is supplied through typed environment variables:
 IDENTITY__ENABLED
 IDENTITY__ISSUER_URL
 IDENTITY__AUDIENCE
+IDENTITY__READINESS_URL
 IDENTITY__ACTOR_ID_CLAIM
 IDENTITY__ACTOR_TYPE_CLAIM
 IDENTITY__AUTHORIZATION_LEVEL_CLAIM
@@ -157,7 +158,7 @@ Claim names and the trusted-claims state key must be non-blank.
 
 ## Readiness and rollout
 
-Identity readiness MUST remain `NOT READY` until a real upstream authentication layer and trusted principal-to-Actor mapping are deployed.
+Identity readiness MUST remain `NOT READY` until a real upstream authentication layer and trusted principal-to-Actor mapping are deployed. When identity is enabled, the Gateway checks the configured `IDENTITY__READINESS_URL`; only a 2xx response marks the identity check ready.
 
 The production rollout order is:
 
