@@ -49,6 +49,7 @@ def test_default_configuration_is_safe_for_development() -> None:
 def test_identity_claim_mapping_is_configurable() -> None:
     configured = Settings(
         identity={
+            "readiness_url": "https://identity.example.test/health/ready",
             "actor_id_claim": "uid",
             "actor_type_claim": "kind",
             "authorization_level_claim": "access_level",
@@ -127,3 +128,4 @@ def test_nested_environment_variables_are_supported(monkeypatch: pytest.MonkeyPa
     assert configured.database.pool_size == 8
     assert configured.identity.actor_id_claim == "uid"
     assert configured.identity.principal_claims_state_key == "verified_claims"
+    assert configured.identity.readiness_url == "https://identity.example.test/health/ready"
