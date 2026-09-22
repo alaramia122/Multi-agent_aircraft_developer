@@ -17,13 +17,17 @@ apply_migration() {
     migration_path="$1"
     migration_name="$(basename "$migration_path")"
 
+    if ! printf '%s\n' "$migration_name" | grep -Eq '^[0-9]{4}_[A-Za-z0-9_]+\.sql$'; then
+        echo "Invalid migration filename: $migration_name" >&2
+        exit 1
+    fi
+
     applied="$(
         psql \
             --tuples-only \
             --no-align \
             --set ON_ERROR_STOP=1 \
-            --set migration_name="$migration_name" \
-            --command "SELECT 1 FROM gateway_schema_migrations WHERE migration_name = :'migration_name';"
+            --command "SELECT 1 FROM gateway_schema_migrations WHERE migration_name = '$migration_name';"
     )"
 
     if [ "$applied" = "1" ]; then
