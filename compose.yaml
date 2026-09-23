@@ -62,11 +62,15 @@ services:
       OPENPROJECT_API_TOKEN: ${OPENPROJECT_API_TOKEN:?Set OPENPROJECT_API_TOKEN in .env}
       OPENPROJECT_PROJECT_ID: ${OPENPROJECT_PROJECT_ID:?Set OPENPROJECT_PROJECT_ID in .env}
       OPENPROJECT_CHANGE_REQUEST_TYPE_ID: ${OPENPROJECT_CHANGE_REQUEST_TYPE_ID:?Set OPENPROJECT_CHANGE_REQUEST_TYPE_ID in .env}
+      STRICTDOC_PROJECT_PATH: /engineering/strictdoc
+      STRICTDOC_TIMEOUT_SECONDS: ${STRICTDOC_TIMEOUT_SECONDS:-60}
+    volumes:
+      - strictdoc-projects:/engineering/strictdoc:ro
     ports:
       - "127.0.0.1:${GATEWAY_PORT:-8000}:8000"
     read_only: true
     tmpfs:
-      - /tmp:size=64m,mode=1777
+      - /tmp:size=256m,mode=1777
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -84,9 +88,13 @@ services:
     networks:
       - gateway-internal
       - openproject-frontend
+      - platform-frontend
 
 volumes:
   gateway-postgres-data:
+  strictdoc-projects:
+    external: true
+    name: engineering-platform_strictdoc-projects
 
 networks:
   gateway-internal:
@@ -94,3 +102,7 @@ networks:
   openproject-frontend:
     external: true
     name: ${OPENPROJECT_NETWORK:-openproject_frontend}
+  platform-frontend:
+    external: true
+    name: engineering-platform-frontend
+

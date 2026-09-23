@@ -24,30 +24,46 @@ from engineering_gateway.infrastructure.openproject_adapter import (
     LocalOpenProjectAdapter,
     OpenProjectConfig,
 )
+from engineering_gateway.infrastructure.strictdoc_adapter import LocalStrictDocAdapter
 
 
 def build_external_adapter_set(runtime_settings: Settings) -> ExternalAdapterSet | None:
     """Construct configured external adapters without exposing their secrets."""
 
-    if not runtime_settings.openproject_enabled:
-        return None
-    if (
-        runtime_settings.openproject_base_url is None
-        or runtime_settings.openproject_api_token is None
-        or runtime_settings.openproject_project_id is None
-        or runtime_settings.openproject_change_request_type_id is None
-    ):
-        raise RuntimeError("validated OpenProject configuration is incomplete")
-    openproject = LocalOpenProjectAdapter(
-        OpenProjectConfig(
-            base_url=runtime_settings.openproject_base_url,
-            api_token=runtime_settings.openproject_api_token.get_secret_value(),
-            project_id=runtime_settings.openproject_project_id,
-            change_request_type_id=runtime_settings.openproject_change_request_type_id,
-            timeout_seconds=runtime_settings.openproject_timeout_seconds,
+    openproject: LocalOpenProjectAdapter | None = None
+    strictdoc: LocalStrictDocAdapter | None = None
+
+    if runtime_settings.openproject_enabled:
+        if (
+            runtime_settings.openproject_base_url is None
+            or runtime_settings.openproject_api_token is None
+            or runtime_settings.openproject_project_id is None
+            or runtime_settings.openproject_change_request_type_id is None
+        ):
+            raise RuntimeError("validated OpenProject configuration is incomplete")
+        openproject = LocalOpenProjectAdapter(
+            OpenProjectConfig(
+                base_url=runtime_settings.openproject_base_url,
+                api_token=runtime_settings.openproject_api_token.get_secret_value(),
+                project_id=runtime_settings.openproject_project_id,
+                change_request_type_id=runtime_settings.openproject_change_request_type_id,
+                timeout_seconds=runtime_settings.openproject_timeout_seconds,
+            )
         )
+
+    if runtime_settings.strictdoc_enabled:
+        if runtime_settings.strictdoc_project_path is None:
+            raise RuntimeError("validated StrictDoc configuration is incomplete")
+        strictdoc = LocalStrictDocAdapter(
+            runtime_settings.strictdoc_project_path,
+            timeout_seconds=runtime_settings.strictdoc_timeout_seconds,
+        )
+
+    if openproject is None and strictdoc is None:
+        return None
+    return compose_external_adapters(
+        LocalAdapterConfig(openproject=openproject, strictdoc=strictdoc)
     )
-    return compose_external_adapters(LocalAdapterConfig(openproject=openproject))
 
 
 @asynccontextmanager
@@ -101,3 +117,4 @@ def health() -> dict[str, str]:
     """Return process-level health information."""
 
     return {"status": "ok", "service": settings.app_name, "version": __version__}
+

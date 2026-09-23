@@ -19,12 +19,18 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://gateway:gateway@localhost:5432/engineering_gateway"
 
     # External integrations are optional for local development, but their
-    # connection settings are an all-or-nothing bundle when enabled.
+    # connection settings are validated as complete bundles when enabled.
     openproject_base_url: str | None = None
     openproject_api_token: SecretStr | None = None
     openproject_project_id: int | None = None
     openproject_change_request_type_id: int | None = None
     openproject_timeout_seconds: float = 30.0
+
+    # StrictDoc remains the authoritative requirements store. The Gateway mounts
+    # the project and invokes StrictDoc's documented CLI export instead of parsing
+    # SDoc itself or copying requirement content into PostgreSQL.
+    strictdoc_project_path: str | None = None
+    strictdoc_timeout_seconds: float = 60.0
 
     # The default is deliberately read-only. A deployment must opt into a
     # higher authorization level explicitly and must provide its own trusted
@@ -55,9 +61,19 @@ class Settings(BaseSettings):
         normalized = value.strip().rstrip("/")
         return normalized or None
 
+    @field_validator("strictdoc_project_path")
+    @classmethod
+    def normalize_strictdoc_project_path(cls, value: str | None) -> str | None:
+        """Normalize an optional mounted StrictDoc project path."""
+
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
     @model_validator(mode="after")
-    def validate_openproject_bundle(self) -> "Settings":
-        """Reject partial or invalid OpenProject runtime configuration."""
+    def validate_external_integrations(self) -> "Settings":
+        """Reject partial or invalid external integration configuration."""
 
         values = (
             self.openproject_base_url,
@@ -84,6 +100,8 @@ class Settings(BaseSettings):
             raise ValueError("openproject_change_request_type_id must be positive")
         if self.openproject_timeout_seconds <= 0:
             raise ValueError("openproject_timeout_seconds must be positive")
+        if self.strictdoc_timeout_seconds <= 0:
+            raise ValueError("strictdoc_timeout_seconds must be positive")
         return self
 
     @property
@@ -91,6 +109,12 @@ class Settings(BaseSettings):
         """Return whether a complete OpenProject integration is configured."""
 
         return self.openproject_base_url is not None
+
+    @property
+    def strictdoc_enabled(self) -> bool:
+        """Return whether the mounted StrictDoc project is configured."""
+
+        return self.strictdoc_project_path is not None
 
     @property
     def parsed_mcp_allowed_hosts(self) -> tuple[str, ...]:
@@ -106,3 +130,4 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+

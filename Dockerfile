@@ -10,7 +10,8 @@ COPY src ./src
 
 RUN python -m venv /opt/venv \
     && /opt/venv/bin/pip install --upgrade pip \
-    && /opt/venv/bin/pip install .
+    && /opt/venv/bin/pip install . \
+    && /opt/venv/bin/pip install strictdoc==0.30.0
 
 
 FROM python:3.12-slim-bookworm AS runtime
