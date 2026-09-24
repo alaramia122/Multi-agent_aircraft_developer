@@ -228,6 +228,19 @@ class ObjectStorageConfig(BaseModel):
         return self
 
 
+class BudgetConfig(BaseModel):
+    """Project spending cap; absent policy does not fabricate approval evidence."""
+
+    enabled: bool = False
+    limit_kopeks: int | None = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def validate_enabled(self) -> BudgetConfig:
+        if self.enabled and self.limit_kopeks is None:
+            raise ValueError("budget.limit_kopeks is required when budget gate is enabled")
+        return self
+
+
 class Settings(BaseSettings):
     """Unified deployment configuration loaded from environment variables.
 
@@ -252,6 +265,7 @@ class Settings(BaseSettings):
     capella: CapellaConfig = Field(default_factory=CapellaConfig)
     openproject: OpenProjectConfig = Field(default_factory=OpenProjectConfig)
     object_storage: ObjectStorageConfig = Field(default_factory=ObjectStorageConfig)
+    budget: BudgetConfig = Field(default_factory=BudgetConfig)
 
     @property
     def app_name(self) -> str:
