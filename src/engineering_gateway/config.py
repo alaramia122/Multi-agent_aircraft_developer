@@ -241,6 +241,12 @@ class BudgetConfig(BaseModel):
         return self
 
 
+class ReviewConfig(BaseModel):
+    """Require independent review evidence before human baseline approval."""
+
+    required: bool = False
+
+
 class Settings(BaseSettings):
     """Unified deployment configuration loaded from environment variables.
 
@@ -266,6 +272,7 @@ class Settings(BaseSettings):
     openproject: OpenProjectConfig = Field(default_factory=OpenProjectConfig)
     object_storage: ObjectStorageConfig = Field(default_factory=ObjectStorageConfig)
     budget: BudgetConfig = Field(default_factory=BudgetConfig)
+    review: ReviewConfig = Field(default_factory=ReviewConfig)
 
     @property
     def app_name(self) -> str:
