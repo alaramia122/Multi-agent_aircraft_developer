@@ -94,3 +94,9 @@ class EngineeringSystemAdapter(Protocol):
 
 class AuditSink(Protocol):
     async def record(self, event: AuditEvent) -> None: ...
+
+
+class IndependentReviewReader(Protocol):
+    """Return the last append-only review event for a workspace."""
+
+    async def latest_review(self, workspace_id: UUID) -> AuditEvent | None: ...
