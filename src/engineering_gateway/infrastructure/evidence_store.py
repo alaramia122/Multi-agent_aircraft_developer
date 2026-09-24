@@ -37,6 +37,7 @@ class EvidenceReference(BaseModel):
 class S3Client(Protocol):
     def put_object(self, **kwargs: Any) -> dict[str, Any]: ...
     def get_object(self, **kwargs: Any) -> dict[str, Any]: ...
+    def head_bucket(self, **kwargs: Any) -> dict[str, Any]: ...
 
 
 class S3EvidenceStore:
@@ -87,6 +88,11 @@ class S3EvidenceStore:
         if len(body) != reference.size_bytes or hashlib.sha256(body).hexdigest() != reference.sha256:
             raise EvidenceIntegrityError("object storage returned altered evidence")
         return body
+
+    def check_access(self) -> None:
+        """Verify that configured credentials can actually access the bucket."""
+
+        self._client.head_bucket(Bucket=self.bucket)
 
 
 def configured_evidence_store(config: ObjectStorageConfig) -> S3EvidenceStore | None:
