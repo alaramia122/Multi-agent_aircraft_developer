@@ -20,6 +20,7 @@ from engineering_gateway.application.workspace_reconciliation import (
 )
 from engineering_gateway.domain.audit import AuditResult
 from engineering_gateway.domain.baselines import Baseline
+from engineering_gateway.domain.budget import BudgetGate, BudgetPlan
 from engineering_gateway.domain.change_control import (
     AuthorizationLevel,
     ChangeGate,
@@ -51,6 +52,7 @@ class GovernedGatewayApplicationService(
         change_request_registry: ChangeRequestRegistryPort | None = None,
         workspace_changes: WorkspaceChangeSetRepository | None = None,
         audit: AuditSink | None = None,
+        budget_gate: BudgetGate | None = None,
         **kwargs: Any,
     ) -> None:
         if workspace_registry is not None:
@@ -62,6 +64,7 @@ class GovernedGatewayApplicationService(
         if audit is not None:
             kwargs.setdefault("audit", audit)
         super().__init__(*args, **kwargs)
+        self._budget_gate = budget_gate
         if workspace_reconciler is None:
             self._workspace_reconciliation = None
         else:
@@ -100,6 +103,7 @@ class GovernedGatewayApplicationService(
         artifact_evidence: set[tuple[UUID, str]] | frozenset[tuple[UUID, str]] = frozenset(),
         lifecycle_states: dict[UUID, str] | None = None,
         lifecycle_transitions: dict[UUID, tuple[str, str]] | None = None,
+        budget_plan: BudgetPlan | None = None,
     ) -> ValidationResult:
         if (
             self._workspaces is None
@@ -131,6 +135,21 @@ class GovernedGatewayApplicationService(
             raise GatewayServiceError(
                 "workspace is already bound to a different validation profile"
             )
+        if self._budget_gate is not None:
+            if budget_plan is None:
+                raise GatewayServiceError("approval preparation requires a project budget plan")
+            try:
+                self._budget_gate.require_within_limit(budget_plan)
+            except ValueError as exc:
+                await self._record(
+                    actor,
+                    action="prepare_for_approval",
+                    target_type="workspace",
+                    target_id=workspace_id,
+                    result=AuditResult.FAILURE,
+                    reason=str(exc),
+                )
+                raise GatewayServiceError(str(exc)) from exc
         profile = await self._get_active_profile(
             profile_id, profile_version, actor=actor, action="prepare_for_approval"
         )
@@ -177,6 +196,9 @@ class GovernedGatewayApplicationService(
                 for element_id, (source, target) in (lifecycle_transitions or {}).items()
             },
         }
+        if self._budget_gate is not None and budget_plan is not None:
+            evidence["budget_plan"] = budget_plan.model_dump(mode="json")
+            evidence["budget_limit_kopeks"] = self._budget_gate.limit_kopeks
         bound = workflow_workspace.bind_profile(
             profile_id, profile_version
         ).bind_validation_evidence(result.graph_hash, evidence)
@@ -253,6 +275,15 @@ class GovernedGatewayApplicationService(
             raise GatewayServiceError(f"workspace '{workspace_id}' was not found")
         if workspace.validation_graph_hash is None:
             raise GatewayServiceError("workspace has no deterministic validation evidence")
+        if self._budget_gate is not None:
+            try:
+                raw_plan = workspace.validation_evidence["budget_plan"]
+                plan = BudgetPlan.model_validate(raw_plan)
+                if workspace.validation_evidence.get("budget_limit_kopeks") != self._budget_gate.limit_kopeks:
+                    raise ValueError("budget limit changed since workspace validation")
+                self._budget_gate.require_within_limit(plan)
+            except (KeyError, ValueError) as exc:
+                raise GatewayServiceError("workspace budget evidence is missing, stale or over limit") from exc
         changes = await self._workspace_changes.get_changes(workspace_id)
         try:
             workspace.require_reconciled(compute_change_set_hash(changes))
