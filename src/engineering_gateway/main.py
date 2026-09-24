@@ -24,6 +24,7 @@ from engineering_gateway.infrastructure.adapter_composition import (
 )
 from engineering_gateway.infrastructure.capella_adapter import CapellaBridgeConfig, LocalCapellaAdapter
 from engineering_gateway.infrastructure.db import Database
+from engineering_gateway.infrastructure.evidence_store import configured_evidence_store
 from engineering_gateway.infrastructure.gateway_context import governed_gateway_context
 from engineering_gateway.infrastructure.git_adapter import LocalGitAdapter
 from engineering_gateway.infrastructure.openproject_adapter import (
@@ -164,6 +165,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     application.state.mcp_route = mcp_route
     application.state.adapter_set = adapter_set
     application.state.git_adapter = git
+    application.state.evidence_store = configured_evidence_store(settings.object_storage)
 
     try:
         router = getattr(mcp_app, "router", None)
