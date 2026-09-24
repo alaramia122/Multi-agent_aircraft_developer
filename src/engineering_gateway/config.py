@@ -57,6 +57,9 @@ class IdentityConfig(BaseModel):
     issuer_url: str | None = None
     audience: str | None = None
     readiness_url: str | None = None
+    bearer_tokens_enabled: bool = False
+    jwks_url: str | None = None
+    allowed_client_ids: tuple[str, ...] = ("engineering-gateway-mcp",)
     actor_id_claim: str = "sub"
     actor_type_claim: str = "actor_type"
     authorization_level_claim: str = "authorization_level"
@@ -93,6 +96,15 @@ class IdentityConfig(BaseModel):
             )
         if self.trusted_proxy_headers_enabled and not self.enabled:
             raise ValueError("identity must be enabled when trusted proxy headers are enabled")
+        if self.bearer_tokens_enabled and not self.enabled:
+            raise ValueError("identity must be enabled when bearer tokens are enabled")
+        if self.bearer_tokens_enabled and (
+            not self.jwks_url or not self.allowed_client_ids
+            or any(not value.strip() for value in self.allowed_client_ids)
+        ):
+            raise ValueError("identity.jwks_url and allowed_client_ids are required for bearer tokens")
+        if self.bearer_tokens_enabled and self.trusted_proxy_headers_enabled:
+            raise ValueError("choose exactly one request authentication mechanism")
         if self.trusted_proxy_headers_enabled and self.trusted_proxy_shared_secret is None:
             raise ValueError(
                 "identity.trusted_proxy_shared_secret is required when trusted proxy headers are enabled"
