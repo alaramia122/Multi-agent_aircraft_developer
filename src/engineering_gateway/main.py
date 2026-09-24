@@ -10,6 +10,7 @@ from starlette.routing import Mount
 
 from engineering_gateway import __version__
 from engineering_gateway.api.actor_provider import ActorProvider, RequestActorProvider, StaticActorProvider
+from engineering_gateway.api.oidc_bearer_middleware import OidcBearerPrincipalMiddleware
 from engineering_gateway.api.mcp_http import create_mcp_http_app
 from engineering_gateway.api.principal_mapper import ClaimMapping, TrustedClaimsActorMapper
 from engineering_gateway.api.trusted_proxy_middleware import (
@@ -146,6 +147,19 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         principal_mapper=principal_mapper,
         principal_claims_state_key=settings.identity.principal_claims_state_key,
     )
+    if settings.identity.bearer_tokens_enabled:
+        assert settings.identity.issuer_url and settings.identity.audience and settings.identity.jwks_url
+        mcp_app = OidcBearerPrincipalMiddleware(
+            mcp_app,
+            issuer=settings.identity.issuer_url,
+            audience=settings.identity.audience,
+            jwks_url=settings.identity.jwks_url,
+            allowed_client_ids=settings.identity.allowed_client_ids,
+            claims_state_key=settings.identity.principal_claims_state_key,
+            actor_id_claim=settings.identity.actor_id_claim,
+            actor_type_claim=settings.identity.actor_type_claim,
+            authorization_level_claim=settings.identity.authorization_level_claim,
+        )
     if (
         settings.identity.trusted_proxy_headers_enabled
         and settings.identity.trusted_proxy_shared_secret is not None
