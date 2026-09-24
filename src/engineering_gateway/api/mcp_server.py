@@ -18,6 +18,7 @@ from engineering_gateway.application.governed_gateway_service import (
 )
 from engineering_gateway.domain.change_control import AuthorizationLevel
 from engineering_gateway.domain.models import EngineeringElement, EngineeringRelation
+from engineering_gateway.domain.budget import BudgetPlan
 
 
 GatewayServiceFactory = Callable[[], AbstractAsyncContextManager[GatewayApplicationService]]
@@ -329,6 +330,7 @@ def create_mcp_server(
         artifact_evidence: list[ArtifactEvidenceInput] | None = None,
         lifecycle_states: list[LifecycleStateInput] | None = None,
         lifecycle_transitions: list[LifecycleTransitionInput] | None = None,
+        budget_plan: BudgetPlan | None = None,
     ) -> dict[str, object]:
         """Run deterministic validation and bind evidence before human approval."""
         actor = actor_provider.get_actor()
@@ -351,6 +353,7 @@ def create_mcp_server(
                 artifact_evidence=artifacts,
                 lifecycle_states=states,
                 lifecycle_transitions=transitions,
+                budget_plan=budget_plan,
             )
         return {
             "profile_id": result.profile_id,
