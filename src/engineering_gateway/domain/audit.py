@@ -57,5 +57,12 @@ class InMemoryAuditSink:
     async def list(self) -> list[AuditEvent]:
         return list(self._events)
 
+    async def latest_review(self, workspace_id: UUID) -> AuditEvent | None:
+        reviews = [
+            event for event in self._events
+            if event.action == "independent_review" and event.target_id == workspace_id
+        ]
+        return reviews[-1] if reviews else None
+
 
 __all__ = ["ActorType", "AuditEvent", "AuditResult", "InMemoryAuditSink"]
