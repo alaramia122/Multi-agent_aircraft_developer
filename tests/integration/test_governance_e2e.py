@@ -139,6 +139,7 @@ async def test_change_request_workspace_validation_reconciliation_and_approval_e
             database,
             git=LocalGitAdapter(),
             budget_gate=BudgetGate(10_000_000),
+            require_independent_review=True,
             adapter_set=ExternalAdapterSet(
                 read_adapters=(adapter,), workspace_adapters=(adapter,)
             ),
@@ -191,6 +192,25 @@ async def test_change_request_workspace_validation_reconciliation_and_approval_e
                 ExternalVersion(system="integration", version="integration-rev-1"),
             )
             assert adapter.operations == ["create_workspace", "apply_element", "get_version"]
+
+            with pytest.raises(GatewayServiceError, match="independent review"):
+                await service.approve_workspace(approver, workspace.id)
+            reviewer = Actor("reviewer-agent", ActorType.AI, AuthorizationLevel.L1_PROPOSE)
+            with pytest.raises(GatewayServiceError, match="independent of the preparer"):
+                await service.record_independent_review(
+                    l2, workspace.id, accepted=True,
+                    reason="self review", evidence_uri="git:review-1",
+                )
+            await service.record_independent_review(
+                reviewer, workspace.id, accepted=False,
+                reason="unresolved verification gap", evidence_uri="git:review-2",
+            )
+            with pytest.raises(GatewayServiceError, match="independent review"):
+                await service.approve_workspace(approver, workspace.id)
+            await service.record_independent_review(
+                reviewer, workspace.id, accepted=True,
+                reason="gap closed; evidence checked", evidence_uri="git:review-3",
+            )
 
             baseline = await service.approve_workspace(approver, workspace.id)
             assert baseline.git_commit == source_commit
