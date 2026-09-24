@@ -275,6 +275,7 @@ async def test_mcp_approval_preparation_forwards_typed_profile_evidence() -> Non
         "artifact_evidence": set(),
         "lifecycle_states": {element_id: "reviewed"},
         "lifecycle_transitions": {},
+        "budget_plan": None,
     }
 
 
