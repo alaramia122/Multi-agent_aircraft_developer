@@ -128,6 +128,7 @@ async def test_l0_mcp_server_exposes_all_tools_but_enforces_l2_at_invocation() -
         "save_workspace_element",
         "add_workspace_relation",
         "prepare_workspace_for_approval",
+        "record_independent_review",
         "reconcile_workspace",
     } == names
 
