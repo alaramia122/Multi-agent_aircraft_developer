@@ -61,11 +61,17 @@ async def _database_check(database: Database) -> ReadinessCheck:
 
 def _git_repository_check(path: str) -> ReadinessCheck:
     candidate = Path(path)
-    if not candidate.exists():
-        return ReadinessCheck("git.repository", "not_ready", f"path does not exist: {candidate}")
-    git_metadata = candidate / ".git"
-    if not git_metadata.exists():
-        return ReadinessCheck("git.repository", "not_ready", f"Git metadata is missing: {git_metadata}")
+    try:
+        if not candidate.exists():
+            return ReadinessCheck("git.repository", "not_ready", f"path does not exist: {candidate}")
+        git_metadata = candidate / ".git"
+        if not git_metadata.exists():
+            return ReadinessCheck("git.repository", "not_ready", f"Git metadata is missing: {git_metadata}")
+        # Path.exists may return False for inaccessible parents on some systems.
+        # A successful stat also verifies traversal by the Gateway process user.
+        git_metadata.stat()
+    except PermissionError:
+        return ReadinessCheck("git.repository", "not_ready", "Git metadata is not accessible")
     return ReadinessCheck("git.repository", "ready", str(candidate))
 
 
