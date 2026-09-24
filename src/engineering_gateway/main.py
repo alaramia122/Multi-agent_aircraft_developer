@@ -18,6 +18,7 @@ from engineering_gateway.api.trusted_proxy_middleware import (
 )
 from engineering_gateway.application.gateway_service import Actor
 from engineering_gateway.config import settings
+from engineering_gateway.domain.budget import BudgetGate
 from engineering_gateway.infrastructure.adapter_composition import (
     LocalAdapterConfig,
     compose_external_adapters,
@@ -105,6 +106,11 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     adapter_config = _build_adapter_config()
     adapter_set = compose_external_adapters(adapter_config)
     git = LocalGitAdapter(settings.git.timeout_seconds) if settings.git.enabled else None
+    budget_gate = (
+        BudgetGate(settings.budget.limit_kopeks)
+        if settings.budget.enabled and settings.budget.limit_kopeks is not None
+        else None
+    )
 
     if settings.identity.enabled:
         actor_provider: ActorProvider = RequestActorProvider()
@@ -130,6 +136,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             database,
             git=git,
             adapter_set=adapter_set,
+            budget_gate=budget_gate,
         ),
         actor_provider,
         allowed_hosts=settings.mcp.allowed_hosts,
