@@ -54,7 +54,12 @@ services:
       MCP__STATIC_ACTOR_ID: ${MCP_ACTOR_ID:-staging-readonly-agent}
       MCP__STATIC_ACTOR_TYPE: ai
       MCP__STATIC_AUTHORIZATION_LEVEL: L0_READ
-      IDENTITY__ENABLED: 'false'
+      IDENTITY__ENABLED: 'true'
+      IDENTITY__BEARER_TOKENS_ENABLED: 'true'
+      IDENTITY__ISSUER_URL: http://identity:8080/realms/engineering
+      IDENTITY__JWKS_URL: http://identity:8080/realms/engineering/protocol/openid-connect/certs
+      IDENTITY__AUDIENCE: engineering-gateway
+      IDENTITY__READINESS_URL: http://identity:8080/realms/engineering/.well-known/openid-configuration
       GIT__ENABLED: 'true'
       GIT__REPOSITORY_ROOT: /engineering/source
       STRICTDOC__ENABLED: 'true'
@@ -66,7 +71,14 @@ services:
       OPENPROJECT__API_TOKEN: ${OPENPROJECT_API_TOKEN:?Set OPENPROJECT_API_TOKEN in .env}
       OPENPROJECT__PROJECT_ID: ${OPENPROJECT_PROJECT_ID:?Set OPENPROJECT_PROJECT_ID in .env}
       OPENPROJECT__CHANGE_REQUEST_TYPE_ID: ${OPENPROJECT_CHANGE_REQUEST_TYPE_ID:?Set OPENPROJECT_CHANGE_REQUEST_TYPE_ID in .env}
-      OBJECT_STORAGE__ENABLED: 'false'
+      OBJECT_STORAGE__ENABLED: 'true'
+      OBJECT_STORAGE__ENDPOINT_URL: http://object-storage:9000
+      OBJECT_STORAGE__BUCKET: engineering-evidence
+      OBJECT_STORAGE__ACCESS_KEY_ID: ${EVIDENCE_ACCESS_KEY_ID:?Provision scoped MinIO user}
+      OBJECT_STORAGE__SECRET_ACCESS_KEY: ${EVIDENCE_SECRET_ACCESS_KEY:?Provision scoped MinIO user}
+      BUDGET__ENABLED: 'true'
+      BUDGET__LIMIT_KOPEKS: '${ENGINEERING_BUDGET_LIMIT_KOPEKS:-10000000}'
+      REVIEW__REQUIRED: 'true'
       CAPELLA__ENABLED: 'false'
     volumes:
       - strictdoc-projects:/engineering/strictdoc:ro
