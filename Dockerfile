@@ -13,6 +13,7 @@ COPY profiles ./profiles
 
 RUN python -m pip install --upgrade pip \
     && python -m pip install . \
+    && python -m pip install strictdoc==0.30.0 \
     && useradd --create-home --uid 10001 gateway \
     && chown -R gateway:gateway /srv/gateway
 
