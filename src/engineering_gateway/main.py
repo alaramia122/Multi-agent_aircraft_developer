@@ -137,6 +137,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             git=git,
             adapter_set=adapter_set,
             budget_gate=budget_gate,
+            require_independent_review=settings.review.required,
         ),
         actor_provider,
         allowed_hosts=settings.mcp.allowed_hosts,
