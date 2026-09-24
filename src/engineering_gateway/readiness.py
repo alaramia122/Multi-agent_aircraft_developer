@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import shutil
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -12,6 +13,7 @@ from sqlalchemy import text
 
 from engineering_gateway.config import Settings
 from engineering_gateway.infrastructure.db import Database
+from engineering_gateway.infrastructure.evidence_store import configured_evidence_store
 
 CheckStatus = Literal["ready", "disabled", "not_ready"]
 SCHEMA_VERSION = 14
@@ -124,6 +126,16 @@ async def _identity_readiness_check(url: str | None) -> ReadinessCheck:
         return ReadinessCheck("identity", "not_ready", type(exc).__name__)
 
 
+async def _object_storage_check(configuration: Settings) -> ReadinessCheck:
+    try:
+        store = configured_evidence_store(configuration.object_storage)
+        assert store is not None
+        await asyncio.to_thread(store.check_access)
+        return ReadinessCheck("object_storage", "ready", "configured evidence bucket accessible")
+    except Exception as exc:  # noqa: BLE001 - readiness must report credential or network failure
+        return ReadinessCheck("object_storage", "not_ready", type(exc).__name__)
+
+
 async def check_readiness(database: Database, configuration: Settings) -> ReadinessReport:
     """Evaluate process-critical and explicitly enabled integration prerequisites."""
 
@@ -164,7 +176,7 @@ async def check_readiness(database: Database, configuration: Settings) -> Readin
         checks.append(ReadinessCheck("openproject", "disabled", "OpenProject integration is disabled"))
 
     if configuration.object_storage.enabled:
-        checks.append(await _http_endpoint_check("object_storage", configuration.object_storage.endpoint_url))
+        checks.append(await _object_storage_check(configuration))
     else:
         checks.append(ReadinessCheck("object_storage", "disabled", "Object Storage integration is disabled"))
 
