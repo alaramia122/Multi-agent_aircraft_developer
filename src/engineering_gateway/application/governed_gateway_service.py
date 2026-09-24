@@ -30,6 +30,7 @@ from engineering_gateway.domain.models import EngineeringElement, EngineeringRel
 from engineering_gateway.domain.ports import (
     AuditSink,
     ChangeRequestRegistryPort,
+    IndependentReviewReader,
     ReconciliationCoordinator,
     WorkspaceChangeSetRepository,
     WorkspaceRegistryPort,
@@ -53,6 +54,7 @@ class GovernedGatewayApplicationService(
         workspace_changes: WorkspaceChangeSetRepository | None = None,
         audit: AuditSink | None = None,
         budget_gate: BudgetGate | None = None,
+        review_reader: IndependentReviewReader | None = None,
         **kwargs: Any,
     ) -> None:
         if workspace_registry is not None:
@@ -65,6 +67,7 @@ class GovernedGatewayApplicationService(
             kwargs.setdefault("audit", audit)
         super().__init__(*args, **kwargs)
         self._budget_gate = budget_gate
+        self._review_reader = review_reader
         if workspace_reconciler is None:
             self._workspace_reconciliation = None
         else:
@@ -199,6 +202,7 @@ class GovernedGatewayApplicationService(
         if self._budget_gate is not None and budget_plan is not None:
             evidence["budget_plan"] = budget_plan.model_dump(mode="json")
             evidence["budget_limit_kopeks"] = self._budget_gate.limit_kopeks
+        evidence["prepared_by_actor_id"] = actor.actor_id
         bound = workflow_workspace.bind_profile(
             profile_id, profile_version
         ).bind_validation_evidence(result.graph_hash, evidence)
@@ -227,6 +231,39 @@ class GovernedGatewayApplicationService(
         if self._workspace_reconciliation is None:
             raise GatewayServiceError("workspace reconciliation is not configured")
         return await self._workspace_reconciliation.reconcile(actor, workspace_id)
+
+    async def record_independent_review(
+        self, actor: Actor, workspace_id: UUID, *, accepted: bool,
+        reason: str, evidence_uri: str,
+    ) -> None:
+        """Record a separate review tied to the exact reconciled workspace revision."""
+
+        if self._review_reader is None or self._workspaces is None:
+            raise GatewayServiceError("independent review is not configured")
+        if actor.authorization_level is AuthorizationLevel.L0_READ or (
+            actor.is_ai and actor.authorization_level is AuthorizationLevel.L3_APPROVE
+        ):
+            raise GatewayServiceError("independent review requires a reviewer capability")
+        if not reason.strip() or not evidence_uri.strip():
+            raise GatewayServiceError("review requires a reason and a verifiable evidence URI")
+        workspace = await self._workspaces.get(workspace_id)
+        if workspace is None or workspace.state is not WorkspaceState.READY_FOR_APPROVAL:
+            raise GatewayServiceError("review requires a ready workspace")
+        if not workspace.validation_graph_hash or not workspace.reconciled_change_set_hash:
+            raise GatewayServiceError("review requires validation and reconciliation evidence")
+        if actor.actor_id == workspace.validation_evidence.get("prepared_by_actor_id"):
+            raise GatewayServiceError("reviewer must be independent of the preparer")
+        await self._record(
+            actor, action="independent_review", target_type="workspace",
+            target_id=workspace_id, result=AuditResult.SUCCESS, reason=reason,
+            metadata={
+                "accepted": accepted,
+                "evidence_uri": evidence_uri,
+                "validation_graph_hash": workspace.validation_graph_hash,
+                "reconciled_change_set_hash": workspace.reconciled_change_set_hash,
+                "workspace_version": workspace.version,
+            },
+        )
 
     async def reject_workspace(self, actor: Actor, workspace_id: UUID, reason: str) -> None:
         if self._workspaces is None or self._change_requests is None:
@@ -284,6 +321,18 @@ class GovernedGatewayApplicationService(
                 self._budget_gate.require_within_limit(plan)
             except (KeyError, ValueError) as exc:
                 raise GatewayServiceError("workspace budget evidence is missing, stale or over limit") from exc
+        if self._review_reader is not None:
+            review = await self._review_reader.latest_review(workspace_id)
+            if (
+                review is None
+                or review.metadata.get("accepted") is not True
+                or review.metadata.get("validation_graph_hash") != workspace.validation_graph_hash
+                or review.metadata.get("reconciled_change_set_hash") != workspace.reconciled_change_set_hash
+                or review.metadata.get("workspace_version") != workspace.version
+                or review.actor_id == workspace.validation_evidence.get("prepared_by_actor_id")
+                or review.actor_id == actor.actor_id
+            ):
+                raise GatewayServiceError("a current independent review is required before approval")
         changes = await self._workspace_changes.get_changes(workspace_id)
         try:
             workspace.require_reconciled(compute_change_set_hash(changes))
