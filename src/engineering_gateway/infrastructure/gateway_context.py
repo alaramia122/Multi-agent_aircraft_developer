@@ -40,6 +40,7 @@ async def governed_gateway_context(
     adapter_set: ExternalAdapterSet | None = None,
     workspace_reconciler: WorkspaceReconciler | None = None,
     budget_gate: BudgetGate | None = None,
+    require_independent_review: bool = False,
 ) -> AsyncIterator[GovernedGatewayApplicationService]:
     """Create a governed service whose repositories share one SQLAlchemy session.
 
@@ -111,6 +112,7 @@ async def governed_gateway_context(
             uow=uow,
             reconciliation_coordinator=PostgresReconciliationCoordinator(session),
             budget_gate=budget_gate,
+            review_reader=audit if require_independent_review else None,
         )
 
 
