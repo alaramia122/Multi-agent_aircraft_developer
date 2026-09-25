@@ -147,6 +147,7 @@ async def check_readiness(database: Database, configuration: Settings) -> Readin
         checks.append(ReadinessCheck("identity", "disabled", "external identity mapping is disabled"))
 
     if configuration.git.enabled:
+        checks.append(_executable_check("git.executable", "git"))
         checks.append(_git_repository_check(configuration.git.repository_root))
     else:
         checks.append(ReadinessCheck("git", "disabled", "Git integration is disabled"))
