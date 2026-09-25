@@ -60,6 +60,9 @@ services:
       IDENTITY__JWKS_URL: http://identity:8080/realms/engineering/protocol/openid-connect/certs
       IDENTITY__AUDIENCE: engineering-gateway
       IDENTITY__READINESS_URL: http://identity:8080/realms/engineering/.well-known/openid-configuration
+      IDENTITY__MCP_SERVICE_TOKEN: ${AI_STUDIO_MCP_BEARER_TOKEN:?Provision AI Studio MCP credential}
+      IDENTITY__MCP_SERVICE_ACTOR_ID: yandex-ai-studio
+      IDENTITY__MCP_SERVICE_AUTHORIZATION_LEVEL: L2_MODIFY_WORKSPACE
       GIT__ENABLED: 'true'
       GIT__REPOSITORY_ROOT: /engineering/artifacts
       STRICTDOC__ENABLED: 'true'
