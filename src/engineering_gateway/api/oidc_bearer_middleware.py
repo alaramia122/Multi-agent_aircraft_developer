@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import json
 from collections.abc import Mapping, Sequence
 from typing import Any
 
 import jwt
 from jwt import PyJWKClient
+
+from engineering_gateway.domain.change_control import AuthorizationLevel
 
 
 class OidcBearerPrincipalMiddleware:
@@ -30,6 +33,9 @@ class OidcBearerPrincipalMiddleware:
         actor_id_claim: str = "sub",
         actor_type_claim: str = "actor_type",
         authorization_level_claim: str = "authorization_level",
+        mcp_service_token: str | None = None,
+        mcp_service_actor_id: str = "yandex-ai-studio",
+        mcp_service_authorization_level: AuthorizationLevel = AuthorizationLevel.L2_MODIFY_WORKSPACE,
     ) -> None:
         if not all((issuer, audience, jwks_url, claims_state_key, *allowed_client_ids)):
             raise ValueError("OIDC issuer, audience, keys, state and clients must be configured")
@@ -42,12 +48,27 @@ class OidcBearerPrincipalMiddleware:
         self.actor_id_claim = actor_id_claim
         self.actor_type_claim = actor_type_claim
         self.authorization_level_claim = authorization_level_claim
+        if mcp_service_token is not None and len(mcp_service_token) < 32:
+            raise ValueError("MCP service token must contain at least 32 characters")
+        if mcp_service_authorization_level is AuthorizationLevel.L3_APPROVE:
+            raise ValueError("machine credentials cannot grant approval")
+        self.mcp_service_token = mcp_service_token
+        self.mcp_service_actor_id = mcp_service_actor_id
+        self.mcp_service_authorization_level = mcp_service_authorization_level
 
     @property
     def router(self) -> Any:
         return self.app.router
 
     def _verify(self, token: str) -> dict[str, str]:
+        if self.mcp_service_token is not None and hmac.compare_digest(
+            token, self.mcp_service_token
+        ):
+            return {
+                self.actor_id_claim: self.mcp_service_actor_id,
+                self.actor_type_claim: "ai",
+                self.authorization_level_claim: self.mcp_service_authorization_level.value,
+            }
         key = self.jwks.get_signing_key_from_jwt(token)
         claims = jwt.decode(
             token,
