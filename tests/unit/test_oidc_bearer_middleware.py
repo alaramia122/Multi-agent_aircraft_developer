@@ -108,3 +108,18 @@ async def test_bearer_rejects_missing_or_duplicate_authorization(boundary):
     assert await _request(identity, []) == 401
     assert await _request(identity, [token_header, token_header]) == 401
     assert captured == []
+
+
+@pytest.mark.asyncio
+async def test_long_lived_ai_studio_service_token_is_bound_to_ai_l2(boundary):
+    identity, captured, _ = boundary
+    identity.mcp_service_token = "dedicated-ai-studio-secret-" + "a" * 48
+
+    status = await _request(
+        identity, [(b"authorization", f"Bearer {identity.mcp_service_token}".encode())]
+    )
+
+    assert status == 200
+    assert captured[0][0].actor_id == "yandex-ai-studio"
+    assert captured[0][0].is_ai
+    assert captured[0][0].authorization_level is AuthorizationLevel.L2_MODIFY_WORKSPACE
