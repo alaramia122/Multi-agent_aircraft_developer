@@ -15,10 +15,19 @@ class LocalGitAdapter:
 
     system_name = "git"
 
-    def __init__(self, timeout_seconds: float = 30.0) -> None:
+    def __init__(
+        self, timeout_seconds: float = 30.0, repository_root: str | None = None
+    ) -> None:
         if timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
         self._timeout_seconds = timeout_seconds
+        self._repository_root = Path(repository_root).resolve() if repository_root else None
+
+    def _checked_repository(self, repository: str) -> str:
+        resolved = Path(repository).resolve()
+        if self._repository_root is not None and resolved != self._repository_root:
+            raise ValueError("Git repository is outside the configured engineering artifact root")
+        return str(resolved)
 
     async def get_snapshot(self, repository: str, ref: str = "HEAD") -> GitSnapshot:
         """Resolve a repository ref to a reproducible commit snapshot."""
@@ -134,7 +143,7 @@ class LocalGitAdapter:
         """
         try:
             result = subprocess.run(
-                ["git", "-C", str(Path(repository)), *args],
+                ["git", "-C", self._checked_repository(repository), *args],
                 check=False,
                 capture_output=True,
                 text=True,
@@ -151,7 +160,7 @@ class LocalGitAdapter:
     def _run_status(self, repository: str, *args: str) -> tuple[int, str]:
         try:
             result = subprocess.run(
-                ["git", "-C", str(Path(repository)), *args],
+                ["git", "-C", self._checked_repository(repository), *args],
                 check=False,
                 capture_output=True,
                 text=True,
@@ -166,7 +175,7 @@ class LocalGitAdapter:
     def _run_required(self, repository: str, *args: str) -> str:
         try:
             result = subprocess.run(
-                ["git", "-C", str(Path(repository)), *args],
+                ["git", "-C", self._checked_repository(repository), *args],
                 check=False,
                 capture_output=True,
                 text=True,
