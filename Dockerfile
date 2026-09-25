@@ -6,6 +6,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /srv/gateway
 
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY pyproject.toml README.md ./
 COPY src ./src
 COPY migrations ./migrations
@@ -13,6 +16,7 @@ COPY profiles ./profiles
 
 RUN python -m pip install --upgrade pip \
     && python -m pip install . \
+    && python -m pip install strictdoc==0.30.0 \
     && useradd --create-home --uid 10001 gateway \
     && chown -R gateway:gateway /srv/gateway
 

@@ -57,6 +57,12 @@ class IdentityConfig(BaseModel):
     issuer_url: str | None = None
     audience: str | None = None
     readiness_url: str | None = None
+    bearer_tokens_enabled: bool = False
+    jwks_url: str | None = None
+    allowed_client_ids: tuple[str, ...] = ("engineering-gateway-mcp",)
+    mcp_service_token: SecretStr | None = Field(default=None, min_length=32)
+    mcp_service_actor_id: str = "yandex-ai-studio"
+    mcp_service_authorization_level: AuthorizationLevel = AuthorizationLevel.L2_MODIFY_WORKSPACE
     actor_id_claim: str = "sub"
     actor_type_claim: str = "actor_type"
     authorization_level_claim: str = "authorization_level"
@@ -93,6 +99,21 @@ class IdentityConfig(BaseModel):
             )
         if self.trusted_proxy_headers_enabled and not self.enabled:
             raise ValueError("identity must be enabled when trusted proxy headers are enabled")
+        if self.bearer_tokens_enabled and not self.enabled:
+            raise ValueError("identity must be enabled when bearer tokens are enabled")
+        if self.bearer_tokens_enabled and (
+            not self.jwks_url or not self.allowed_client_ids
+            or any(not value.strip() for value in self.allowed_client_ids)
+        ):
+            raise ValueError("identity.jwks_url and allowed_client_ids are required for bearer tokens")
+        if self.bearer_tokens_enabled and self.trusted_proxy_headers_enabled:
+            raise ValueError("choose exactly one request authentication mechanism")
+        if self.mcp_service_token is not None and not self.bearer_tokens_enabled:
+            raise ValueError("MCP service token requires bearer token authentication")
+        if not self.mcp_service_actor_id.strip():
+            raise ValueError("MCP service actor id must not be empty")
+        if self.mcp_service_authorization_level is AuthorizationLevel.L3_APPROVE:
+            raise ValueError("MCP service token cannot grant human approval")
         if self.trusted_proxy_headers_enabled and self.trusted_proxy_shared_secret is None:
             raise ValueError(
                 "identity.trusted_proxy_shared_secret is required when trusted proxy headers are enabled"
@@ -228,6 +249,25 @@ class ObjectStorageConfig(BaseModel):
         return self
 
 
+class BudgetConfig(BaseModel):
+    """Project spending cap; absent policy does not fabricate approval evidence."""
+
+    enabled: bool = False
+    limit_kopeks: int | None = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def validate_enabled(self) -> BudgetConfig:
+        if self.enabled and self.limit_kopeks is None:
+            raise ValueError("budget.limit_kopeks is required when budget gate is enabled")
+        return self
+
+
+class ReviewConfig(BaseModel):
+    """Require independent review evidence before human baseline approval."""
+
+    required: bool = False
+
+
 class Settings(BaseSettings):
     """Unified deployment configuration loaded from environment variables.
 
@@ -252,6 +292,8 @@ class Settings(BaseSettings):
     capella: CapellaConfig = Field(default_factory=CapellaConfig)
     openproject: OpenProjectConfig = Field(default_factory=OpenProjectConfig)
     object_storage: ObjectStorageConfig = Field(default_factory=ObjectStorageConfig)
+    budget: BudgetConfig = Field(default_factory=BudgetConfig)
+    review: ReviewConfig = Field(default_factory=ReviewConfig)
 
     @property
     def app_name(self) -> str:

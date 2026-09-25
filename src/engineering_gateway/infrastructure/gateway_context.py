@@ -9,6 +9,7 @@ from engineering_gateway.application.governed_gateway_service import (
     GovernedGatewayApplicationService,
 )
 from engineering_gateway.domain.adapters import GitAdapter, ReadAdapter
+from engineering_gateway.domain.budget import BudgetGate
 from engineering_gateway.domain.reconciliation import WorkspaceReconciler
 from engineering_gateway.infrastructure.adapter_composition import ExternalAdapterSet
 from engineering_gateway.infrastructure.db import Database
@@ -38,6 +39,8 @@ async def governed_gateway_context(
     external_adapters: tuple[ReadAdapter, ...] | None = None,
     adapter_set: ExternalAdapterSet | None = None,
     workspace_reconciler: WorkspaceReconciler | None = None,
+    budget_gate: BudgetGate | None = None,
+    require_independent_review: bool = False,
 ) -> AsyncIterator[GovernedGatewayApplicationService]:
     """Create a governed service whose repositories share one SQLAlchemy session.
 
@@ -108,6 +111,8 @@ async def governed_gateway_context(
             change_request_registry=change_requests,
             uow=uow,
             reconciliation_coordinator=PostgresReconciliationCoordinator(session),
+            budget_gate=budget_gate,
+            review_reader=audit if require_independent_review else None,
         )
 
 

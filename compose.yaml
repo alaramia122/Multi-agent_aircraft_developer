@@ -1,0 +1,119 @@
+name: engineering-staging
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-engineering_gateway}
+      POSTGRES_USER: ${POSTGRES_USER:-gateway}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - gateway-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready --username="$$POSTGRES_USER" --dbname="$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks: [gateway-internal]
+
+  migrate:
+    image: postgres:17-alpine
+    restart: 'no'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: '5432'
+      PGDATABASE: ${POSTGRES_DB:-engineering_gateway}
+      PGUSER: ${POSTGRES_USER:-gateway}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - ./migrations:/migrations:ro
+      - ./deployment/apply-migrations.sh:/usr/local/bin/apply-migrations:ro
+    entrypoint: [/bin/sh, /usr/local/bin/apply-migrations]
+    networks: [gateway-internal]
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      GATEWAY__HOST: 0.0.0.0
+      GATEWAY__PORT: '8000'
+      GATEWAY__ENVIRONMENT: staging
+      DATABASE__URL: postgresql+psycopg://${POSTGRES_USER:-gateway}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-engineering_gateway}
+      MCP__PATH: /mcp
+      MCP__ALLOWED_HOSTS: '["localhost","localhost:*","127.0.0.1","127.0.0.1:*","${MCP_PUBLIC_HOST:-staging.invalid}"]'
+      MCP__ALLOWED_ORIGINS: '[]'
+      MCP__STATIC_ACTOR_ID: ${MCP_ACTOR_ID:-staging-readonly-agent}
+      MCP__STATIC_ACTOR_TYPE: ai
+      MCP__STATIC_AUTHORIZATION_LEVEL: L0_READ
+      IDENTITY__ENABLED: 'true'
+      IDENTITY__BEARER_TOKENS_ENABLED: 'true'
+      IDENTITY__ISSUER_URL: http://identity:8080/realms/engineering
+      IDENTITY__JWKS_URL: http://identity:8080/realms/engineering/protocol/openid-connect/certs
+      IDENTITY__AUDIENCE: engineering-gateway
+      IDENTITY__READINESS_URL: http://identity:8080/realms/engineering/.well-known/openid-configuration
+      IDENTITY__MCP_SERVICE_TOKEN: ${AI_STUDIO_MCP_BEARER_TOKEN:?Provision AI Studio MCP credential}
+      IDENTITY__MCP_SERVICE_ACTOR_ID: yandex-ai-studio
+      IDENTITY__MCP_SERVICE_AUTHORIZATION_LEVEL: L2_MODIFY_WORKSPACE
+      GIT__ENABLED: 'true'
+      GIT__REPOSITORY_ROOT: /engineering/artifacts
+      STRICTDOC__ENABLED: 'true'
+      STRICTDOC__EXECUTABLE: strictdoc
+      STRICTDOC__PROJECT_PATH: /engineering/strictdoc
+      STRICTDOC__TIMEOUT_SECONDS: ${STRICTDOC_TIMEOUT_SECONDS:-60}
+      OPENPROJECT__ENABLED: 'true'
+      OPENPROJECT__BASE_URL: ${OPENPROJECT_BASE_URL:?Set OPENPROJECT_BASE_URL in .env}
+      OPENPROJECT__API_TOKEN: ${OPENPROJECT_API_TOKEN:?Set OPENPROJECT_API_TOKEN in .env}
+      OPENPROJECT__PROJECT_ID: ${OPENPROJECT_PROJECT_ID:?Set OPENPROJECT_PROJECT_ID in .env}
+      OPENPROJECT__CHANGE_REQUEST_TYPE_ID: ${OPENPROJECT_CHANGE_REQUEST_TYPE_ID:?Set OPENPROJECT_CHANGE_REQUEST_TYPE_ID in .env}
+      OBJECT_STORAGE__ENABLED: 'true'
+      OBJECT_STORAGE__ENDPOINT_URL: http://object-storage:9000
+      OBJECT_STORAGE__BUCKET: engineering-evidence
+      OBJECT_STORAGE__ACCESS_KEY_ID: ${EVIDENCE_ACCESS_KEY_ID:?Provision scoped MinIO user}
+      OBJECT_STORAGE__SECRET_ACCESS_KEY: ${EVIDENCE_SECRET_ACCESS_KEY:?Provision scoped MinIO user}
+      BUDGET__ENABLED: 'true'
+      BUDGET__LIMIT_KOPEKS: '${ENGINEERING_BUDGET_LIMIT_KOPEKS:-10000000}'
+      REVIEW__REQUIRED: 'true'
+      CAPELLA__ENABLED: 'false'
+    volumes:
+      - strictdoc-projects:/engineering/strictdoc:ro
+      - /opt/engineering-staging/engineering-artifacts:/engineering/artifacts:rw
+      - ./:/engineering/source:ro
+    ports:
+      - '127.0.0.1:${GATEWAY_PORT:-8000}:8000'
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=5).read()"]
+      interval: 15s
+      timeout: 7s
+      retries: 12
+      start_period: 15s
+    networks: [gateway-internal, openproject-frontend, platform-frontend]
+
+volumes:
+  gateway-postgres-data:
+  strictdoc-projects:
+    external: true
+    name: engineering-platform_strictdoc-projects
+
+networks:
+  gateway-internal:
+    driver: bridge
+  openproject-frontend:
+    external: true
+    name: ${OPENPROJECT_NETWORK:-openproject_frontend}
+  platform-frontend:
+    external: true
+    name: engineering-platform-frontend

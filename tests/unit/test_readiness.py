@@ -85,6 +85,30 @@ async def test_readiness_fails_when_enabled_strictdoc_is_unavailable() -> None:
 
 
 @pytest.mark.asyncio
+async def test_object_storage_readiness_checks_bucket_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    configuration = Settings(
+        git={"repository_root": str(Path.cwd())},
+        object_storage={
+            "enabled": True, "endpoint_url": "http://127.0.0.1:9000",
+            "bucket": "engineering-evidence",
+            "access_key_id": "scoped-user", "secret_access_key": "scoped-secret",
+        },
+    )
+
+    class _Store:
+        def check_access(self) -> None:
+            raise PermissionError("access denied")
+
+    monkeypatch.setattr(readiness_module, "configured_evidence_store", lambda config: _Store())
+    report = await check_readiness(_Database(), configuration)
+
+    assert report.ready is False
+    storage = next(check for check in report.checks if check.name == "object_storage")
+    assert storage.status == "not_ready"
+    assert storage.detail == "PermissionError"
+
+
+@pytest.mark.asyncio
 async def test_readiness_is_ready_when_identity_upstream_is_healthy(monkeypatch: pytest.MonkeyPatch) -> None:
     configuration = Settings(
         git={"repository_root": str(Path.cwd())},

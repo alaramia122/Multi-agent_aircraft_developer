@@ -10,9 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from engineering_gateway.application.profile_engine import StandardProfileEngine
 from engineering_gateway.domain.adapters import ExternalVersion
-from engineering_gateway.domain.audit import AuditEvent, AuditResult
+from engineering_gateway.domain.audit import ActorType, AuditEvent, AuditResult
 from engineering_gateway.domain.baselines import Baseline, ExternalSystemVersion
-from engineering_gateway.domain.change_control import ChangeGate, ChangeRequest, ChangeRequestState
+from engineering_gateway.domain.change_control import AuthorizationLevel, ChangeGate, ChangeRequest, ChangeRequestState
 from engineering_gateway.domain.profiles import StandardProfile
 from engineering_gateway.domain.workspaces import Workspace, WorkspaceGate, WorkspaceState
 from engineering_gateway.infrastructure.metadata_models import (
@@ -427,3 +427,26 @@ class SqlAlchemyAuditSink(_TransactionAware):
             return
         self._session.add(self._record_model(event))
         await self._persist()
+
+    async def latest_review(self, workspace_id: UUID) -> AuditEvent | None:
+        record = await self._session.scalar(
+            select(AuditEventRecord)
+            .where(
+                AuditEventRecord.action == "independent_review",
+                AuditEventRecord.target_type == "workspace",
+                AuditEventRecord.target_id == workspace_id,
+                AuditEventRecord.result == AuditResult.SUCCESS.value,
+            )
+            .order_by(AuditEventRecord.timestamp.desc(), AuditEventRecord.id.desc())
+            .limit(1)
+        )
+        if record is None:
+            return None
+        return AuditEvent(
+            id=record.id, timestamp=record.timestamp, actor_id=record.actor_id,
+            actor_type=ActorType(record.actor_type),
+            authorization_level=AuthorizationLevel(record.authorization_level),
+            action=record.action, target_type=record.target_type, target_id=record.target_id,
+            correlation_id=record.correlation_id, result=AuditResult(record.result),
+            reason=record.reason, metadata=record.event_metadata,
+        )

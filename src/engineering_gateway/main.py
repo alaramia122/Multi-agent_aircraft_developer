@@ -10,6 +10,7 @@ from starlette.routing import Mount
 
 from engineering_gateway import __version__
 from engineering_gateway.api.actor_provider import ActorProvider, RequestActorProvider, StaticActorProvider
+from engineering_gateway.api.oidc_bearer_middleware import OidcBearerPrincipalMiddleware
 from engineering_gateway.api.mcp_http import create_mcp_http_app
 from engineering_gateway.api.principal_mapper import ClaimMapping, TrustedClaimsActorMapper
 from engineering_gateway.api.trusted_proxy_middleware import (
@@ -18,12 +19,14 @@ from engineering_gateway.api.trusted_proxy_middleware import (
 )
 from engineering_gateway.application.gateway_service import Actor
 from engineering_gateway.config import settings
+from engineering_gateway.domain.budget import BudgetGate
 from engineering_gateway.infrastructure.adapter_composition import (
     LocalAdapterConfig,
     compose_external_adapters,
 )
 from engineering_gateway.infrastructure.capella_adapter import CapellaBridgeConfig, LocalCapellaAdapter
 from engineering_gateway.infrastructure.db import Database
+from engineering_gateway.infrastructure.evidence_store import configured_evidence_store
 from engineering_gateway.infrastructure.gateway_context import governed_gateway_context
 from engineering_gateway.infrastructure.git_adapter import LocalGitAdapter
 from engineering_gateway.infrastructure.openproject_adapter import (
@@ -103,7 +106,15 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     database = Database(settings.database.url)
     adapter_config = _build_adapter_config()
     adapter_set = compose_external_adapters(adapter_config)
-    git = LocalGitAdapter(settings.git.timeout_seconds) if settings.git.enabled else None
+    git = (
+        LocalGitAdapter(settings.git.timeout_seconds, repository_root=settings.git.repository_root)
+        if settings.git.enabled else None
+    )
+    budget_gate = (
+        BudgetGate(settings.budget.limit_kopeks)
+        if settings.budget.enabled and settings.budget.limit_kopeks is not None
+        else None
+    )
 
     if settings.identity.enabled:
         actor_provider: ActorProvider = RequestActorProvider()
@@ -129,6 +140,8 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             database,
             git=git,
             adapter_set=adapter_set,
+            budget_gate=budget_gate,
+            require_independent_review=settings.review.required,
         ),
         actor_provider,
         allowed_hosts=settings.mcp.allowed_hosts,
@@ -137,6 +150,25 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         principal_mapper=principal_mapper,
         principal_claims_state_key=settings.identity.principal_claims_state_key,
     )
+    if settings.identity.bearer_tokens_enabled:
+        assert settings.identity.issuer_url and settings.identity.audience and settings.identity.jwks_url
+        mcp_app = OidcBearerPrincipalMiddleware(
+            mcp_app,
+            issuer=settings.identity.issuer_url,
+            audience=settings.identity.audience,
+            jwks_url=settings.identity.jwks_url,
+            allowed_client_ids=settings.identity.allowed_client_ids,
+            claims_state_key=settings.identity.principal_claims_state_key,
+            actor_id_claim=settings.identity.actor_id_claim,
+            actor_type_claim=settings.identity.actor_type_claim,
+            authorization_level_claim=settings.identity.authorization_level_claim,
+            mcp_service_token=(
+                settings.identity.mcp_service_token.get_secret_value()
+                if settings.identity.mcp_service_token is not None else None
+            ),
+            mcp_service_actor_id=settings.identity.mcp_service_actor_id,
+            mcp_service_authorization_level=settings.identity.mcp_service_authorization_level,
+        )
     if (
         settings.identity.trusted_proxy_headers_enabled
         and settings.identity.trusted_proxy_shared_secret is not None
@@ -164,6 +196,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     application.state.mcp_route = mcp_route
     application.state.adapter_set = adapter_set
     application.state.git_adapter = git
+    application.state.evidence_store = configured_evidence_store(settings.object_storage)
 
     try:
         router = getattr(mcp_app, "router", None)

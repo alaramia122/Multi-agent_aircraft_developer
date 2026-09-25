@@ -16,6 +16,7 @@ from engineering_gateway.application.gateway_service import Actor, GatewayApplic
 from engineering_gateway.application.governed_gateway_service import (
     GovernedGatewayApplicationService,
 )
+from engineering_gateway.domain.budget import BudgetPlan
 from engineering_gateway.domain.change_control import AuthorizationLevel
 from engineering_gateway.domain.models import EngineeringElement, EngineeringRelation
 
@@ -329,6 +330,7 @@ def create_mcp_server(
         artifact_evidence: list[ArtifactEvidenceInput] | None = None,
         lifecycle_states: list[LifecycleStateInput] | None = None,
         lifecycle_transitions: list[LifecycleTransitionInput] | None = None,
+        budget_plan: BudgetPlan | None = None,
     ) -> dict[str, object]:
         """Run deterministic validation and bind evidence before human approval."""
         actor = actor_provider.get_actor()
@@ -351,6 +353,7 @@ def create_mcp_server(
                 artifact_evidence=artifacts,
                 lifecycle_states=states,
                 lifecycle_transitions=transitions,
+                budget_plan=budget_plan,
             )
         return {
             "profile_id": result.profile_id,
@@ -368,6 +371,34 @@ def create_mcp_server(
                 for issue in result.issues
             ],
         }
+
+    @server.tool(
+        name="record_independent_review",
+        title="Record independent engineering review",
+        annotations=ToolAnnotations(
+            read_only_hint=False,
+            destructive_hint=False,
+            idempotent_hint=False,
+            open_world_hint=False,
+        ),
+        structured_output=True,
+    )
+    async def record_independent_review(
+        workspace_id: str, accepted: bool, reason: str, evidence_uri: str
+    ) -> dict[str, object]:
+        """Bind an AI or human review to current validation and reconciliation evidence."""
+        actor = actor_provider.get_actor()
+        if actor.authorization_level is AuthorizationLevel.L0_READ:
+            raise ToolError("review requires L1, L2 or a human L3 actor")
+        async with service_factory() as service:
+            if not isinstance(service, GovernedGatewayApplicationService):
+                raise TypeError("independent review requires governed service")
+            await service.record_independent_review(
+                actor, _parse_uuid(workspace_id, "workspace_id"),
+                accepted=accepted, reason=_require_non_blank(reason, "reason"),
+                evidence_uri=_require_non_blank(evidence_uri, "evidence_uri"),
+            )
+        return {"workspace_id": workspace_id, "accepted": accepted}
 
     @server.tool(
         name="reconcile_workspace",
