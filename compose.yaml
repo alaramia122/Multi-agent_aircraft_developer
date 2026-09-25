@@ -61,7 +61,7 @@ services:
       IDENTITY__AUDIENCE: engineering-gateway
       IDENTITY__READINESS_URL: http://identity:8080/realms/engineering/.well-known/openid-configuration
       GIT__ENABLED: 'true'
-      GIT__REPOSITORY_ROOT: /engineering/source
+      GIT__REPOSITORY_ROOT: /engineering/artifacts
       STRICTDOC__ENABLED: 'true'
       STRICTDOC__EXECUTABLE: strictdoc
       STRICTDOC__PROJECT_PATH: /engineering/strictdoc
@@ -82,6 +82,7 @@ services:
       CAPELLA__ENABLED: 'false'
     volumes:
       - strictdoc-projects:/engineering/strictdoc:ro
+      - /opt/engineering-staging/engineering-artifacts:/engineering/artifacts:rw
       - ./:/engineering/source:ro
     ports:
       - '127.0.0.1:${GATEWAY_PORT:-8000}:8000'
