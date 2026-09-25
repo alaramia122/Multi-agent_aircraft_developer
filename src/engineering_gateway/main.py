@@ -106,7 +106,10 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     database = Database(settings.database.url)
     adapter_config = _build_adapter_config()
     adapter_set = compose_external_adapters(adapter_config)
-    git = LocalGitAdapter(settings.git.timeout_seconds) if settings.git.enabled else None
+    git = (
+        LocalGitAdapter(settings.git.timeout_seconds, repository_root=settings.git.repository_root)
+        if settings.git.enabled else None
+    )
     budget_gate = (
         BudgetGate(settings.budget.limit_kopeks)
         if settings.budget.enabled and settings.budget.limit_kopeks is not None
