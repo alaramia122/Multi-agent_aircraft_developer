@@ -49,7 +49,7 @@ services:
       GATEWAY__ENVIRONMENT: staging
       DATABASE__URL: postgresql+psycopg://${POSTGRES_USER:-gateway}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-engineering_gateway}
       MCP__PATH: /mcp
-      MCP__ALLOWED_HOSTS: '["localhost","localhost:*","127.0.0.1","127.0.0.1:*"]'
+      MCP__ALLOWED_HOSTS: '["localhost","localhost:*","127.0.0.1","127.0.0.1:*","${MCP_PUBLIC_HOST:-staging.invalid}"]'
       MCP__ALLOWED_ORIGINS: '[]'
       MCP__STATIC_ACTOR_ID: ${MCP_ACTOR_ID:-staging-readonly-agent}
       MCP__STATIC_ACTOR_TYPE: ai
