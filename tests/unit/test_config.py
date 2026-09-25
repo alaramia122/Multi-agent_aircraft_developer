@@ -93,6 +93,11 @@ def test_trusted_proxy_headers_require_identity_and_secret() -> None:
         )
 
 
+def test_mcp_machine_credential_cannot_grant_l3_approval() -> None:
+    with pytest.raises(ValidationError, match="cannot grant human approval"):
+        Settings(identity={"mcp_service_authorization_level": "L3_APPROVE"})
+
+
 def test_trusted_proxy_secret_is_masked() -> None:
     configured = Settings(
         identity={
