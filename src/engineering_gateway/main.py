@@ -162,6 +162,12 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             actor_id_claim=settings.identity.actor_id_claim,
             actor_type_claim=settings.identity.actor_type_claim,
             authorization_level_claim=settings.identity.authorization_level_claim,
+            mcp_service_token=(
+                settings.identity.mcp_service_token.get_secret_value()
+                if settings.identity.mcp_service_token is not None else None
+            ),
+            mcp_service_actor_id=settings.identity.mcp_service_actor_id,
+            mcp_service_authorization_level=settings.identity.mcp_service_authorization_level,
         )
     if (
         settings.identity.trusted_proxy_headers_enabled
