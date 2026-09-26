@@ -71,6 +71,13 @@ class LocalStrictDocWorkspaceAdapter:
     async def get_version(self) -> ExternalVersion:
         return await self._reader.get_version()
 
+    async def get_workspace_version(self, workspace_id: UUID) -> ExternalVersion:
+        response = await self._run("get_workspace_version", {"workspace_id": str(workspace_id)})
+        version = response.get("version")
+        if not isinstance(version, str) or not version:
+            raise StrictDocWorkspaceAdapterError("StrictDoc bridge returned no workspace version")
+        return ExternalVersion(system=self.system_name, version=version)
+
     async def create_workspace(
         self, workspace_id: UUID, source_version: str, change_set_hash: str
     ) -> None:

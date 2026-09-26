@@ -6,7 +6,7 @@ from uuid import UUID
 
 from engineering_gateway.domain.adapters import ExternalVersion, WorkspaceAdapter
 from engineering_gateway.domain.models import EngineeringElement, EngineeringGraph
-from engineering_gateway.domain.ports import EngineeringRepository
+from engineering_gateway.domain.ports import BaselineRegistryPort, EngineeringRepository
 from engineering_gateway.domain.reconciliation import (
     WorkspaceReconciliationError,
     compute_change_set_hash,
@@ -23,10 +23,11 @@ class AdapterWorkspaceReconciler:
     workspace for the same desired state.
     """
 
-    _WORKSPACE_METHODS = ("create_workspace", "apply_element", "apply_relation", "get_version")
+    _WORKSPACE_METHODS = ("create_workspace", "apply_element", "apply_relation", "get_workspace_version")
 
     def __init__(
-        self, adapters: tuple[WorkspaceAdapter, ...], canonical: EngineeringRepository | None = None
+        self, adapters: tuple[WorkspaceAdapter, ...], canonical: EngineeringRepository | None = None,
+        baselines: BaselineRegistryPort | None = None,
     ) -> None:
         self._adapters = {adapter.system_name: adapter for adapter in adapters}
         if len(self._adapters) != len(adapters):
@@ -34,6 +35,7 @@ class AdapterWorkspaceReconciler:
         if any(not system.strip() for system in self._adapters):
             raise ValueError("workspace adapter system names must be non-empty")
         self._canonical = canonical
+        self._baselines = baselines
 
     async def reconcile(
         self, workspace: Workspace, changes: EngineeringGraph
@@ -72,6 +74,17 @@ class AdapterWorkspaceReconciler:
             )
 
         used = sorted(systems)
+        source_versions: dict[str, str] = {}
+        if self._baselines is not None and used:
+            source_baseline = await self._baselines.get(workspace.source_baseline_id)
+            if source_baseline is None or source_baseline.git_commit != workspace.source_git_commit:
+                raise WorkspaceReconciliationError("workspace source baseline is missing or stale")
+            source_versions = {version.system: version.version for version in source_baseline.external_versions}
+            missing_versions = sorted(set(used) - source_versions.keys())
+            if missing_versions:
+                raise WorkspaceReconciliationError(
+                    "source baseline lacks authoritative versions: " + ", ".join(missing_versions)
+                )
         for system in used:
             adapter = self._adapters[system]
             missing_methods = [
@@ -87,7 +100,7 @@ class AdapterWorkspaceReconciler:
         for system in used:
             await self._adapters[system].create_workspace(
                 workspace.id,
-                workspace.source_git_commit,
+                source_versions.get(system, workspace.source_git_commit),
                 change_set_hash,
             )
 
@@ -102,7 +115,7 @@ class AdapterWorkspaceReconciler:
 
         versions: list[ExternalVersion] = []
         for system in used:
-            version = await self._adapters[system].get_version()
+            version = await self._adapters[system].get_workspace_version(workspace.id)
             if version.system != system:
                 raise WorkspaceReconciliationError(
                     f"workspace adapter '{system}' returned version for '{version.system}'"

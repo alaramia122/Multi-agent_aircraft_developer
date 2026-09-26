@@ -60,6 +60,8 @@ class IdentityConfig(BaseModel):
     bearer_tokens_enabled: bool = False
     jwks_url: str | None = None
     allowed_client_ids: tuple[str, ...] = ("engineering-gateway-mcp",)
+    human_review_enabled: bool = False
+    human_client_ids: tuple[str, ...] = ()
     mcp_service_token: SecretStr | None = Field(default=None, min_length=32)
     mcp_service_actor_id: str = "yandex-ai-studio"
     mcp_service_authorization_level: AuthorizationLevel = AuthorizationLevel.L2_MODIFY_WORKSPACE
@@ -108,6 +110,11 @@ class IdentityConfig(BaseModel):
             raise ValueError("identity.jwks_url and allowed_client_ids are required for bearer tokens")
         if self.bearer_tokens_enabled and self.trusted_proxy_headers_enabled:
             raise ValueError("choose exactly one request authentication mechanism")
+        if self.human_review_enabled and (
+            not self.enabled or not self.issuer_url or not self.audience or not self.jwks_url
+            or not self.human_client_ids or any(not item.strip() for item in self.human_client_ids)
+        ):
+            raise ValueError("human review requires OIDC issuer, audience, JWKS and client IDs")
         if self.mcp_service_token is not None and not self.bearer_tokens_enabled:
             raise ValueError("MCP service token requires bearer token authentication")
         if not self.mcp_service_actor_id.strip():

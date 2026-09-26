@@ -11,7 +11,7 @@ import pytest
 from engineering_gateway.application.gateway_service import Actor, GatewayServiceError
 from engineering_gateway.domain.adapters import ExternalVersion
 from engineering_gateway.domain.audit import ActorType
-from engineering_gateway.domain.baselines import Baseline
+from engineering_gateway.domain.baselines import Baseline, ExternalSystemVersion
 from engineering_gateway.domain.budget import BudgetGate, BudgetLine, BudgetPlan
 from engineering_gateway.domain.change_control import (
     AuthorizationLevel,
@@ -53,6 +53,9 @@ class FakeWorkspaceAdapter:
     async def get_version(self) -> ExternalVersion:
         self.operations.append("get_version")
         return ExternalVersion(system=self.system_name, version="integration-rev-1")
+
+    async def get_workspace_version(self, workspace_id: UUID) -> ExternalVersion:
+        return await self.get_version()
 
     async def create_workspace(
         self, workspace_id: UUID, source_version: str, change_set_hash: str
@@ -122,6 +125,7 @@ async def test_change_request_workspace_validation_reconciliation_and_approval_e
                     name="source-baseline",
                     git_repository=str(repository),
                     git_commit=source_commit,
+                    external_versions=(ExternalSystemVersion(system="integration", version="integration-rev-1"),),
                 )
             )
             await SqlAlchemyChangeRequestRepository(session).create(

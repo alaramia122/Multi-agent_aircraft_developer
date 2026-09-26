@@ -13,6 +13,7 @@ import pytest
 from engineering_gateway.application.gateway_service import Actor
 from engineering_gateway.domain.adapters import ExternalVersion
 from engineering_gateway.domain.audit import ActorType, AuditResult
+from engineering_gateway.domain.baselines import Baseline, ExternalSystemVersion
 from engineering_gateway.domain.change_control import (
     AuthorizationLevel,
     ChangeRequest,
@@ -38,6 +39,7 @@ from engineering_gateway.infrastructure.db import Database
 from engineering_gateway.infrastructure.gateway_context import governed_gateway_context
 from engineering_gateway.infrastructure.metadata_repositories import (
     SqlAlchemyAuditSink,
+    SqlAlchemyBaselineRegistry,
     SqlAlchemyChangeRequestRepository,
     SqlAlchemyWorkspaceRegistry,
 )
@@ -71,7 +73,7 @@ _BRIDGE = textwrap.dedent(
 
     operation = request["operation"]
     response = {"protocol": 1, "operation": operation, "ok": True}
-    if operation == "get_version":
+    if operation in ("get_version", "get_workspace_version"):
         response["version"] = "capella-rev-1"
     print(json.dumps(response, sort_keys=True))
     """
@@ -118,6 +120,10 @@ class RecordingWorkspaceAdapter:
         self.operations.append(("get_version", UUID(int=0)))
         return ExternalVersion(system=self.system_name, version="strictdoc-rev-1")
 
+    async def get_workspace_version(self, workspace_id: UUID) -> ExternalVersion:
+        self.operations.append(("get_workspace_version", workspace_id))
+        return ExternalVersion(system=self.system_name, version="strictdoc-rev-1")
+
     async def create_workspace(
         self, workspace_id: UUID, source_version: str, change_set_hash: str
     ) -> None:
@@ -133,6 +139,17 @@ class RecordingWorkspaceAdapter:
 
 async def _seed_workspace(database: Database) -> Workspace:
     async with database.session_factory() as session:
+        source_baseline_id = uuid4()
+        await SqlAlchemyBaselineRegistry(session).register(Baseline(
+            id=source_baseline_id,
+            name=f"source-{source_baseline_id}",
+            git_repository="test-repository",
+            git_commit="abc123",
+            external_versions=(
+                ExternalSystemVersion(system="capella", version="capella-rev-1"),
+                ExternalSystemVersion(system="strictdoc", version="strictdoc-rev-1"),
+            ),
+        ))
         change_requests = SqlAlchemyChangeRequestRepository(session)
         workspaces = SqlAlchemyWorkspaceRegistry(session)
         change_request = await change_requests.create(
@@ -145,7 +162,7 @@ async def _seed_workspace(database: Database) -> Workspace:
         )
         workspace = await workspaces.create(
             Workspace(
-                source_baseline_id=uuid4(),
+                source_baseline_id=source_baseline_id,
                 source_git_commit="abc123",
                 change_request_id=change_request.id,
                 state=WorkspaceState.READY_FOR_APPROVAL,
@@ -204,7 +221,7 @@ async def test_composed_capella_adapter_reconciles_through_real_bridge_and_persi
 
         requests = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
         operations = [request["operation"] for request in requests]
-        assert operations == ["create_workspace", "apply_element", "get_version"]
+        assert operations == ["create_workspace", "apply_element", "get_workspace_version"]
         assert requests[0]["payload"]["change_set_hash"] == reconciliation.change_set_hash
         assert requests[0]["payload"]["workspace_id"] == str(workspace.id)
         assert requests[1]["payload"]["element"]["external_id"] == "COMP-1"
@@ -298,7 +315,7 @@ async def test_composed_capella_and_strictdoc_adapters_route_cross_system_relati
             "create_workspace",
             "apply_element",
             "apply_relation",
-            "get_version",
+            "get_workspace_version",
         ]
         assert strictdoc.relations == [relation]
 
@@ -306,7 +323,7 @@ async def test_composed_capella_and_strictdoc_adapters_route_cross_system_relati
         assert [request["operation"] for request in requests] == [
             "create_workspace",
             "apply_element",
-            "get_version",
+            "get_workspace_version",
         ]
         assert all(request["payload"]["workspace_id"] == str(workspace.id) for request in requests)
     finally:
@@ -436,7 +453,7 @@ async def test_composed_reconciliation_replay_is_idempotent_without_external_cal
         assert [request["operation"] for request in requests] == [
             "create_workspace",
             "apply_element",
-            "get_version",
+            "get_workspace_version",
         ]
     finally:
         await database.dispose()
