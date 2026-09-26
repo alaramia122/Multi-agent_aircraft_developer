@@ -232,6 +232,20 @@ class GovernedGatewayApplicationService(
             raise GatewayServiceError("workspace reconciliation is not configured")
         return await self._workspace_reconciliation.reconcile(actor, workspace_id)
 
+    async def get_workspace_review_package(self, actor: Actor, workspace_id: UUID) -> dict[str, object]:
+        """Return the exact evidence a human must inspect before deciding."""
+        if actor.is_ai or self._workspaces is None or self._workspace_changes is None:
+            raise GatewayServiceError("human review access is not configured")
+        workspace = await self._workspaces.get(workspace_id)
+        if workspace is None:
+            raise GatewayServiceError("workspace was not found")
+        changes = await self._workspace_changes.get_changes(workspace_id)
+        return {
+            "workspace": workspace.model_dump(mode="json"),
+            "changes": changes.model_dump(mode="json"),
+            "current_change_set_hash": compute_change_set_hash(changes),
+        }
+
     async def record_independent_review(
         self, actor: Actor, workspace_id: UUID, *, accepted: bool,
         reason: str, evidence_uri: str,

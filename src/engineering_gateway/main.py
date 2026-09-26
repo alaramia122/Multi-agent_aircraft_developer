@@ -10,6 +10,7 @@ from starlette.routing import Mount
 
 from engineering_gateway import __version__
 from engineering_gateway.api.actor_provider import ActorProvider, RequestActorProvider, StaticActorProvider
+from engineering_gateway.api.human_review import HumanTokenVerifier, create_human_review_app
 from engineering_gateway.api.oidc_bearer_middleware import OidcBearerPrincipalMiddleware
 from engineering_gateway.api.mcp_http import create_mcp_http_app
 from engineering_gateway.api.principal_mapper import ClaimMapping, TrustedClaimsActorMapper
@@ -189,6 +190,21 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
                 authorization_level_claim=settings.identity.authorization_level_claim,
             ),
         )
+    human_route = None
+    if settings.identity.human_review_enabled:
+        assert settings.identity.issuer_url and settings.identity.audience and settings.identity.jwks_url
+        human_app = create_human_review_app(
+            lambda: governed_gateway_context(
+                database, git=git, adapter_set=adapter_set, budget_gate=budget_gate,
+                require_independent_review=settings.review.required,
+            ),
+            HumanTokenVerifier(
+                settings.identity.issuer_url, settings.identity.audience,
+                settings.identity.jwks_url, settings.identity.human_client_ids,
+            ),
+        )
+        human_route = Mount("/human", app=human_app)
+        application.router.routes.append(human_route)
     mcp_route = Mount("/", app=mcp_app)
     application.router.routes.append(mcp_route)
     application.state.database = database
@@ -209,6 +225,8 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         routes = application.router.routes
         if mcp_route in routes:
             routes.remove(mcp_route)
+        if human_route is not None and human_route in routes:
+            routes.remove(human_route)
         await database.dispose()
 
 

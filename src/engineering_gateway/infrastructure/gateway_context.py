@@ -92,6 +92,7 @@ async def governed_gateway_context(
             resolved_reconciler = AdapterWorkspaceReconciler(
                 adapter_set.as_workspace_adapters(),
                 canonical=canonical,
+                baselines=baselines,
             )
         else:
             resolved_reconciler = None

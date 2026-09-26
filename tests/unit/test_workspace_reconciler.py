@@ -3,6 +3,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from engineering_gateway.domain.adapters import ExternalVersion
+from engineering_gateway.domain.baselines import Baseline, BaselineRegistry, ExternalSystemVersion
 from engineering_gateway.domain.models import (
     ElementKind,
     EngineeringElement,
@@ -140,6 +141,39 @@ async def test_same_change_set_produces_same_idempotency_key_on_retry():
 
     assert adapter.created[0][2] == adapter.created[1][2]
     assert adapter.created[0][0] == adapter.created[1][0] == workspace.id
+
+
+@pytest.mark.asyncio
+async def test_authoritative_source_version_comes_from_immutable_baseline():
+    workspace = _workspace()
+    baselines = BaselineRegistry()
+    await baselines.register(Baseline(
+        id=workspace.source_baseline_id, name="source", git_repository="repo",
+        git_commit=workspace.source_git_commit,
+        external_versions=(ExternalSystemVersion(system="capella", version="model-rev-7"),),
+    ))
+    adapter = FakeAdapter("capella")
+    reconciler = AdapterWorkspaceReconciler((adapter,), baselines=baselines)
+
+    await reconciler.reconcile(workspace, EngineeringGraph(elements=[_element("capella", "A")]))
+
+    assert adapter.created[0][1] == "model-rev-7"
+
+
+@pytest.mark.asyncio
+async def test_missing_authoritative_source_version_fails_before_mutation():
+    workspace = _workspace()
+    baselines = BaselineRegistry()
+    await baselines.register(Baseline(
+        id=workspace.source_baseline_id, name="source", git_repository="repo",
+        git_commit=workspace.source_git_commit,
+    ))
+    adapter = FakeAdapter("strictdoc")
+    reconciler = AdapterWorkspaceReconciler((adapter,), baselines=baselines)
+
+    with pytest.raises(WorkspaceReconciliationError, match="lacks authoritative versions"):
+        await reconciler.reconcile(workspace, EngineeringGraph(elements=[_element("strictdoc", "R")]))
+    assert adapter.created == []
 
 
 @pytest.mark.asyncio
