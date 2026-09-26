@@ -13,6 +13,7 @@ import pytest
 from engineering_gateway.application.gateway_service import Actor
 from engineering_gateway.domain.adapters import ExternalVersion
 from engineering_gateway.domain.audit import ActorType, AuditResult
+from engineering_gateway.domain.baselines import Baseline, ExternalSystemVersion
 from engineering_gateway.domain.change_control import (
     AuthorizationLevel,
     ChangeRequest,
@@ -38,6 +39,7 @@ from engineering_gateway.infrastructure.db import Database
 from engineering_gateway.infrastructure.gateway_context import governed_gateway_context
 from engineering_gateway.infrastructure.metadata_repositories import (
     SqlAlchemyAuditSink,
+    SqlAlchemyBaselineRegistry,
     SqlAlchemyChangeRequestRepository,
     SqlAlchemyWorkspaceRegistry,
 )
@@ -133,6 +135,17 @@ class RecordingWorkspaceAdapter:
 
 async def _seed_workspace(database: Database) -> Workspace:
     async with database.session_factory() as session:
+        source_baseline_id = uuid4()
+        await SqlAlchemyBaselineRegistry(session).register(Baseline(
+            id=source_baseline_id,
+            name=f"source-{source_baseline_id}",
+            git_repository="test-repository",
+            git_commit="abc123",
+            external_versions=(
+                ExternalSystemVersion(system="capella", version="capella-rev-1"),
+                ExternalSystemVersion(system="strictdoc", version="strictdoc-rev-1"),
+            ),
+        ))
         change_requests = SqlAlchemyChangeRequestRepository(session)
         workspaces = SqlAlchemyWorkspaceRegistry(session)
         change_request = await change_requests.create(
@@ -145,7 +158,7 @@ async def _seed_workspace(database: Database) -> Workspace:
         )
         workspace = await workspaces.create(
             Workspace(
-                source_baseline_id=uuid4(),
+                source_baseline_id=source_baseline_id,
                 source_git_commit="abc123",
                 change_request_id=change_request.id,
                 state=WorkspaceState.READY_FOR_APPROVAL,
