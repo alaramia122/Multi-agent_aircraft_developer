@@ -23,7 +23,7 @@ class AdapterWorkspaceReconciler:
     workspace for the same desired state.
     """
 
-    _WORKSPACE_METHODS = ("create_workspace", "apply_element", "apply_relation", "get_version")
+    _WORKSPACE_METHODS = ("create_workspace", "apply_element", "apply_relation", "get_workspace_version")
 
     def __init__(
         self, adapters: tuple[WorkspaceAdapter, ...], canonical: EngineeringRepository | None = None,
@@ -115,7 +115,7 @@ class AdapterWorkspaceReconciler:
 
         versions: list[ExternalVersion] = []
         for system in used:
-            version = await self._adapters[system].get_version()
+            version = await self._adapters[system].get_workspace_version(workspace.id)
             if version.system != system:
                 raise WorkspaceReconciliationError(
                     f"workspace adapter '{system}' returned version for '{version.system}'"

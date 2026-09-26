@@ -52,6 +52,9 @@ class FakeAdapter:
     async def get_version(self):
         return ExternalVersion(system=self.system_name, version="rev-1")
 
+    async def get_workspace_version(self, workspace_id):
+        return await self.get_version()
+
     async def create_workspace(self, workspace_id, source_version, change_set_hash):
         self.created.append((workspace_id, source_version, change_set_hash))
 
@@ -158,6 +161,32 @@ async def test_authoritative_source_version_comes_from_immutable_baseline():
     await reconciler.reconcile(workspace, EngineeringGraph(elements=[_element("capella", "A")]))
 
     assert adapter.created[0][1] == "model-rev-7"
+
+
+@pytest.mark.asyncio
+async def test_result_version_is_the_written_workspace_not_the_source_project():
+    class WorkspaceVersionAdapter(FakeAdapter):
+        async def get_workspace_version(self, workspace_id):
+            return ExternalVersion(system=self.system_name, version=f"workspace:{workspace_id}")
+
+    workspace = _workspace()
+    adapter = WorkspaceVersionAdapter("capella")
+    result = await AdapterWorkspaceReconciler((adapter,)).reconcile(
+        workspace, EngineeringGraph(elements=[_element("capella", "A")])
+    )
+
+    assert result == (ExternalVersion(system="capella", version=f"workspace:{workspace.id}"),)
+
+
+@pytest.mark.asyncio
+async def test_adapter_without_workspace_version_is_rejected_before_mutation():
+    adapter = FakeAdapter("capella")
+    adapter.get_workspace_version = None
+    with pytest.raises(WorkspaceReconciliationError, match="get_workspace_version"):
+        await AdapterWorkspaceReconciler((adapter,)).reconcile(
+            _workspace(), EngineeringGraph(elements=[_element("capella", "A")])
+        )
+    assert adapter.created == []
 
 
 @pytest.mark.asyncio
