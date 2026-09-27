@@ -78,7 +78,7 @@ def _workspace(root: Path, payload: dict[str, Any]) -> Path:
     return root / workspace_id
 
 
-def _verify_workspace(directory: Path, manifest: dict[str, Any]) -> str:
+def _verify_workspace(directory: Path, manifest: dict[str, Any], repository: Path) -> str:
     project = directory / "project"
     expected = manifest.get("elements")
     if not isinstance(expected, dict):
@@ -93,10 +93,16 @@ def _verify_workspace(directory: Path, manifest: dict[str, Any]) -> str:
         path = project / f"gateway-{element_id}.sdoc"
         if hashlib.sha256(path.read_bytes()).hexdigest() != record["sha256"]:
             raise ValueError("workspace artifact changed after publication")
+        if read_git_artifact(record["source_uri"], repository, suffix=".sdoc") != path.read_bytes():
+            raise ValueError("workspace artifact provenance does not match Git")
         matches = _requirements(documents, record["uid"])
         if len(matches) != 1 or matches[0].get("TITLE") != record["title"]:
             raise ValueError("published StrictDoc requirement cannot be read back")
-    return _digest(project)
+    # Bind source identity and every exact Git artifact reference into the
+    # durable version, as well as the saved SDoc content.
+    encoded = json.dumps({"sdoc_version": _digest(project), "manifest": manifest},
+                         sort_keys=True, separators=(",", ":")).encode()
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
 def handle(request: dict[str, Any], *, root: Path, repository: Path) -> dict[str, Any]:
@@ -128,7 +134,7 @@ def handle(request: dict[str, Any], *, root: Path, repository: Path) -> dict[str
                 manifest = _json_file(manifest_path)
                 if (manifest["source_version"], manifest["change_set_hash"]) != (version, change_hash):
                     raise ValueError("workspace already exists for a different source or change-set")
-                _verify_workspace(directory, manifest)
+                _verify_workspace(directory, manifest, repository)
                 return {}
             if _digest(source) != version:
                 raise ValueError("StrictDoc source version is stale")
@@ -153,7 +159,7 @@ def handle(request: dict[str, Any], *, root: Path, repository: Path) -> dict[str
             raise ValueError("workspace has not been created")
         manifest = _json_file(manifest_path)
         if operation == "get_workspace_version":
-            return {"version": _verify_workspace(directory, manifest)}
+            return {"version": _verify_workspace(directory, manifest, repository)}
         if operation == "apply_relation":
             raise ValueError("native StrictDoc relation mapping is not configured; refusing publication")
 
@@ -190,7 +196,7 @@ def handle(request: dict[str, Any], *, root: Path, repository: Path) -> dict[str
                 raise ValueError("artifact must contain exactly the matching requirement UID and TITLE")
             manifest["elements"][element_id] = record
             _save_manifest(manifest_path, manifest)
-            _verify_workspace(directory, manifest)
+            _verify_workspace(directory, manifest, repository)
         except Exception:
             if prior is None:
                 manifest["elements"].pop(element_id, None)

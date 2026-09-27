@@ -47,7 +47,9 @@ The bridge copies the committed bytes verbatim and verifies that official
 element's UID, title, and nonempty statement. It does not compose a statement from the canonical
 name. Repeated calls with the same workspace and change-set read back the
 saved files; changed content, source versions and hashes fail closed. The
-workspace version is the SHA-256 digest of its persisted `.sdoc` files.
+workspace version is a SHA-256 digest over its persisted `.sdoc` version and
+manifest, including the exact Git commit and artifact hashes. Each readback
+also compares the saved bytes with the referenced Git object.
 
 Native `apply_relation` is deliberately rejected until the mapping of Gateway
 relations to StrictDoc's document grammar is defined and tested. This writer is

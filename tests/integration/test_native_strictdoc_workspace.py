@@ -2,6 +2,7 @@
 
 import asyncio
 import hashlib
+import json
 import subprocess
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -95,6 +96,13 @@ def test_native_workspace_write_readback_replay_and_fail_closed(tmp_path, monkey
     written = root / workspace_id / "project" / f"gateway-{element['id']}.sdoc"
     written.write_text(written.read_text().replace("flight data", "other data"))
     with pytest.raises(ValueError, match="changed after publication"):
+        call("get_workspace_version", {})
+    written.write_bytes(artifact.read_bytes())
+    manifest_path = root / workspace_id / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["elements"][element["id"]]["source_uri"] = incomplete_uri
+    manifest_path.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match="provenance does not match Git"):
         call("get_workspace_version", {})
 
 
