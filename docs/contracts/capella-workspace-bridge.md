@@ -13,6 +13,8 @@ operator configured artifact repository. The JSON schema is
 must match the canonical element. The name and UUID are never used to invent
 the description. The native service checks the content digest again and saves
 the logical component with Python4Capella.
+The private HTTP request is signed with a dedicated HMAC-SHA256 secret shared
+only by Gateway and Capella. Both refuse mutations without a provisioned secret.
 
 Each UUID workspace copies the configured source project, binds its original
 file digest and change-set hash in a manifest, and verifies the persisted model

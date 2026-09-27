@@ -7,6 +7,8 @@ service boundary. The native service verifies the digest and saved model.
 from __future__ import annotations
 
 import base64
+import hashlib
+import hmac
 import json
 import os
 import sys
@@ -41,10 +43,15 @@ def handle(request: dict[str, object]) -> dict[str, object]:
         payload["artifact_base64"] = base64.b64encode(artifact).decode("ascii")
     outgoing = dict(request, payload=payload)
     encoded = json.dumps(outgoing, separators=(",", ":")).encode()
+    secret = os.environ.get("ENGINEERING_CAPELLA_BRIDGE_SECRET", "")
+    if len(secret) < 32:
+        raise ValueError("Capella service credential is not provisioned")
+    signature = hmac.new(secret.encode(), encoded, hashlib.sha256).hexdigest()
     try:
         with urllib.request.urlopen(
             urllib.request.Request(endpoint, data=encoded,
-                                   headers={"Content-Type": "application/json"}), timeout=520
+                                   headers={"Content-Type": "application/json",
+                                            "X-Bridge-Signature": signature}), timeout=520
         ) as result:
             response = json.load(result)
     except (urllib.error.URLError, TimeoutError) as exc:

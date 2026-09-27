@@ -26,6 +26,7 @@ def test_capella_artifact_is_forwarded_from_git(tmp_path, monkeypatch):
     uri = f"git-artifact://{commit}/engineering/component.json#sha256={hashlib.sha256(content).hexdigest()}"
     monkeypatch.setenv("ENGINEERING_CAPELLA_BRIDGE_URL", "http://capella-bridge:8010/bridge")
     monkeypatch.setenv("ENGINEERING_ARTIFACT_REPOSITORY", str(repository))
+    monkeypatch.setenv("ENGINEERING_CAPELLA_BRIDGE_SECRET", "s" * 32)
 
     class Response:
         def __enter__(self):
@@ -43,6 +44,11 @@ def test_capella_artifact_is_forwarded_from_git(tmp_path, monkeypatch):
 
         payload = json.loads(request.data)["payload"]
         assert base64.b64decode(payload["artifact_base64"]) == content
+        import hmac
+
+        assert request.get_header("X-bridge-signature") == hmac.new(
+            b"s" * 32, request.data, hashlib.sha256
+        ).hexdigest()
         return Response()
 
     with patch("engineering_gateway.infrastructure.capella_http_bridge.urllib.request.urlopen", receive):

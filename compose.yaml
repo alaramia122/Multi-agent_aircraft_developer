@@ -94,6 +94,7 @@ services:
       CAPELLA__PROJECT_PATH: /engineering/capella/${CAPELLA_MODEL_DIR:-target}
       CAPELLA__TIMEOUT_SECONDS: '540'
       ENGINEERING_CAPELLA_BRIDGE_URL: http://capella-bridge:8010/bridge
+      ENGINEERING_CAPELLA_BRIDGE_SECRET: ${CAPELLA_BRIDGE_SECRET:-}
     volumes:
       - strictdoc-projects:/engineering/strictdoc:ro
       - /opt/engineering-staging/engineering-artifacts:/engineering/artifacts:rw
