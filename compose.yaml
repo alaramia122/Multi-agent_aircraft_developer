@@ -89,11 +89,16 @@ services:
       BUDGET__ENABLED: 'true'
       BUDGET__LIMIT_KOPEKS: '${ENGINEERING_BUDGET_LIMIT_KOPEKS:-10000000}'
       REVIEW__REQUIRED: 'true'
-      CAPELLA__ENABLED: 'false'
+      CAPELLA__ENABLED: ${CAPELLA_ENABLED:-false}
+      CAPELLA__EXECUTABLE: /engineering/source/scripts/capella-workspace-bridge
+      CAPELLA__PROJECT_PATH: /engineering/capella/${CAPELLA_MODEL_DIR:-target}
+      CAPELLA__TIMEOUT_SECONDS: '540'
+      ENGINEERING_CAPELLA_BRIDGE_URL: http://capella-bridge:8010/bridge
     volumes:
       - strictdoc-projects:/engineering/strictdoc:ro
       - /opt/engineering-staging/engineering-artifacts:/engineering/artifacts:rw
       - ./:/engineering/source:ro
+      - capella-projects:/engineering/capella:ro
     ports:
       - '127.0.0.1:${GATEWAY_PORT:-8000}:8000'
     read_only: true
@@ -114,6 +119,9 @@ volumes:
   strictdoc-projects:
     external: true
     name: engineering-platform_strictdoc-projects
+  capella-projects:
+    external: true
+    name: engineering-capella-projects
 
 networks:
   gateway-internal:
