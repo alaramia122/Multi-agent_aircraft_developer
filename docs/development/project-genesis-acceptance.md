@@ -1,10 +1,10 @@
 # Project genesis and acceptance without a pre-existing UAV model
 
 The system is intended to help design a new UAV. A user-supplied Capella UAV
-model is **not** a prerequisite for completion or initial deployment. The
-current Capella bridge nevertheless requires an existing `.aird` project and
-Gateway has Capella disabled. This is an implementation gap to close, not a
-missing deliverable from the user.
+model is **not** a prerequisite for completion or initial deployment. The bridge needs a valid `.aird` entrypoint. Staging now supplies a verified
+empty Capella v7.0.1 starter and enables the adapter against that read-only
+source. General project creation and per-project starter provenance are still
+product work, not a missing model deliverable from the user.
 
 ## Required project initialization
 
@@ -39,3 +39,24 @@ The pre-operational acceptance does not need a user-designed UAV model. It
 *does* need project genesis and representative integration tests, because a
 successful sample write alone cannot show that a newly created project works.
 No certification or tool qualification claim follows from these checks.
+
+## Staging evidence (27 September 2026 UTC)
+
+The [clean starter bridge run](https://github.com/alaramia122/engineering-staging-deploy/actions/runs/36358724467)
+created the empty logical component package from hash-pinned official fixture
+files, independently read the model, wrote a committed diagnostic JSON logical
+component in an isolated workspace, repeated it without duplication, and
+rejected an untracked edit. Source digest was
+`sha256:c21e6f10c800ad72bd4ba62e2c4eab5df02f59e66e2375574e9e8d39d8122b6b`.
+The [Gateway adapter activation run](https://github.com/alaramia122/engineering-staging-deploy/actions/runs/36359953243)
+provisioned the clean starter as a read-only source, enabled the private HMAC
+bridge, resolved a diagnostic content artifact from an exact temporary Git
+commit, and confirmed native write, independent version readback and stable
+replay. The recorded disposable workspace version was
+`sha256:c3524c01565a76dd3b8410007d0cef8260a3ea123ec289f8f09df4c2885b6d46`.
+The initial adapter attempts failed and rolled back; PRs #20, #24 and #26 in
+the staging repository addressed the stable Eclipse configuration path, volume
+copy image, writable home and native output verification. The full redeploy
+acceptance remains separately tracked. Native relation mapping and canonical
+Capella `get_element` still fail closed; this is a logical component diagnostic,
+not completion of either domain MVP or a baseline.
