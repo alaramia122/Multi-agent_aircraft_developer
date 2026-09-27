@@ -24,6 +24,31 @@ Requirement text, rationale, status, custom fields and full relations remain aut
 
 The host running the adapter must have a compatible StrictDoc installation and its `strictdoc` executable available on `PATH`. The adapter intentionally does not embed or reimplement the StrictDoc parser.
 
-## Scope of this stage
+## Native workspace writer (isolated implementation)
 
-This adapter is read-only. Workspace mutation and controlled write-back belong to the later L2 workspace integration and must remain behind Gateway authorization, change-control and audit gates.
+`engineering_gateway.infrastructure.strictdoc_bridge` implements protocol v1
+for requirement elements. Set `STRICTDOC__WORKSPACE_MUTATIONS_ENABLED=true`,
+`STRICTDOC__WORKSPACE_BRIDGE_EXECUTABLE` to the executable
+`scripts/strictdoc-workspace-bridge`, and provide:
+
+- `ENGINEERING_STRICTDOC_WORKSPACES_ROOT`: writable directory for isolated copies;
+- `ENGINEERING_ARTIFACT_REPOSITORY`: local Git repository containing source artifacts.
+
+The source StrictDoc project may be read-only. Its `.sdoc` digest must equal the
+source baseline version passed to `create_workspace`. An element's `source_uri`
+must point to a complete, content-bearing SDoc document in an exact Git commit:
+
+```text
+git-artifact://<40-character-commit>/engineering/requirements/REQ-1.sdoc#sha256=<64-character-digest>
+```
+
+The bridge copies the committed bytes verbatim and verifies that official
+`strictdoc export --formats=json` reads exactly one requirement with the
+element's UID and title. It does not compose a statement from the canonical
+name. Repeated calls with the same workspace and change-set read back the
+saved files; changed content, source versions and hashes fail closed. The
+workspace version is the SHA-256 digest of its persisted `.sdoc` files.
+
+Native `apply_relation` is deliberately rejected until the mapping of Gateway
+relations to StrictDoc's document grammar is defined and tested. This writer is
+not yet wired into staging and does not establish complete MVP traceability.

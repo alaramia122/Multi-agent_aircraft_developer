@@ -265,6 +265,11 @@ class GovernedGatewayApplicationService(
             raise GatewayServiceError("review requires a ready workspace")
         if not workspace.validation_graph_hash or not workspace.reconciled_change_set_hash:
             raise GatewayServiceError("review requires validation and reconciliation evidence")
+        if not workspace.reconciled or self._workspace_changes is None:
+            raise GatewayServiceError("review requires current reconciliation evidence")
+        changes = await self._workspace_changes.get_changes(workspace_id)
+        if compute_change_set_hash(changes) != workspace.reconciled_change_set_hash:
+            raise GatewayServiceError("review reconciliation evidence is stale for the current change-set")
         if actor.actor_id == workspace.validation_evidence.get("prepared_by_actor_id"):
             raise GatewayServiceError("reviewer must be independent of the preparer")
         await self._record(
