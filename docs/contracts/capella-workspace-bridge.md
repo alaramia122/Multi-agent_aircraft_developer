@@ -1,9 +1,13 @@
 # Capella workspace bridge (candidate)
 
 The Gateway subprocess adapter speaks bridge protocol v1 to a private Capella
-service. Deployment is gated by `CAPELLA_ENABLED=false` until a target model is
-provisioned in the `engineering-capella-projects` volume and the native service
-has passed its own end-to-end write/readback check.
+service. The current implementation is gated by `CAPELLA_ENABLED=false` because
+it requires an existing `.aird` source project in the
+`engineering-capella-projects` volume. This is a bootstrap gap in the software,
+not an input required from the UAV designer. Before enabling Capella for a new
+project, implement a controlled project-creation path that produces a clean
+Capella starter project, registers its source digest and tests the native
+write/readback path. See `docs/development/project-genesis-acceptance.md`.
 
 Only `architecture` elements with `type_id=capella.logical_component` are mapped.
 Their `source_uri` must resolve to an immutable
@@ -27,4 +31,6 @@ containers. The bridge is not an L3 decision or baseline operation.
 
 The unit tests exercise the protocol and failure modes with a fake native
 process. Earlier VM evidence only proves a separate write on the official
-sample model. This candidate is not evidence of a write to the target UAV model.
+sample model. This candidate proves a native write on an isolated sample. The UAV model is
+expected to be created during use of this system; operational engineering
+acceptance will therefore follow project initialization, not precede it.
