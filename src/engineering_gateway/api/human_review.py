@@ -9,11 +9,13 @@ from typing import Any, cast
 from uuid import UUID
 
 import jwt
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.responses import HTMLResponse
 from jwt import PyJWKClient
 from pydantic import BaseModel, Field
 
 from engineering_gateway.application.gateway_service import Actor, GatewayServiceError
+from engineering_gateway.api.human_review_ui import HTML, SCRIPT
 from engineering_gateway.domain.audit import ActorType
 from engineering_gateway.domain.change_control import AuthorizationLevel
 
@@ -70,6 +72,26 @@ class HumanTokenVerifier:
 def create_human_review_app(service_factory: Any, verifier: HumanTokenVerifier) -> FastAPI:
     """Expose review evidence and decisions to authenticated human users only."""
     app = FastAPI(title="Engineering Gateway human review", docs_url=None, redoc_url=None, openapi_url=None)
+
+    @app.get("/", response_class=HTMLResponse)
+    async def human_ui() -> HTMLResponse:
+        issuer_origin = verifier.issuer.split("/realms/")[0]
+        return HTMLResponse(HTML, headers={
+            "Cache-Control": "no-store",
+            "Referrer-Policy": "no-referrer",
+            "Content-Security-Policy": (
+                "default-src 'none'; script-src 'self'; "
+                f"connect-src 'self' {issuer_origin}; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+            ),
+        })
+
+    @app.get("/ui.js")
+    async def human_ui_script() -> Response:
+        return Response(SCRIPT, media_type="application/javascript", headers={"Cache-Control": "no-store"})
+
+    @app.get("/config")
+    async def human_ui_config() -> dict[str, str]:
+        return {"issuer": verifier.issuer, "client_id": sorted(verifier.client_ids)[0]}
 
     async def actor_for(request: Request) -> Actor:
         headers = request.scope.get("headers", ())

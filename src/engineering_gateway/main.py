@@ -199,7 +199,8 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
                 require_independent_review=settings.review.required,
             ),
             HumanTokenVerifier(
-                settings.identity.issuer_url, settings.identity.audience,
+                settings.identity.human_issuer_url or settings.identity.issuer_url,
+                settings.identity.audience,
                 settings.identity.jwks_url, settings.identity.human_client_ids,
             ),
         )

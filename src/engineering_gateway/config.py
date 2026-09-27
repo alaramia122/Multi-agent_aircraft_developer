@@ -61,6 +61,7 @@ class IdentityConfig(BaseModel):
     jwks_url: str | None = None
     allowed_client_ids: tuple[str, ...] = ("engineering-gateway-mcp",)
     human_review_enabled: bool = False
+    human_issuer_url: str | None = None
     human_client_ids: tuple[str, ...] = ()
     mcp_service_token: SecretStr | None = Field(default=None, min_length=32)
     mcp_service_actor_id: str = "yandex-ai-studio"
@@ -111,7 +112,8 @@ class IdentityConfig(BaseModel):
         if self.bearer_tokens_enabled and self.trusted_proxy_headers_enabled:
             raise ValueError("choose exactly one request authentication mechanism")
         if self.human_review_enabled and (
-            not self.enabled or not self.issuer_url or not self.audience or not self.jwks_url
+            not self.enabled or not (self.human_issuer_url or self.issuer_url)
+            or not self.audience or not self.jwks_url
             or not self.human_client_ids or any(not item.strip() for item in self.human_client_ids)
         ):
             raise ValueError("human review requires OIDC issuer, audience, JWKS and client IDs")

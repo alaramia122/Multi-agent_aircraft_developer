@@ -33,6 +33,13 @@ def test_human_approval_requires_signed_user_token_with_l3_role():
             return None
 
     client = TestClient(create_human_review_app(Factory, verifier))
+    page = client.get("/")
+    assert page.status_code == 200
+    assert "frame-ancestors 'none'" in page.headers["content-security-policy"]
+    assert client.get("/config").json() == {
+        "issuer": "https://issuer.test", "client_id": "human-ui",
+    }
+    assert "code_challenge_method: 'S256'" in client.get("/ui.js").text
     path = f"/workspaces/{uuid4()}/approve"
 
     def token(*, client_id="human-ui", username="reviewer", roles=("gateway-approve",)):
