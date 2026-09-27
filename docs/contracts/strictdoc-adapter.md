@@ -44,7 +44,7 @@ git-artifact://<40-character-commit>/engineering/requirements/REQ-1.sdoc#sha256=
 
 The bridge copies the committed bytes verbatim and verifies that official
 `strictdoc export --formats=json` reads exactly one requirement with the
-element's UID and title. It does not compose a statement from the canonical
+element's UID, title, and nonempty statement. It does not compose a statement from the canonical
 name. Repeated calls with the same workspace and change-set read back the
 saved files; changed content, source versions and hashes fail closed. The
 workspace version is the SHA-256 digest of its persisted `.sdoc` files.

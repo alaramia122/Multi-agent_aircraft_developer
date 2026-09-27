@@ -15,3 +15,9 @@ rendered requirements or Capella model review.
 An authenticated human with the `gateway-approve` realm role can then call `POST /human/workspaces/{id}/approve`. The response contains the baseline ID and Git tag. `POST /human/workspaces/{id}/reject` accepts JSON `{"reason":"..."}`. Domain checks still require a ready workspace, current validation and reconciliation evidence, and an independent review when configured. MCP exposes none of these decisions.
 
 This endpoint does not replace the actual decision of a human approver. The current staging ingress and IdP need configuration and an end-to-end test with real user accounts before this route is available publicly.
+
+The staging Compose file defaults `HUMAN_REVIEW_ENABLED=false`. After the
+public IdP issuer, Keycloak client/audience mapper, and `/human` ingress have
+been verified, set `HUMAN_ISSUER_URL` to the public realm issuer and enable
+the flag in the VM's private Gateway environment file. Do not assign the
+MCP service client the human review client ID or an L3 capability.

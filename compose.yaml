@@ -60,6 +60,9 @@ services:
       IDENTITY__JWKS_URL: http://identity:8080/realms/engineering/protocol/openid-connect/certs
       IDENTITY__AUDIENCE: engineering-gateway
       IDENTITY__READINESS_URL: http://identity:8080/realms/engineering/.well-known/openid-configuration
+      IDENTITY__HUMAN_REVIEW_ENABLED: ${HUMAN_REVIEW_ENABLED:-false}
+      IDENTITY__HUMAN_ISSUER_URL: ${HUMAN_ISSUER_URL:-}
+      IDENTITY__HUMAN_CLIENT_IDS: '["engineering-human-review"]'
       IDENTITY__MCP_SERVICE_TOKEN: ${AI_STUDIO_MCP_BEARER_TOKEN:?Provision AI Studio MCP credential}
       IDENTITY__MCP_SERVICE_ACTOR_ID: yandex-ai-studio
       IDENTITY__MCP_SERVICE_AUTHORIZATION_LEVEL: L2_MODIFY_WORKSPACE
@@ -69,6 +72,10 @@ services:
       STRICTDOC__EXECUTABLE: strictdoc
       STRICTDOC__PROJECT_PATH: /engineering/strictdoc
       STRICTDOC__TIMEOUT_SECONDS: ${STRICTDOC_TIMEOUT_SECONDS:-60}
+      STRICTDOC__WORKSPACE_MUTATIONS_ENABLED: ${STRICTDOC_WORKSPACE_MUTATIONS_ENABLED:-false}
+      STRICTDOC__WORKSPACE_BRIDGE_EXECUTABLE: /engineering/source/scripts/strictdoc-workspace-bridge
+      ENGINEERING_STRICTDOC_WORKSPACES_ROOT: /engineering/artifacts/workspaces/strictdoc
+      ENGINEERING_ARTIFACT_REPOSITORY: /engineering/artifacts
       OPENPROJECT__ENABLED: 'true'
       OPENPROJECT__BASE_URL: ${OPENPROJECT_BASE_URL:?Set OPENPROJECT_BASE_URL in .env}
       OPENPROJECT__API_TOKEN: ${OPENPROJECT_API_TOKEN:?Set OPENPROJECT_API_TOKEN in .env}

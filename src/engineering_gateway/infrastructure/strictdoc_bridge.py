@@ -45,6 +45,21 @@ def _requirements(documents: list[dict[str, Any]], uid: str) -> list[dict[str, A
     return found
 
 
+def _all_requirements(documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    found: list[dict[str, Any]] = []
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            if node.get("_NODE_TYPE") == "REQUIREMENT":
+                found.append(node)
+            for child in node.get("NODES", []):
+                walk(child)
+
+    for document in documents:
+        walk(document)
+    return found
+
+
 def _json_file(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
@@ -148,6 +163,16 @@ def handle(request: dict[str, Any], *, root: Path, repository: Path) -> dict[str
         element_id = str(UUID(element["id"]))
         uid, title = element["external_id"], element["name"]
         content = read_git_artifact(element.get("source_uri"), repository, suffix=".sdoc")
+        with tempfile.TemporaryDirectory(prefix="strictdoc-artifact-") as candidate_dir:
+            (Path(candidate_dir) / "candidate.sdoc").write_bytes(content)
+            requirements = _all_requirements(_export(Path(candidate_dir)))
+            if (
+                len(requirements) != 1 or requirements[0].get("UID") != uid
+                or requirements[0].get("TITLE") != title
+                or not isinstance(requirements[0].get("STATEMENT"), str)
+                or not requirements[0]["STATEMENT"].strip()
+            ):
+                raise ValueError("Git artifact must contain one complete matching requirement")
         project = directory / "project"
         output = project / f"gateway-{element_id}.sdoc"
         record = {"uid": uid, "title": title, "sha256": hashlib.sha256(content).hexdigest(),

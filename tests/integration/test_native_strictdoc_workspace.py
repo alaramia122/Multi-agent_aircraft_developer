@@ -34,6 +34,11 @@ def test_native_workspace_write_readback_replay_and_fail_closed(tmp_path, monkey
         "[DOCUMENT]\nTITLE: Flight requirements\n\n[REQUIREMENT]\nUID: REQ-1\n"
         "TITLE: Flight requirement\nSTATEMENT: The aircraft shall record flight data.\n"
     )
+    missing_statement = artifact.parent / "REQ-2.sdoc"
+    missing_statement.write_text(
+        "[DOCUMENT]\nTITLE: Incomplete requirements\n\n[REQUIREMENT]\n"
+        "UID: REQ-2\nTITLE: Incomplete requirement\n"
+    )
     subprocess.run(["git", "-C", str(repository), "add", "."], check=True)
     subprocess.run(["git", "-C", str(repository), "-c", "user.name=Test", "-c",
                     "user.email=test@example.invalid", "commit", "-qm", "artifact"], check=True)
@@ -80,6 +85,12 @@ def test_native_workspace_write_readback_replay_and_fail_closed(tmp_path, monkey
         call("apply_relation", {"relation": {"id": str(uuid4())}})
     with pytest.raises(ValueError, match="source_uri is required"):
         call("apply_element", {"element": {**element, "source_uri": None}})
+    incomplete_uri = (f"git-artifact://{commit}/engineering/requirements/REQ-2.sdoc"
+                      f"#sha256={hashlib.sha256(missing_statement.read_bytes()).hexdigest()}")
+    with pytest.raises(ValueError, match="complete matching requirement"):
+        call("apply_element", {"element": {**element, "id": str(uuid4()),
+                                    "external_id": "REQ-2", "name": "Incomplete requirement",
+                                    "source_uri": incomplete_uri}})
 
     written = root / workspace_id / "project" / f"gateway-{element['id']}.sdoc"
     written.write_text(written.read_text().replace("flight data", "other data"))
