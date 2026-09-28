@@ -47,7 +47,7 @@ HTML = """<!doctype html>
         <div>
 <div class="eyebrow">Проектирование авионики БПЛА</div>
           <h1 id="hero-title">От идеи до проверяемой архитектуры</h1>
-          <p>Здесь видны роли инженерной команды, данные выбранной рабочей области и путь к решению человека. Начните с входа и загрузки пакета по UUID.</p>
+          <p>Начните новый проект с собственной цели и ограничений. Здесь также видны роли команды, данные рабочих областей и путь к решению человека.</p>
           <div class="hero-actions">
 <a class="button button-primary" href="#project">Открыть проект <span aria-hidden="true">↗</span>
 </a>
@@ -113,7 +113,21 @@ HTML = """<!doctype html>
 <h2 id="project-title">Структура проекта</h2>
 </div>
 </div>
-          <p class="muted">Показываются фактические элементы и связи в выбранной рабочей области. Это её набор изменений, а не вся утверждённая модель.</p>
+          <p class="muted">Черновик проекта хранит введённые вами исходные данные. Он не создаёт требований, модели или baseline автоматически.</p>
+          <div class="project-start">
+<h3>Новый проект с нуля</h3>
+<label for="new-name">Название</label>
+<input id="new-name" maxlength="255" placeholder="Например: демонстратор авионики">
+<label for="new-goal">Цель и назначение</label>
+<textarea id="new-goal" maxlength="10000" rows="3" placeholder="Что должен делать проект и для кого? Это исходный текст автора, не готовое требование."></textarea>
+<label for="new-constraints">Исходные ограничения (если известны)</label>
+<textarea id="new-constraints" maxlength="10000" rows="2" placeholder="Укажите известные ограничения или оставьте пустым."></textarea>
+<button id="create-project" class="button button-primary">Создать черновик</button>
+<small>После сохранения показываются автор, версия и хэш исходного текста. Агентная обработка пока не запускается.</small>
+<div id="draft-list" class="draft-list">Войдите, чтобы увидеть ваши черновики.</div>
+</div>
+          <h3>Инженерная рабочая область</h3>
+          <p class="muted">Фактические элементы и связи выбранной области — её изменения, а не вся утверждённая модель.</p>
           <div class="workspace-form">
 <label for="workspace">UUID рабочей области</label>
 <div class="input-row">
@@ -510,6 +524,14 @@ color:#809396}
 font-size:11px;
 font-weight:700;
 color:#47606a}
+.project-start{display:grid;gap:9px;border:1px solid #dcebe4;border-radius:10px;background:#f8fbf9;padding:16px;margin-bottom:22px}
+.project-start h3{margin:0 0 4px;font-size:15px}
+.project-start label{font-size:11px;font-weight:700;color:#47606a}
+.project-start small{font-size:10px;color:#72868b;line-height:1.5}
+.project-start .button{justify-self:start}
+.draft-list{display:grid;gap:7px;margin-top:6px}
+.draft-item{border:1px solid #dce8e3;border-radius:7px;background:white;padding:10px;font-size:11px;overflow-wrap:anywhere}
+.draft-item strong,.draft-item small{display:block;margin-bottom:4px}
 .input-row{display:flex;
 gap:8px;
 margin:8px 0 5px}
@@ -804,7 +826,7 @@ async function finishLogin() {
   $('identity').textContent = 'Вход выполнен';
   $('login').hidden = true;
   status('Вход выполнен. Токен хранится только в памяти этой вкладки.');
-  await loadActivity();
+  await Promise.all([loadActivity(), loadProjects()]);
 }
 async function api(path, method='GET', body) {
   if (!token) throw Error('Сначала войдите через Keycloak');
@@ -825,6 +847,21 @@ function element(tag, className, content) {
 async function loadActivity() {
   const data = await api('assistant/activity');
   renderAgents(data);
+}
+async function loadProjects() {
+  const data = await api('projects');
+  const list = $('draft-list');
+  list.replaceChildren();
+  if (!data.projects.length) { list.append(element('p', 'empty', 'Пока нет черновиков. Опишите первый проект выше.')); return; }
+  for (const project of data.projects) {
+    const card = element('div', 'draft-item');
+    card.append(element('strong', '', project.name),
+      element('small', '', 'Черновик · версия ' + project.version + ' · ' + project.created_at),
+      element('div', '', project.goal),
+      element('small', '', 'Автор: ' + project.author_id + ' · SHA-256: ' + project.source_hash));
+    if (project.constraints) card.append(element('div', '', 'Ограничения: ' + project.constraints));
+    list.append(card);
+  }
 }
 function renderAgents(data) {
   const list = $('agent-list');
@@ -910,6 +947,13 @@ function selectedWorkspace() {
 window.addEventListener('DOMContentLoaded', run(async () => {
   await Promise.all([loadConfig(), loadStructure()]); await finishLogin();
   $('login').onclick = run(login);
+  $('create-project').onclick = run(async () => {
+    const name = $('new-name').value.trim(), goal = $('new-goal').value.trim();
+    if (name.length < 2 || goal.length < 10) throw Error('Укажите название и цель не короче 10 символов');
+    const draft = await api('projects', 'POST', {name, goal, constraints:$('new-constraints').value.trim()});
+    await loadProjects();
+    status('Черновик ' + draft.id + ' сохранён, версия ' + draft.version + '. Это исходные данные, не baseline.');
+  });
   $('workspace').addEventListener('input', () => {
     for (const id of ['review-action', 'approve', 'reject']) $(id).disabled = true;
     $('metric-review').textContent = 'Не проверена';

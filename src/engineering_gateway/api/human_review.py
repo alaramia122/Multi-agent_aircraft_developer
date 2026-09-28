@@ -15,13 +15,14 @@ import jwt
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
 from jwt import PyJWKClient
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from engineering_gateway.application.gateway_service import Actor, GatewayServiceError
 from engineering_gateway.api.human_review_ui import HTML, SCRIPT, STYLES
 from engineering_gateway.domain.audit import ActorType
 from engineering_gateway.domain.change_control import AuthorizationLevel
 from engineering_gateway.infrastructure.ai_studio_prompt import AiStudioUnavailable
+from engineering_gateway.infrastructure.project_drafts import ProjectDraftStore
 
 
 class ReviewDecision(BaseModel):
@@ -43,6 +44,31 @@ class AssistantQuestion(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
     history: list[ChatTurn] = Field(default_factory=list, max_length=6)
     workspace_id: UUID | None = None
+
+
+class NewProject(BaseModel):
+    name: str = Field(min_length=2, max_length=255)
+    goal: str = Field(min_length=10, max_length=10000)
+    constraints: str = Field(default="", max_length=10000)
+
+    @field_validator("name", "goal", "constraints")
+    @classmethod
+    def normalize_text(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("name")
+    @classmethod
+    def meaningful_name(cls, value: str) -> str:
+        if len(value) < 2:
+            raise ValueError("project name is required")
+        return value
+
+    @field_validator("goal")
+    @classmethod
+    def meaningful_goal(cls, value: str) -> str:
+        if len(value) < 10:
+            raise ValueError("project goal is required")
+        return value
 
 
 class AssistantClient(Protocol):
@@ -108,6 +134,7 @@ def create_human_review_app(
     service_factory: Any, verifier: HumanTokenVerifier,
     assistant_client: AssistantClient | None = None,
     activity_provider: AgentActivityProvider | None = None,
+    project_store: ProjectDraftStore | None = None,
 ) -> FastAPI:
     """Expose review evidence and decisions to authenticated human users only."""
     app = FastAPI(title="Engineering Gateway human review", docs_url=None, redoc_url=None, openapi_url=None)
@@ -159,6 +186,34 @@ def create_human_review_app(
             raise HTTPException(403, str(exc)) from exc
         except (UnicodeDecodeError, ValueError, jwt.PyJWTError, OSError) as exc:
             raise HTTPException(401, "invalid human bearer token") from exc
+
+    @app.get("/projects")
+    async def list_projects(request: Request) -> dict[str, object]:
+        actor = await actor_for(request)
+        if project_store is None:
+            raise HTTPException(503, "project drafts are not configured")
+        return {"projects": await project_store.list_for(actor.actor_id)}
+
+    @app.post("/projects", status_code=201)
+    async def create_project(project: NewProject, request: Request) -> dict[str, object]:
+        actor = await actor_for(request)
+        if actor.authorization_level is AuthorizationLevel.L0_READ:
+            raise HTTPException(403, "human proposal role required")
+        if project_store is None:
+            raise HTTPException(503, "project drafts are not configured")
+        return await project_store.create(
+            actor.actor_id, project.name.strip(), project.goal.strip(), project.constraints.strip(),
+        )
+
+    @app.get("/projects/{project_id}")
+    async def get_project(project_id: UUID, request: Request) -> dict[str, object]:
+        actor = await actor_for(request)
+        if project_store is None:
+            raise HTTPException(503, "project drafts are not configured")
+        project = await project_store.get_for(actor.actor_id, project_id)
+        if project is None:
+            raise HTTPException(404, "project draft not found")
+        return project
 
     @app.get("/assistant/activity")
     async def agent_activity(request: Request) -> dict[str, object]:

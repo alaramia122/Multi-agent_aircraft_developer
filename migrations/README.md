@@ -22,6 +22,7 @@ The current active migration sequence is:
 - `0012_workspace_optimistic_concurrency.sql` — workspace optimistic-concurrency version token;
 - `0013_workspace_git_ref.sql` — immutable Gateway reference to the workspace Git ref;
 - `0014_deployment_readiness_schema.sql` — deployment readiness schema-version marker.
+- `0015_project_drafts.sql` — immutable human-authored project briefs before any baseline exists.
 
 Migration `0007` is intentionally absent. Numeric gaps are historical and must not be reused.
 
@@ -37,6 +38,7 @@ Current schema responsibilities:
 - `workspaces` — workspace provenance, profile binding, validation evidence, reconciliation evidence, optimistic-concurrency version, and Git reference;
 - `audit_events` — append-oriented governance audit trail;
 - `gateway_schema_version` — exact deployed Gateway schema version used by readiness checks.
+- `project_drafts` — owner-scoped initial goal and constraints with provenance hash; no engineering requirements or approved baseline.
 
 The workspace evidence fields are intentionally metadata rather than an engineering model:
 
