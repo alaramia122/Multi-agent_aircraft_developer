@@ -16,7 +16,7 @@ stdin/stdout:
 ```json
 {
   "protocol": 1,
-  "operation": "get_element | get_version | create_workspace | apply_element | apply_relation",
+  "operation": "get_element | get_version | get_workspace_version | create_workspace | apply_element | apply_relation",
   "project_path": "...",
   "payload": {}
 }
@@ -31,7 +31,7 @@ stdin/stdout:
 }
 ```
 
-`get_element` additionally returns `element`, and `get_version` returns `version`.
+`get_element` additionally returns `element`; `get_version` returns the source version, while `get_workspace_version` returns the persisted version for the requested workspace UUID.
 
 ### Failed response
 

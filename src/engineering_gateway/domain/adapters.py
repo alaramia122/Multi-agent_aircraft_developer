@@ -52,6 +52,10 @@ class WorkspaceAdapter(ReadAdapter, Protocol):
 
     async def apply_relation(self, workspace_id: UUID, relation: EngineeringRelation) -> None: ...
 
+    async def get_workspace_version(self, workspace_id: UUID) -> ExternalVersion:
+        """Return the persisted version of this workspace, not the source project."""
+        ...
+
 
 class GitAdapter(Protocol):
     """Git operations required for reproducible Gateway baselines."""

@@ -43,6 +43,16 @@ async def test_get_snapshot_resolves_existing_ref(git_repository: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_deployment_git_adapter_refuses_other_repositories(git_repository: Path, tmp_path: Path) -> None:
+    adapter = LocalGitAdapter(repository_root=str(git_repository))
+
+    with pytest.raises(ValueError, match="outside the configured"):
+        await adapter.get_snapshot(str(tmp_path / "other"), "HEAD")
+    with pytest.raises(ValueError, match="outside the configured"):
+        await adapter.create_tag(str(tmp_path / "other"), "baseline-unsafe", "a" * 40)
+
+
+@pytest.mark.asyncio
 async def test_get_snapshot_rejects_unknown_ref(git_repository: Path) -> None:
     adapter = LocalGitAdapter()
 

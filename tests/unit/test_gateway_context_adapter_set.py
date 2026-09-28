@@ -35,9 +35,10 @@ async def test_governed_context_builds_reconciler_from_workspace_adapters(
     adapter_set = ExternalAdapterSet(workspace_adapters=(workspace_adapter,))
 
     class FakeReconciler:
-        def __init__(self, adapters, *, canonical) -> None:
+        def __init__(self, adapters, *, canonical, baselines) -> None:
             captured["adapters"] = adapters
             captured["canonical"] = canonical
+            captured["baselines"] = baselines
 
     class FakeService:
         def __init__(self, **kwargs) -> None:

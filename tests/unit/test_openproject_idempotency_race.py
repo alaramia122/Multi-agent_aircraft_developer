@@ -52,7 +52,7 @@ async def test_create_change_request_recovers_from_concurrent_409(
             get_calls += 1
             if get_calls == 1:
                 return _response({"_embedded": {"elements": []}})
-            return _response({"_embedded": {"elements": [{"id": 321}]}})
+            return _response({"_embedded": {"elements": [{"id": 321, "subject": "[CR-123] Change title"}]}})
         raise HTTPError(request.full_url, 409, "conflict", {}, io.BytesIO())
 
     monkeypatch.setattr(

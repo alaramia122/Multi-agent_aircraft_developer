@@ -104,6 +104,9 @@ class FakeWorkspaceAdapter:
     async def get_version(self) -> ExternalVersion:
         return ExternalVersion(system=self.system_name, version=f"{self.system_name}-rev-178")
 
+    async def get_workspace_version(self, workspace_id) -> ExternalVersion:
+        return await self.get_version()
+
     async def create_workspace(self, workspace_id, source_version, change_set_hash):
         self.created.append((workspace_id, source_version, change_set_hash))
 

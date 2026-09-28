@@ -75,6 +75,22 @@ async def test_get_version_delegates_to_bridge(
 
 
 @pytest.mark.asyncio
+async def test_workspace_version_requires_persisted_bridge_version(
+    adapter: LocalCapellaAdapter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace_id = uuid4()
+
+    async def fake_run(operation: str, payload: dict[str, object]) -> dict[str, object]:
+        assert operation == "get_workspace_version"
+        assert payload == {"workspace_id": str(workspace_id)}
+        return {"protocol": 1, "ok": True, "version": "workspace-revision-2"}
+
+    monkeypatch.setattr(adapter, "_run", fake_run)
+    version = await adapter.get_workspace_version(workspace_id)
+    assert version.version == "workspace-revision-2"
+
+
+@pytest.mark.asyncio
 async def test_workspace_operation_passes_uuid_and_change_set_hash(
     adapter: LocalCapellaAdapter, monkeypatch: pytest.MonkeyPatch
 ) -> None:

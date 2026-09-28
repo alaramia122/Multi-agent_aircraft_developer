@@ -166,10 +166,10 @@ class LocalOpenProjectAdapter:
 
     def _find_by_subject(self, subject: str) -> str | None:
         filters = json.dumps(
-            [{"subject": {"operator": "=", "values": [subject]}}],
+            [{"subject": {"operator": "~", "values": [subject]}}],
             separators=(",", ":"),
         )
-        query = urlencode({"filters": filters, "pageSize": "2"})
+        query = urlencode({"filters": filters, "pageSize": "100"})
         response = self._request_json(
             "GET",
             f"/api/v3/projects/{self._config.project_id}/work_packages?{query}",
@@ -180,13 +180,20 @@ class LocalOpenProjectAdapter:
         elements = embedded.get("elements")
         if not isinstance(elements, list):
             raise OpenProjectAdapterError("OpenProject collection has no elements list")
-        if len(elements) > 1:
+        total = response.get("total", len(elements))
+        if not isinstance(total, int) or total > len(elements):
+            raise OpenProjectAdapterError("OpenProject idempotency lookup was incomplete")
+        exact = [
+            item for item in elements
+            if isinstance(item, dict) and item.get("subject") == subject
+        ]
+        if len(exact) > 1:
             raise OpenProjectAdapterError(
                 "multiple OpenProject work packages match the idempotency key"
             )
-        if not elements:
+        if not exact:
             return None
-        identifier = elements[0].get("id") if isinstance(elements[0], dict) else None
+        identifier = exact[0].get("id")
         if not isinstance(identifier, int) or identifier <= 0:
             raise OpenProjectAdapterError("OpenProject idempotency lookup returned an invalid id")
         return str(identifier)

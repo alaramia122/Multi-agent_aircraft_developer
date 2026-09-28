@@ -11,7 +11,8 @@ import pytest
 from engineering_gateway.application.gateway_service import Actor, GatewayServiceError
 from engineering_gateway.domain.adapters import ExternalVersion
 from engineering_gateway.domain.audit import ActorType
-from engineering_gateway.domain.baselines import Baseline
+from engineering_gateway.domain.baselines import Baseline, ExternalSystemVersion
+from engineering_gateway.domain.budget import BudgetGate, BudgetLine, BudgetPlan
 from engineering_gateway.domain.change_control import (
     AuthorizationLevel,
     ChangeRequest,
@@ -52,6 +53,9 @@ class FakeWorkspaceAdapter:
     async def get_version(self) -> ExternalVersion:
         self.operations.append("get_version")
         return ExternalVersion(system=self.system_name, version="integration-rev-1")
+
+    async def get_workspace_version(self, workspace_id: UUID) -> ExternalVersion:
+        return await self.get_version()
 
     async def create_workspace(
         self, workspace_id: UUID, source_version: str, change_set_hash: str
@@ -121,6 +125,7 @@ async def test_change_request_workspace_validation_reconciliation_and_approval_e
                     name="source-baseline",
                     git_repository=str(repository),
                     git_commit=source_commit,
+                    external_versions=(ExternalSystemVersion(system="integration", version="integration-rev-1"),),
                 )
             )
             await SqlAlchemyChangeRequestRepository(session).create(
@@ -137,6 +142,8 @@ async def test_change_request_workspace_validation_reconciliation_and_approval_e
         async with governed_gateway_context(
             database,
             git=LocalGitAdapter(),
+            budget_gate=BudgetGate(10_000_000),
+            require_independent_review=True,
             adapter_set=ExternalAdapterSet(
                 read_adapters=(adapter,), workspace_adapters=(adapter,)
             ),
@@ -155,8 +162,29 @@ async def test_change_request_workspace_validation_reconciliation_and_approval_e
             )
             await service.save_workspace_element(l2, element, workspace.id)
 
+            with pytest.raises(GatewayServiceError, match="budget plan"):
+                await service.prepare_for_approval(
+                    l2, workspace.id, profile_id=profile.id, profile_version=profile.version
+                )
+
+            too_expensive = BudgetPlan(lines=(BudgetLine(
+                id="hardware", description="Avionics hardware", quantity=1,
+                unit_cost_kopeks=10_000_001, source_uri="git:cost-estimate",
+            ),))
+            with pytest.raises(GatewayServiceError, match="exceeds limit"):
+                await service.prepare_for_approval(
+                    l2, workspace.id, profile_id=profile.id,
+                    profile_version=profile.version, budget_plan=too_expensive,
+                )
+
+            budget = BudgetPlan(lines=(BudgetLine(
+                id="hardware", description="Avionics hardware", quantity=1,
+                unit_cost_kopeks=9_000_000, source_uri="git:cost-estimate",
+            ),), contingency_kopeks=1_000_000)
+
             prepared = await service.prepare_for_approval(
-                l2, workspace.id, profile_id=profile.id, profile_version=profile.version
+                l2, workspace.id, profile_id=profile.id, profile_version=profile.version,
+                budget_plan=budget,
             )
             assert prepared.valid
 
@@ -168,6 +196,25 @@ async def test_change_request_workspace_validation_reconciliation_and_approval_e
                 ExternalVersion(system="integration", version="integration-rev-1"),
             )
             assert adapter.operations == ["create_workspace", "apply_element", "get_version"]
+
+            with pytest.raises(GatewayServiceError, match="independent review"):
+                await service.approve_workspace(approver, workspace.id)
+            reviewer = Actor("reviewer-agent", ActorType.AI, AuthorizationLevel.L1_PROPOSE)
+            with pytest.raises(GatewayServiceError, match="independent of the preparer"):
+                await service.record_independent_review(
+                    l2, workspace.id, accepted=True,
+                    reason="self review", evidence_uri="git:review-1",
+                )
+            await service.record_independent_review(
+                reviewer, workspace.id, accepted=False,
+                reason="unresolved verification gap", evidence_uri="git:review-2",
+            )
+            with pytest.raises(GatewayServiceError, match="independent review"):
+                await service.approve_workspace(approver, workspace.id)
+            await service.record_independent_review(
+                reviewer, workspace.id, accepted=True,
+                reason="gap closed; evidence checked", evidence_uri="git:review-3",
+            )
 
             baseline = await service.approve_workspace(approver, workspace.id)
             assert baseline.git_commit == source_commit

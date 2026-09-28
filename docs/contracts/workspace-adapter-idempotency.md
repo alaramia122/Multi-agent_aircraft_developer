@@ -21,6 +21,8 @@ Every `WorkspaceAdapter` implementation must treat repeated calls for the same `
 
 The subsequent `apply_element` and `apply_relation` operations use `workspace_id` as their workspace scope. The external adapter/bridge is responsible for retaining the change-set identity established by `create_workspace` and making repeated element/relation publication safe.
 
+After applying changes, `get_workspace_version(workspace_id)` must return a durable version of that exact external workspace. It must fail if the workspace is absent, incomplete, or cannot be read back. `get_version()` remains a read of the source project and cannot serve as evidence of workspace publication. The returned workspace version is stored with reconciliation evidence and later in the baseline.
+
 ## Bridge boundary
 
 For bridge-backed adapters, the Gateway sends the following fields in `create_workspace`:
@@ -51,7 +53,7 @@ Gateway retry B
     +--> create_workspace(workspace, same hash)  -- replay
     +--> apply_element(...)                       -- no duplicate effect
     +--> apply_relation(...)                      -- no duplicate effect
-    +--> get_version()
+    +--> get_workspace_version(workspace_id)
     +--> PostgreSQL commit
 ```
 

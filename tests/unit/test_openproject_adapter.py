@@ -111,7 +111,7 @@ async def test_create_change_request_returns_existing_id_for_idempotency_key(
     def fake_urlopen(request: Request, timeout: float) -> _Response:
         calls.append(request.method)
         if request.method == "GET":
-            return _response({"_embedded": {"elements": [{"id": 321}]}})
+            return _response({"_embedded": {"elements": [{"id": 321, "subject": "[CR-123] Change title"}]}})
         return _response({"id": 999})
 
     monkeypatch.setattr(
@@ -124,6 +124,25 @@ async def test_create_change_request_returns_existing_id_for_idempotency_key(
 
     assert identifier == "321"
     assert calls == ["GET"]
+
+
+def test_idempotency_search_uses_supported_contains_filter_then_exact_match(
+    adapter: LocalOpenProjectAdapter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured = []
+
+    def fake_urlopen(request: Request, timeout: float) -> _Response:
+        captured.append(request.full_url)
+        return _response({"total": 2, "_embedded": {"elements": [
+            {"id": 123, "subject": "[CR-123] Change title (copy)"},
+            {"id": 321, "subject": "[CR-123] Change title"},
+        ]}})
+
+    monkeypatch.setattr("engineering_gateway.infrastructure.openproject_adapter.urlopen", fake_urlopen)
+    assert adapter._find_by_subject("[CR-123] Change title") == "321"
+    from urllib.parse import parse_qs, urlsplit
+    filters = json.loads(parse_qs(urlsplit(captured[0]).query)["filters"][0])
+    assert filters == [{"subject": {"operator": "~", "values": ["[CR-123] Change title"]}}]
 
 
 @pytest.mark.asyncio

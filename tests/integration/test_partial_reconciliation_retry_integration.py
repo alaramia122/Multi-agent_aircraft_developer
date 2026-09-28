@@ -71,6 +71,9 @@ class StatefulWorkspaceAdapter:
         self.operations.append("get_version")
         return ExternalVersion(system=self.system_name, version=f"{self.system_name}-rev-1")
 
+    async def get_workspace_version(self, workspace_id: UUID) -> ExternalVersion:
+        return await self.get_version()
+
     async def create_workspace(
         self, workspace_id: UUID, source_version: str, change_set_hash: str
     ) -> None:

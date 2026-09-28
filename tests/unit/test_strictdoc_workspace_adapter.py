@@ -81,6 +81,19 @@ async def test_apply_element_serializes_canonical_element(
 
 
 @pytest.mark.asyncio
+async def test_workspace_version_fails_closed_without_durable_version(
+    adapter: LocalStrictDocWorkspaceAdapter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def fake_run(operation: str, payload: dict[str, object]) -> dict[str, object]:
+        assert operation == "get_workspace_version"
+        return {"protocol": 1, "ok": True}
+
+    monkeypatch.setattr(adapter, "_run", fake_run)
+    with pytest.raises(StrictDocWorkspaceAdapterError, match="no workspace version"):
+        await adapter.get_workspace_version(uuid4())
+
+
+@pytest.mark.asyncio
 async def test_bridge_rejects_unexpected_operation(
     adapter: LocalStrictDocWorkspaceAdapter, monkeypatch: pytest.MonkeyPatch
 ) -> None:

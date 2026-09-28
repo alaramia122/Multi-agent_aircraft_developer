@@ -62,7 +62,7 @@ The smoke test requires:
 
 - HTTP liveness returns 200;
 - readiness returns 200 and `status=ready`;
-- PostgreSQL is ready at schema version 14;
+- PostgreSQL is ready at schema version 15;
 - Git repository readiness is `ready`;
 - optional external integrations are explicitly `disabled`.
 
