@@ -295,7 +295,9 @@ def create_human_review_app(
                 "A project draft is only the human's stated goal and constraints. "
                 "Ask only questions essential for the next decision. When enough information is "
                 "available, summarize established facts and uncertainties and suggest the next "
-                "action in the portal. Do not keep asking for optional details. Do not invent "
+                "engineering action. The browser currently has no project-genesis transaction "
+                "or requirement authoring action; say so rather than inventing a button. "
+                "Do not keep asking for optional details. Do not invent "
                 "approved requirements, models, agent execution or baseline. Never make an L3 decision."
             ),
             "project_draft": project_context,
