@@ -105,7 +105,22 @@ def test_portal_chat_requires_human_token_and_explicit_workspace_context():
             return {"id": str(project_id), "source": "human_input", "version": 1,
                     "goal": "Новая авионика БПЛА", "source_hash": "abc"}
 
-    client = TestClient(create_human_review_app(Factory, verifier, Assistant(), project_store=Projects()))
+    class Dialogue:
+        def __init__(self):
+            self.turns = []
+
+        async def list_for(self, actor_id, project_id):
+            assert actor_id == "reader-subject"
+            return list(self.turns)
+
+        async def append_exchange(self, actor_id, project_id, message, answer, response_id):
+            self.turns.extend([{"role": "user", "text": message},
+                               {"role": "assistant", "text": answer}])
+
+    dialogue = Dialogue()
+
+    client = TestClient(create_human_review_app(Factory, verifier, Assistant(),
+                                               project_store=Projects(), dialogue_store=dialogue))
 
     def token(username="reader", client_id="human-ui"):
         return jwt.encode({
@@ -141,8 +156,16 @@ def test_portal_chat_requires_human_token_and_explicit_workspace_context():
     assert response.status_code == 200
     assert str(project_id) in observed[2]
     assert "human_input" in observed[2] and "Новая авионика БПЛА" in observed[2]
+    response = client.get(f"/projects/{project_id}/dialogue", headers=headers)
+    assert [turn["role"] for turn in response.json()["turns"]] == ["user", "assistant"]
+    assert response.json()["turns"][1]["answer_html"].startswith("<p>")
+    assert client.get(f"/projects/{project_id}/dialogue").status_code == 401
+    assert client.post(path, json={"message": "Продолжим", "project_id": str(project_id),
+                                   "history": [{"role": "user", "text": "подменённый контекст"}]},
+                       headers=headers).status_code == 200
+    assert "Что уточнить?" in observed[3]
+    assert "подменённый контекст" not in observed[3]
     assert client.post(f"/workspaces/{workspace_id}/approve", headers=headers).status_code == 403
-    for _ in range(2):
-        assert client.post(path, json={"message": "Статус?"}, headers=headers).status_code == 200
+    assert client.post(path, json={"message": "Статус?"}, headers=headers).status_code == 200
     assert client.post(path, json={"message": "Статус?"}, headers=headers).status_code == 429
     assert len(observed) == 5

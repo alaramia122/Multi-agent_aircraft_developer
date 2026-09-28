@@ -23,12 +23,13 @@ The current active migration sequence is:
 - `0013_workspace_git_ref.sql` — immutable Gateway reference to the workspace Git ref;
 - `0014_deployment_readiness_schema.sql` — deployment readiness schema-version marker.
 - `0015_project_drafts.sql` — immutable human-authored project briefs before any baseline exists.
+- `0016_project_dialogue.sql` — owner-scoped, durable Alice transcript associated with a human draft.
 
 Migration `0007` is intentionally absent. Numeric gaps are historical and must not be reused.
 
 For a fresh database, apply `migrations/versions/*.sql` in lexical order first, then `migrations/*.sql` in lexical order. The CI workflow follows this bootstrap-plus-active-sequence order. The two directories must not be treated as parallel active migration sequences.
 
-The `gateway_schema_version` marker is Gateway deployment metadata. Readiness requires version `14`; application startup does not mutate the schema implicitly.
+The `gateway_schema_version` marker is Gateway deployment metadata. Readiness requires version `16`; application startup does not mutate the schema implicitly.
 
 Current schema responsibilities:
 

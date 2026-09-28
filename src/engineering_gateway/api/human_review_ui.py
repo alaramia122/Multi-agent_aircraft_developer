@@ -173,7 +173,8 @@ HTML = """<!doctype html>
 </div>
 <span id="alice-state" class="badge">Ожидает запроса</span>
 </div>
-          <p class="muted">Поможет разобраться в данных и следующем шаге. Его ответ не является проверкой или утверждением baseline.</p>
+          <p class="muted">Поможет разобраться в данных и следующем шаге. Диалог сохраняется для выбранного проекта
+            и восстановится после обновления страницы. Ответ не является проверкой или утверждением baseline.</p>
           <div id="chat-project" class="chat-project">Черновик проекта не выбран. Выберите его в разделе «Структура проекта», чтобы обсудить исходную цель.</div>
           <div id="conversation" class="conversation" role="log" aria-live="polite">
 <div class="welcome">
@@ -834,7 +835,6 @@ const b64url = bytes => btoa(String.fromCharCode(...new Uint8Array(bytes)))
   .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 let config, token, loadedPackage, selectedProjectId;
 let refreshToken, tokenExpiresAt = 0;
-const dialogue = [];
 const redirect = location.origin + '/human/';
 const sessionIntent = 'gateway_session_intent';
 async function loadConfig() {
@@ -926,6 +926,7 @@ async function loadActivity() {
 function selectProject(project, discuss=false) {
   selectedProjectId = project.id;
   sessionStorage.setItem('gateway_selected_project', project.id);
+  loadDialogue(project.id).catch(error => status(error.message, true));
   const stage = project.state === 'draft' && !project.baseline_id ? 'draft' : null;
   for (const item of document.querySelectorAll('.lifecycle-steps li')) {
     const current = item.dataset.stage === stage;
@@ -944,6 +945,15 @@ function selectProject(project, discuss=false) {
     location.hash = 'assistant';
     $('message').focus();
   }
+}
+async function loadDialogue(projectId) {
+  const data = await api('projects/' + encodeURIComponent(projectId) + '/dialogue');
+  if (selectedProjectId !== projectId) return;
+  $('conversation').replaceChildren();
+  if (!data.turns.length) {
+    $('conversation').append(element('p', 'empty', 'Диалог пока пуст. Исходный черновик будет передан Alice с вашим первым сообщением.'));
+  }
+  for (const turn of data.turns) addTurn(turn.role, turn.text, turn.answer_html);
 }
 async function loadProjects() {
   const data = await api('projects');
@@ -1097,9 +1107,8 @@ window.addEventListener('DOMContentLoaded', () => {
     $('alice-state').textContent = 'Отвечает сейчас';
     try {
       const data = await api('assistant/chat', 'POST', {
-        message, workspace_id, project_id:selectedProjectId || null, history:dialogue.slice(-6)});
+        message, workspace_id, project_id:selectedProjectId || null});
       addTurn('user', message); addTurn('assistant', data.answer, data.answer_html);
-      dialogue.push({role:'user',text:message}, {role:'assistant',text:data.answer.slice(0, 2000)});
       $('message').value = '';
     } finally { $('send').disabled = false; $('alice-state').textContent = 'Ожидает запроса'; }
   });
