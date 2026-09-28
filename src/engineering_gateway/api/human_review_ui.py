@@ -123,6 +123,7 @@ HTML = """<!doctype html>
 <label for="new-constraints">Исходные ограничения (если известны)</label>
 <textarea id="new-constraints" maxlength="10000" rows="2" placeholder="Укажите известные ограничения или оставьте пустым."></textarea>
 <button id="create-project" class="button button-primary">Создать черновик</button>
+<div id="project-feedback" class="project-feedback" role="status" aria-live="polite"></div>
 <small>После сохранения показываются автор, версия и хэш исходного текста. Агентная обработка пока не запускается.</small>
 <div id="draft-list" class="draft-list">Войдите, чтобы увидеть ваши черновики.</div>
 </div>
@@ -532,6 +533,8 @@ color:#47606a}
 .draft-list{display:grid;gap:7px;margin-top:6px}
 .draft-item{border:1px solid #dce8e3;border-radius:7px;background:white;padding:10px;font-size:11px;overflow-wrap:anywhere}
 .draft-item strong,.draft-item small{display:block;margin-bottom:4px}
+.project-feedback{font-size:11px;line-height:1.5;color:#37685b}
+.project-feedback.error{color:#9b5143}
 .input-row{display:flex;
 gap:8px;
 margin:8px 0 5px}
@@ -790,31 +793,39 @@ const status = (message, error=false) => { $('status').textContent = message; $(
 const b64url = bytes => btoa(String.fromCharCode(...new Uint8Array(bytes)))
   .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 let config, token, loadedPackage;
+let refreshToken, tokenExpiresAt = 0;
 const dialogue = [];
 const redirect = location.origin + '/human/';
+const sessionIntent = 'gateway_session_intent';
 async function loadConfig() {
   const response = await fetch('/human/config', {cache: 'no-store'});
   if (!response.ok) throw Error('Не удалось получить настройки IdP');
   config = await response.json();
 }
-async function login() {
+async function login(silent=false) {
+  if (!config) await loadConfig();
   const verifier = b64url(crypto.getRandomValues(new Uint8Array(32)));
   const state = b64url(crypto.getRandomValues(new Uint8Array(24)));
-  sessionStorage.setItem('gateway_pkce', JSON.stringify({verifier, state}));
+  sessionStorage.setItem('gateway_pkce', JSON.stringify({verifier, state, silent}));
   const challenge = b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
   const url = new URL(config.issuer + '/protocol/openid-connect/auth');
   url.search = new URLSearchParams({client_id: config.client_id, redirect_uri: redirect,
     response_type: 'code', scope: 'openid', code_challenge_method: 'S256', code_challenge: challenge,
-    state}).toString();
+    state, ...(silent ? {prompt:'none'} : {})}).toString();
   location.assign(url.toString());
 }
 async function finishLogin() {
   const params = new URLSearchParams(location.search);
-  if (!params.has('code') && !params.has('error')) return;
+  if (!params.has('code') && !params.has('error')) return false;
   history.replaceState(null, '', redirect);
-  if (params.has('error')) throw Error('IdP отказал во входе: ' + params.get('error'));
   const saved = JSON.parse(sessionStorage.getItem('gateway_pkce') || 'null');
   sessionStorage.removeItem('gateway_pkce');
+  if (params.has('error') && saved?.silent) {
+    sessionStorage.removeItem(sessionIntent);
+    status('Сессия Keycloak закончилась. Войдите снова.');
+    return true;
+  }
+  if (params.has('error')) throw Error('IdP отказал во входе: ' + params.get('error'));
   if (!saved || params.get('state') !== saved.state) throw Error('OIDC state не совпадает');
   const response = await fetch(config.issuer + '/protocol/openid-connect/token', {
     method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'},
@@ -823,17 +834,41 @@ async function finishLogin() {
   if (!response.ok) throw Error('Не удалось обменять код входа');
   const data = await response.json();
   token = data.access_token;
+  refreshToken = data.refresh_token;
+  tokenExpiresAt = Date.now() + (data.expires_in || 60) * 1000;
+  sessionStorage.setItem(sessionIntent, '1');
   $('identity').textContent = 'Вход выполнен';
   $('login').hidden = true;
-  status('Вход выполнен. Токен хранится только в памяти этой вкладки.');
-  await Promise.all([loadActivity(), loadProjects()]);
+  status('Вход выполнен. После обновления страницы сессия восстановится через Keycloak.');
+  const results = await Promise.allSettled([loadActivity(), loadProjects()]);
+  for (const result of results) if (result.status === 'rejected') status(result.reason.message, true);
+  return true;
+}
+async function renewToken() {
+  if (!refreshToken || Date.now() < tokenExpiresAt - 30000) return;
+  const response = await fetch(config.issuer + '/protocol/openid-connect/token', {
+    method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:new URLSearchParams({grant_type:'refresh_token', client_id:config.client_id,
+      refresh_token:refreshToken})});
+  if (!response.ok) { token = undefined; throw Error('Сессия истекла. Войдите снова и повторите действие.'); }
+  const data = await response.json();
+  token = data.access_token;
+  refreshToken = data.refresh_token;
+  tokenExpiresAt = Date.now() + (data.expires_in || 60) * 1000;
 }
 async function api(path, method='GET', body) {
   if (!token) throw Error('Сначала войдите через Keycloak');
+  await renewToken();
   const response = await fetch('/human/' + path, {
     method, headers: {Authorization: 'Bearer ' + token, ...(body ? {'Content-Type':'application/json'} : {})},
     body: body ? JSON.stringify(body) : undefined, cache: 'no-store'});
   const data = await response.json();
+  if (response.status === 401) {
+    token = undefined;
+    $('identity').textContent = 'Сессия истекла';
+    $('login').hidden = false;
+    throw Error('Сессия истекла. Войдите снова и повторите действие.');
+  }
   if (!response.ok) throw Error(typeof data.detail === 'string' ? data.detail : JSON.stringify(data));
   return data;
 }
@@ -944,16 +979,26 @@ function selectedWorkspace() {
     throw Error('Сначала загрузите пакет выбранной рабочей области');
   return encodeURIComponent(loadedPackage.workspace.id);
 }
-window.addEventListener('DOMContentLoaded', run(async () => {
-  await Promise.all([loadConfig(), loadStructure()]); await finishLogin();
-  $('login').onclick = run(login);
-  $('create-project').onclick = run(async () => {
+window.addEventListener('DOMContentLoaded', () => {
+  $('login').onclick = run(() => login());
+  $('create-project').onclick = async () => {
+    const feedback = $('project-feedback');
+    feedback.classList.remove('error');
+    feedback.textContent = 'Сохраняем черновик…';
+    $('create-project').disabled = true;
+    try {
     const name = $('new-name').value.trim(), goal = $('new-goal').value.trim();
     if (name.length < 2 || goal.length < 10) throw Error('Укажите название и цель не короче 10 символов');
     const draft = await api('projects', 'POST', {name, goal, constraints:$('new-constraints').value.trim()});
-    await loadProjects();
+    feedback.textContent = 'Черновик сохранён: ' + draft.id + ' · версия ' + draft.version;
     status('Черновик ' + draft.id + ' сохранён, версия ' + draft.version + '. Это исходные данные, не baseline.');
-  });
+    try { await loadProjects(); }
+    catch (error) { feedback.textContent += '. Список не обновился: ' + error.message; }
+    } catch (error) {
+      feedback.classList.add('error');
+      feedback.textContent = 'Не удалось создать черновик: ' + error.message;
+    } finally { $('create-project').disabled = false; }
+  };
   $('workspace').addEventListener('input', () => {
     for (const id of ['review-action', 'approve', 'reject']) $(id).disabled = true;
     $('metric-review').textContent = 'Не проверена';
@@ -995,5 +1040,11 @@ window.addEventListener('DOMContentLoaded', run(async () => {
     await api('workspaces/' + selectedWorkspace() + '/reject', 'POST',
       {reason:$('rejection').value}); status('Рабочая область отклонена.');
   });
-}));
+  run(async () => {
+    await loadConfig();
+    loadStructure().catch(error => status(error.message, true));
+    const returnedFromIdp = await finishLogin();
+    if (!returnedFromIdp && sessionStorage.getItem(sessionIntent)) await login(true);
+  })();
+});
 """
