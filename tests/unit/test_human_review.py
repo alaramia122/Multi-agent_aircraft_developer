@@ -97,7 +97,13 @@ def test_portal_chat_requires_human_token_and_explicit_workspace_context():
         async def __aexit__(self, *args):
             return None
 
-    client = TestClient(create_human_review_app(Factory, verifier, Assistant()))
+    class Projects:
+        async def get_for(self, actor_id, project_id):
+            assert actor_id == "reader-subject"
+            return {"id": str(project_id), "source": "human_input", "version": 1,
+                    "goal": "Новая авионика БПЛА", "source_hash": "abc"}
+
+    client = TestClient(create_human_review_app(Factory, verifier, Assistant(), project_store=Projects()))
 
     def token(username="reader", client_id="human-ui"):
         return jwt.encode({
@@ -127,8 +133,13 @@ def test_portal_chat_requires_human_token_and_explicit_workspace_context():
     response = client.post(path, json={"message": "Статус?", "workspace_id": str(workspace_id)}, headers=headers)
     assert response.status_code == 200
     assert str(workspace_id) in observed[1]
+    project_id = uuid4()
+    response = client.post(path, json={"message": "Что уточнить?", "project_id": str(project_id)}, headers=headers)
+    assert response.status_code == 200
+    assert str(project_id) in observed[2]
+    assert "human_input" in observed[2] and "Новая авионика БПЛА" in observed[2]
     assert client.post(f"/workspaces/{workspace_id}/approve", headers=headers).status_code == 403
-    for _ in range(3):
+    for _ in range(2):
         assert client.post(path, json={"message": "Статус?"}, headers=headers).status_code == 200
     assert client.post(path, json={"message": "Статус?"}, headers=headers).status_code == 429
     assert len(observed) == 5

@@ -15,6 +15,15 @@ explicitly reports that no agent execution is started. A future orchestration
 step must consume this versioned source and attach proposed engineering artifacts
 and review evidence with traceable origins.
 
+The owner can select **Discuss with Alice** on a saved draft. The chat sends
+the selected draft's original goal, constraints, author, version and source
+hash to the conversational model with explicit opt-in from the send button.
+This yields clarification questions only; it does not create typed engineering
+artifacts or run the role agents. The next implementation phase is project
+genesis (profile, repository, empty StrictDoc/Capella sources and Change Request)
+and an AI Studio Workflow which consumes that exact source version before L1
+proposals enter the governed Gateway.
+
 Deploy migration 0015 before the new application image; readiness requires
 schema version 15. Test with an interactive human `gateway-propose` token, not a
 service credential. No personal L3 decision is needed to create a draft.
