@@ -560,6 +560,21 @@ overflow-wrap:anywhere}
 .relations{font-size:11px;
 color:#627a7e;
 margin-top:10px}
+.relation-list{display:grid;
+gap:6px;
+margin-top:8px}
+.relation-item{display:flex;
+flex-wrap:wrap;
+gap:7px;
+align-items:center;
+padding:8px 10px;
+background:#f3f8f6;
+border-radius:7px;
+font-size:10px;
+overflow-wrap:anywhere}
+.relation-item b{color:#3c7866;
+font-size:9px;
+font-weight:800}
 .raw{margin-top:15px;
 border-top:1px solid #edf1f0;
 padding-top:12px}
@@ -854,6 +869,19 @@ function renderProject(data) {
     if (elements.length > 40) graph.append(element('p', 'relations', 'Показаны первые 40 элементов. Полный список — в исходном пакете.'));
   }
   graph.append(element('p', 'relations', 'Типизированных связей в изменениях: ' + relations.length));
+  if (relations.length) {
+    const byId = new Map(elements.map(item => [item.id, item.name || item.external_id || item.id]));
+    const links = element('div', 'relation-list');
+    for (const link of relations.slice(0, 30)) {
+      const row = element('div', 'relation-item');
+      row.append(element('span', '', byId.get(link.source_id) || link.source_id || 'Внешний элемент'),
+        element('b', '', link.relation_type || 'связь'),
+        element('span', '', byId.get(link.target_id) || link.target_id || 'Внешний элемент'));
+      links.append(row);
+    }
+    graph.append(links);
+    if (relations.length > 30) graph.append(element('p', 'relations', 'Показаны первые 30 связей. Полный список — в пакете.'));
+  }
   $('package').textContent = JSON.stringify(data, null, 2);
   for (const id of ['review-action', 'approve', 'reject']) $(id).disabled = false;
 }
