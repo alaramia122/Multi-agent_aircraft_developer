@@ -39,6 +39,10 @@ def test_human_approval_requires_signed_user_token_with_l3_role():
     assert "style-src 'self'" in page.headers["content-security-policy"]
     assert "Структура проекта" in page.text
     assert client.get("/ui.css").status_code == 200
+    plain = client.get("/?plain=1")
+    assert plain.status_code == 200
+    assert 'rel="stylesheet"' not in plain.text
+    assert "Структура проекта" in plain.text
     assert len(client.get("/structure").json()["agents"]) == 8
     assert client.get("/config").json() == {
         "issuer": "https://issuer.test", "client_id": "human-ui",

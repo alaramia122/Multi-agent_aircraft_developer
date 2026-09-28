@@ -207,6 +207,7 @@ HTML = """<!doctype html>
         </section>
       </div>
       <footer>Engineering Gateway · staging <span>Источники инженерных данных: Git, StrictDoc, Capella, OpenProject</span>
+<a href="?plain=1">Упрощённый вид</a>
 </footer>
     </main>
   </div>
@@ -729,6 +730,16 @@ padding:8px 12px}
 @media(max-width:650px){.topbar{padding:12px 16px;
 height:auto;
 align-items:flex-start}
+/* Keep mobile painting simple on older Android WebView/Chrome compositors. */
+.shell{display:block;
+min-height:0}
+.sidebar{position:relative;
+height:auto;
+display:block}
+.hero{background:#214c50}
+.metric,.panel{box-shadow:none}
+.orbit,.plane{display:none}
+html{scroll-behavior:auto}
 .breadcrumb{display:none}
 .auth{width:100%;
 justify-content:space-between}

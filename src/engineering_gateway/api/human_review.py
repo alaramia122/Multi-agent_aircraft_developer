@@ -115,9 +115,11 @@ def create_human_review_app(
     chat_lock = asyncio.Lock()
 
     @app.get("/", response_class=HTMLResponse)
-    async def human_ui() -> HTMLResponse:
+    async def human_ui(request: Request) -> HTMLResponse:
         issuer_origin = verifier.issuer.split("/realms/")[0]
-        return HTMLResponse(HTML, headers={
+        # The plain view keeps the same controls without graphics styles.
+        page = HTML.replace('<link rel="stylesheet" href="ui.css">', '') if request.query_params.get("plain") == "1" else HTML
+        return HTMLResponse(page, headers={
             "Cache-Control": "no-store",
             "Referrer-Policy": "no-referrer",
             "Content-Security-Policy": (
