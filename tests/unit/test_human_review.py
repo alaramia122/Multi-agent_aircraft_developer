@@ -38,6 +38,8 @@ def test_human_approval_requires_signed_user_token_with_l3_role():
     assert "frame-ancestors 'none'" in page.headers["content-security-policy"]
     assert "style-src 'self'" in page.headers["content-security-policy"]
     assert "Структура проекта" in page.text
+    assert "Жизненный цикл разработки" in page.text
+    assert 'data-stage="draft"' in page.text
     assert client.get("/ui.css").status_code == 200
     plain = client.get("/?plain=1")
     assert plain.status_code == 200
@@ -128,6 +130,7 @@ def test_portal_chat_requires_human_token_and_explicit_workspace_context():
     assert all(agent["status"] == "unobserved" and agent["task"] is None for agent in activity.json()["agents"])
     response = client.post(path, json={"message": "Статус?"}, headers=headers)
     assert response.status_code == 200
+    assert response.json()["answer_html"] == "<p>Для L3 нужен человек.</p>\n"
     assert '"workspace_context": "none"' in observed[0]
     workspace_id = uuid4()
     response = client.post(path, json={"message": "Статус?", "workspace_id": str(workspace_id)}, headers=headers)

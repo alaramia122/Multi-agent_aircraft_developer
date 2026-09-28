@@ -43,6 +43,23 @@ HTML = """<!doctype html>
 </div>
     </header>
     <main id="main">
+      <section id="lifecycle" class="lifecycle panel" aria-labelledby="lifecycle-title">
+        <div class="panel-heading">
+<div><div class="eyebrow">Путь проекта</div><h2 id="lifecycle-title">Жизненный цикл разработки</h2></div>
+<span id="lifecycle-badge" class="badge badge-muted">Проект не выбран</span>
+</div>
+        <p id="lifecycle-summary" class="muted">Выберите черновик ниже. Здесь будет показано только подтверждённое состояние выбранного проекта.</p>
+        <ol class="lifecycle-steps">
+<li data-stage="draft"><strong>Замысел</strong><small>Цель и ограничения от человека</small></li>
+<li data-stage="requirements"><strong>Требования</strong><small>Предложения и трассировка</small></li>
+<li data-stage="architecture"><strong>Архитектура</strong><small>Функции и распределение</small></li>
+<li data-stage="implementation"><strong>Реализация</strong><small>ПО и аппаратура</small></li>
+<li data-stage="verification"><strong>Верификация</strong><small>Проверки и свидетельства</small></li>
+<li data-stage="review"><strong>Проверка</strong><small>Независимый review</small></li>
+<li data-stage="baseline"><strong>Baseline</strong><small>Личное решение L3</small></li>
+</ol>
+        <p class="fine">После изменений цикл повторяется через Change Request. Этапы справа от текущего — схема процесса, а не выполненные действия агентов.</p>
+      </section>
       <section id="overview" class="hero" aria-labelledby="hero-title">
         <div>
 <div class="eyebrow">Проектирование авионики БПЛА</div>
@@ -458,6 +475,15 @@ scroll-margin-top:15px}
 justify-content:space-between;
 align-items:flex-start;
 gap:12px}
+.lifecycle{margin-bottom:18px}
+.lifecycle-steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:7px}
+.lifecycle-steps li{min-width:0;border:1px solid #e1eae7;background:#f8faf9;border-radius:9px;padding:12px 9px;position:relative}
+.lifecycle-steps li::before{content:counter(list-item, decimal-leading-zero);display:block;font-size:10px;font-weight:800;color:#7e9992;margin-bottom:7px}
+.lifecycle-steps strong,.lifecycle-steps small{display:block;overflow-wrap:anywhere}
+.lifecycle-steps strong{font-size:11px;color:#46646a}
+.lifecycle-steps small{font-size:9px;color:#829599;line-height:1.4;margin-top:5px}
+.lifecycle-steps li.current{background:#e4f4e9;border-color:#68b88c;box-shadow:inset 0 0 0 1px #68b88c}
+.lifecycle-steps li.current::before,.lifecycle-steps li.current strong{color:#236a4d}
 .panel h2{font-size:21px;
 letter-spacing:-.025em;
 margin:7px 0 10px}
@@ -670,6 +696,15 @@ border:1px solid #e1eae6}
 font-size:10px;
 color:#557970;
 margin-bottom:4px}
+.turn.assistant{white-space:normal}
+.turn.assistant p{margin:0 0 8px}
+.turn.assistant p:last-child{margin-bottom:0}
+.turn.assistant ul,.turn.assistant ol{padding-left:20px;margin:6px 0}
+.turn.assistant li{margin:4px 0}
+.turn.assistant pre{overflow:auto;background:#eef5f1;border-radius:6px;padding:8px}
+.turn.assistant code{font-size:11px;white-space:pre-wrap;overflow-wrap:anywhere}
+.turn.assistant a{color:#236b66;text-decoration:underline}
+.turn.assistant blockquote{border-left:3px solid #80b69a;margin:8px 0;padding-left:10px}
 .chat-footer{display:flex;
 justify-content:space-between;
 align-items:center;
@@ -742,6 +777,7 @@ white-space:nowrap;
 border:0}
 
 @media(max-width:1050px){.shell{grid-template-columns:1fr}
+.lifecycle-steps{grid-template-columns:repeat(4,minmax(0,1fr))}
 .sidebar{position:static;
 height:auto;
 padding:12px 18px}
@@ -758,6 +794,7 @@ padding:8px 12px}
 @media(max-width:650px){.topbar{padding:12px 16px;
 height:auto;
 align-items:flex-start}
+.lifecycle-steps{grid-template-columns:repeat(2,minmax(0,1fr))}
 /* Keep mobile painting simple on older Android WebView/Chrome compositors. */
 .shell{display:block;
 min-height:0}
@@ -886,11 +923,35 @@ async function loadActivity() {
   const data = await api('assistant/activity');
   renderAgents(data);
 }
+function selectProject(project, discuss=false) {
+  selectedProjectId = project.id;
+  sessionStorage.setItem('gateway_selected_project', project.id);
+  const stage = project.state === 'draft' && !project.baseline_id ? 'draft' : null;
+  for (const item of document.querySelectorAll('.lifecycle-steps li')) {
+    const current = item.dataset.stage === stage;
+    item.classList.toggle('current', current);
+    if (current) item.setAttribute('aria-current', 'step');
+    else item.removeAttribute('aria-current');
+  }
+  $('lifecycle-badge').textContent = stage ? 'Замысел · черновик' : 'Состояние требует проверки';
+  $('lifecycle-summary').textContent = project.name + ' · версия ' + project.version +
+    ' · источник: ввод человека · SHA-256: ' + project.source_hash +
+    (stage ? '. Следующий этап — инициализация проекта; переход пока не доступен.' : '. Этап не определён по черновику.');
+  $('chat-project').textContent = 'Исходный черновик: ' + project.name + ' · версия ' + project.version +
+    ' · SHA-256: ' + project.source_hash + '. Alice получит его текст только после отправки сообщения.';
+  if (discuss) {
+    $('message').value = 'Какие исходные сведения и ограничения мне нужно уточнить для проектирования этого БПЛА? Задай конкретные вопросы, не создавая утверждённых требований.';
+    location.hash = 'assistant';
+    $('message').focus();
+  }
+}
 async function loadProjects() {
   const data = await api('projects');
   const list = $('draft-list');
   list.replaceChildren();
   if (!data.projects.length) { list.append(element('p', 'empty', 'Пока нет черновиков. Опишите первый проект выше.')); return; }
+  const preferred = sessionStorage.getItem('gateway_selected_project');
+  selectProject(data.projects.find(project => project.id === preferred) || data.projects[0]);
   for (const project of data.projects) {
     const card = element('div', 'draft-item');
     card.append(element('strong', '', project.name),
@@ -898,17 +959,13 @@ async function loadProjects() {
       element('div', '', project.goal),
       element('small', '', 'Автор: ' + project.author_id + ' · SHA-256: ' + project.source_hash));
     if (project.constraints) card.append(element('div', '', 'Ограничения: ' + project.constraints));
+    const choose = element('button', 'button', 'Выбрать проект');
+    choose.type = 'button';
+    choose.onclick = () => selectProject(project);
     const discuss = element('button', 'button', 'Обсудить с Alice');
     discuss.type = 'button';
-    discuss.onclick = () => {
-      selectedProjectId = project.id;
-      $('chat-project').textContent = 'Исходный черновик: ' + project.name + ' · версия ' + project.version +
-        ' · SHA-256: ' + project.source_hash + '. Alice получит его текст только после отправки сообщения.';
-      $('message').value = 'Какие исходные сведения и ограничения мне нужно уточнить для проектирования этого БПЛА? Задай конкретные вопросы, не создавая утверждённых требований.';
-      location.hash = 'assistant';
-      $('message').focus();
-    };
-    card.append(discuss);
+    discuss.onclick = () => selectProject(project, true);
+    card.append(choose, document.createTextNode(' '), discuss);
     list.append(card);
   }
 }
@@ -982,9 +1039,15 @@ function renderProject(data) {
   $('package').textContent = JSON.stringify(data, null, 2);
   for (const id of ['review-action', 'approve', 'reject']) $(id).disabled = false;
 }
-function addTurn(role, message) {
+function addTurn(role, message, safeHtml) {
   const line = element('div', 'turn ' + role);
-  line.append(element('strong', '', role === 'user' ? 'Вы' : 'Alice'), document.createTextNode(message));
+  line.append(element('strong', '', role === 'user' ? 'Вы' : 'Alice'));
+  if (role === 'assistant' && safeHtml) {
+    const formatted = element('div', 'formatted-answer');
+    formatted.innerHTML = safeHtml; // Gateway renders Markdown and sanitizes HTML on the server.
+    for (const link of formatted.querySelectorAll('a')) { link.target = '_blank'; link.rel = 'noopener noreferrer'; }
+    line.append(formatted);
+  } else line.append(document.createTextNode(message));
   $('conversation').append(line);
   $('conversation').scrollTop = $('conversation').scrollHeight;
 }
@@ -1035,7 +1098,7 @@ window.addEventListener('DOMContentLoaded', () => {
     try {
       const data = await api('assistant/chat', 'POST', {
         message, workspace_id, project_id:selectedProjectId || null, history:dialogue.slice(-6)});
-      addTurn('user', message); addTurn('assistant', data.answer);
+      addTurn('user', message); addTurn('assistant', data.answer, data.answer_html);
       dialogue.push({role:'user',text:message}, {role:'assistant',text:data.answer.slice(0, 2000)});
       $('message').value = '';
     } finally { $('send').disabled = false; $('alice-state').textContent = 'Ожидает запроса'; }
