@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from engineering_gateway.application.gateway_service import Actor, GatewayServiceError
 from engineering_gateway.api.human_review_ui import HTML, SCRIPT, STYLES
+from engineering_gateway.api.assistant_markdown import render_assistant_markdown
 from engineering_gateway.domain.audit import ActorType
 from engineering_gateway.domain.change_control import AuthorizationLevel
 from engineering_gateway.infrastructure.ai_studio_prompt import AiStudioUnavailable
@@ -279,7 +280,8 @@ def create_human_review_app(
             "human_question": question.message,
         }, ensure_ascii=False)
         try:
-            return await assistant_client.answer(input_text)
+            answer = await assistant_client.answer(input_text)
+            return {**answer, "answer_html": render_assistant_markdown(answer["answer"])}
         except AiStudioUnavailable as exc:
             raise HTTPException(502, "AI Studio response unavailable") from exc
 
