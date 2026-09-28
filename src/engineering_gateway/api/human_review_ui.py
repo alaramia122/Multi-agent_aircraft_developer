@@ -2,10 +2,18 @@
 
 HTML = """<!doctype html><html lang="ru"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Engineering Gateway — проверка рабочей области</title>
-<h1>Проверка рабочей области</h1>
-<p>Войдите через IdP, затем введите UUID рабочей области. Решение L3 принимает только уполномоченный человек.</p>
+<title>Engineering Gateway — рабочее пространство</title>
+<h1>Рабочее пространство авионики</h1>
+<p>Войдите через IdP для диалога с помощником и проверки инженерных данных.</p>
 <button id="login">Войти</button> <span id="status"></span>
+<section aria-labelledby="chat-title"><h2 id="chat-title">Диалог с помощником Alice</h2>
+<p>Ответы помощника носят справочный характер и не утверждают baseline.</p>
+<div id="conversation" role="log" aria-live="polite"></div>
+<p><label>Сообщение <textarea id="message" rows="3" cols="65" maxlength="2000"></textarea></label></p>
+<p><label><input id="include-workspace" type="checkbox"> Передать текущий пакет рабочей области помощнику</label>
+<button id="send">Отправить</button></p></section>
+<section aria-labelledby="review-title"><h2 id="review-title">Независимая проверка и решение человека</h2>
+<p>Введите UUID рабочей области. Решение L3 принимает только уполномоченный человек.</p>
 <p><label>Workspace UUID <input id="workspace" size="40" required></label>
 <button id="load">Загрузить пакет</button></p>
 <pre id="package"></pre>
@@ -14,7 +22,7 @@ HTML = """<!doctype html><html lang="ru"><meta charset="utf-8">
 <button id="review">Записать независимую проверку</button>
 <p><button id="approve">Утвердить baseline (L3)</button></p>
 <p><label>Причина отказа <input id="rejection" size="55"></label>
-<button id="reject">Отклонить (L3)</button></p>
+<button id="reject">Отклонить (L3)</button></p></section>
 <script src="ui.js" defer></script></html>"""
 
 SCRIPT = r"""'use strict';
@@ -23,6 +31,7 @@ const status = message => { $('status').textContent = message; };
 const b64url = bytes => btoa(String.fromCharCode(...new Uint8Array(bytes)))
   .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 let config, token;
+const dialogue = [];
 const redirect = location.origin + '/human/';
 async function loadConfig() {
   const response = await fetch('/human/config', {cache: 'no-store'});
@@ -67,9 +76,36 @@ async function request(path, method='GET', body) {
   return data;
 }
 function run(fn) { return () => fn().catch(error => status(error.message)); }
+function addTurn(role, message) {
+  const line = document.createElement('p');
+  const name = document.createElement('strong');
+  name.textContent = role === 'user' ? 'Вы: ' : 'Помощник: ';
+  line.append(name, document.createTextNode(message));
+  $('conversation').append(line);
+}
 window.addEventListener('DOMContentLoaded', run(async () => {
   await loadConfig(); await finishLogin();
   $('login').onclick = run(login);
+  $('send').onclick = run(async () => {
+    if (!token) throw Error('Сначала войдите через IdP');
+    const message = $('message').value.trim();
+    if (!message) throw Error('Введите сообщение');
+    const workspace_id = $('include-workspace').checked ? $('workspace').value.trim() : null;
+    if ($('include-workspace').checked && !workspace_id) throw Error('Введите UUID рабочей области');
+    $('send').disabled = true;
+    try {
+      const response = await fetch('/human/assistant/chat', {
+        method:'POST', cache:'no-store',
+        headers:{Authorization:'Bearer ' + token, 'Content-Type':'application/json'},
+        body:JSON.stringify({message, workspace_id, history:dialogue.slice(-6)})
+      });
+      const data = await response.json();
+      if (!response.ok) throw Error(typeof data.detail === 'string' ? data.detail : 'Ошибка помощника');
+      addTurn('user', message); addTurn('assistant', data.answer);
+      dialogue.push({role:'user',text:message}, {role:'assistant',text:data.answer.slice(0, 2000)});
+      $('message').value = '';
+    } finally { $('send').disabled = false; }
+  });
   $('load').onclick = run(async () => {
     const data = await request(''); $('package').textContent = JSON.stringify(data, null, 2);
     status('Пакет получен. Проверьте версии, хэши и исходные артефакты.');

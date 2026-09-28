@@ -11,6 +11,7 @@ from starlette.routing import Mount
 from engineering_gateway import __version__
 from engineering_gateway.api.actor_provider import ActorProvider, RequestActorProvider, StaticActorProvider
 from engineering_gateway.api.human_review import HumanTokenVerifier, create_human_review_app
+from engineering_gateway.infrastructure.ai_studio_prompt import YandexPromptClient
 from engineering_gateway.api.oidc_bearer_middleware import OidcBearerPrincipalMiddleware
 from engineering_gateway.api.mcp_http import create_mcp_http_app
 from engineering_gateway.api.principal_mapper import ClaimMapping, TrustedClaimsActorMapper
@@ -193,6 +194,13 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     human_route = None
     if settings.identity.human_review_enabled:
         assert settings.identity.issuer_url and settings.identity.audience and settings.identity.jwks_url
+        assistant_client = None
+        if settings.ai_studio.enabled:
+            assert settings.ai_studio.folder_id and settings.ai_studio.model_id
+            assistant_client = YandexPromptClient(
+                settings.ai_studio.folder_id, settings.ai_studio.model_id,
+                settings.ai_studio.timeout_seconds,
+            )
         human_app = create_human_review_app(
             lambda: governed_gateway_context(
                 database, git=git, adapter_set=adapter_set, budget_gate=budget_gate,
@@ -203,6 +211,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
                 settings.identity.audience,
                 settings.identity.jwks_url, settings.identity.human_client_ids,
             ),
+            assistant_client,
         )
         human_route = Mount("/human", app=human_app)
         application.router.routes.append(human_route)

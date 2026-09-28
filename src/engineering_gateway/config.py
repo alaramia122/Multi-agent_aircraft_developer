@@ -130,6 +130,21 @@ class IdentityConfig(BaseModel):
         return self
 
 
+class AiStudioConfig(BaseModel):
+    """Private server-side Agent Atelier invocation from a human portal."""
+
+    enabled: bool = False
+    folder_id: str | None = None
+    model_id: str | None = None
+    timeout_seconds: float = Field(default=45.0, gt=0, le=90)
+
+    @model_validator(mode="after")
+    def validate_enabled(self) -> AiStudioConfig:
+        if self.enabled and (not self.folder_id or not self.model_id):
+            raise ValueError("ai_studio.folder_id and model_id are required when enabled")
+        return self
+
+
 class McpConfig(BaseModel):
     """MCP HTTP and temporary static-actor settings."""
 
@@ -296,6 +311,7 @@ class Settings(BaseSettings):
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     identity: IdentityConfig = Field(default_factory=IdentityConfig)
     mcp: McpConfig = Field(default_factory=McpConfig)
+    ai_studio: AiStudioConfig = Field(default_factory=AiStudioConfig)
     git: GitConfig = Field(default_factory=GitConfig)
     strictdoc: StrictDocConfig = Field(default_factory=StrictDocConfig)
     capella: CapellaConfig = Field(default_factory=CapellaConfig)
