@@ -31,6 +31,7 @@ from engineering_gateway.infrastructure.db import Database
 from engineering_gateway.infrastructure.evidence_store import configured_evidence_store
 from engineering_gateway.infrastructure.gateway_context import governed_gateway_context
 from engineering_gateway.infrastructure.project_drafts import ProjectDraftStore
+from engineering_gateway.infrastructure.project_dialogue import ProjectDialogueStore
 from engineering_gateway.infrastructure.git_adapter import LocalGitAdapter
 from engineering_gateway.infrastructure.openproject_adapter import (
     LocalOpenProjectAdapter,
@@ -214,6 +215,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             ),
             assistant_client,
             project_store=ProjectDraftStore(database),
+            dialogue_store=ProjectDialogueStore(database),
         )
         human_route = Mount("/human", app=human_app)
         application.router.routes.append(human_route)
