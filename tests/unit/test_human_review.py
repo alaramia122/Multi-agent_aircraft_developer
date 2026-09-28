@@ -36,6 +36,10 @@ def test_human_approval_requires_signed_user_token_with_l3_role():
     page = client.get("/")
     assert page.status_code == 200
     assert "frame-ancestors 'none'" in page.headers["content-security-policy"]
+    assert "style-src 'self'" in page.headers["content-security-policy"]
+    assert "Структура проекта" in page.text
+    assert client.get("/ui.css").status_code == 200
+    assert len(client.get("/structure").json()["agents"]) == 8
     assert client.get("/config").json() == {
         "issuer": "https://issuer.test", "client_id": "human-ui",
     }
@@ -101,11 +105,17 @@ def test_portal_chat_requires_human_token_and_explicit_workspace_context():
 
     path = "/assistant/chat"
     assert client.post(path, json={"message": "Статус?"}).status_code == 401
+    assert client.get("/assistant/activity").status_code == 401
     assert client.post(path, json={"message": "Статус?"}, headers={"Authorization": f"Bearer {token(client_id='mcp')}"}).status_code == 401
     assert client.post(path, json={"message": "Статус?"}, headers={"Authorization": f"Bearer {token(username='service-account-reader')}"}).status_code == 401
     assert observed == []
 
     headers = {"Authorization": f"Bearer {token()}"}
+    activity = client.get("/assistant/activity", headers=headers)
+    assert activity.status_code == 200
+    assert activity.json()["telemetry"] == "unavailable"
+    assert len(activity.json()["agents"]) == 8
+    assert all(agent["status"] == "unobserved" and agent["task"] is None for agent in activity.json()["agents"])
     response = client.post(path, json={"message": "Статус?"}, headers=headers)
     assert response.status_code == 200
     assert '"workspace_context": "none"' in observed[0]

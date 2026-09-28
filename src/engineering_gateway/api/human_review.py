@@ -18,7 +18,7 @@ from jwt import PyJWKClient
 from pydantic import BaseModel, Field
 
 from engineering_gateway.application.gateway_service import Actor, GatewayServiceError
-from engineering_gateway.api.human_review_ui import HTML, SCRIPT
+from engineering_gateway.api.human_review_ui import HTML, SCRIPT, STYLES
 from engineering_gateway.domain.audit import ActorType
 from engineering_gateway.domain.change_control import AuthorizationLevel
 from engineering_gateway.infrastructure.ai_studio_prompt import AiStudioUnavailable
@@ -47,6 +47,22 @@ class AssistantQuestion(BaseModel):
 
 class AssistantClient(Protocol):
     async def answer(self, input_text: str) -> dict[str, str]: ...
+
+
+class AgentActivityProvider(Protocol):
+    async def snapshot(self) -> list[dict[str, str | None]]: ...
+
+
+AGENT_ROLES = (
+    ("requirements", "Требования", "Формирует и связывает требования"),
+    ("system_architect", "Системная архитектура", "Распределяет функции по компонентам"),
+    ("safety", "Безопасность", "Анализирует опасности и ограничения"),
+    ("software_architect", "Архитектура ПО", "Связывает системные и программные решения"),
+    ("verification", "Верификация", "Планирует проверки и evidence"),
+    ("configuration", "Конфигурация", "Следит за версиями и baseline"),
+    ("cost", "Стоимость", "Оценивает бюджетные ограничения"),
+    ("chief_engineer", "Главный инженер", "Согласует предложения ролей"),
+)
 
 
 class HumanTokenVerifier:
@@ -91,6 +107,7 @@ class HumanTokenVerifier:
 def create_human_review_app(
     service_factory: Any, verifier: HumanTokenVerifier,
     assistant_client: AssistantClient | None = None,
+    activity_provider: AgentActivityProvider | None = None,
 ) -> FastAPI:
     """Expose review evidence and decisions to authenticated human users only."""
     app = FastAPI(title="Engineering Gateway human review", docs_url=None, redoc_url=None, openapi_url=None)
@@ -104,7 +121,7 @@ def create_human_review_app(
             "Cache-Control": "no-store",
             "Referrer-Policy": "no-referrer",
             "Content-Security-Policy": (
-                "default-src 'none'; script-src 'self'; "
+                "default-src 'none'; script-src 'self'; style-src 'self'; "
                 f"connect-src 'self' {issuer_origin}; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
             ),
         })
@@ -113,9 +130,18 @@ def create_human_review_app(
     async def human_ui_script() -> Response:
         return Response(SCRIPT, media_type="application/javascript", headers={"Cache-Control": "no-store"})
 
+    @app.get("/ui.css")
+    async def human_ui_styles() -> Response:
+        return Response(STYLES, media_type="text/css", headers={"Cache-Control": "no-store"})
+
     @app.get("/config")
     async def human_ui_config() -> dict[str, str]:
         return {"issuer": verifier.issuer, "client_id": sorted(verifier.client_ids)[0]}
+
+    @app.get("/structure")
+    async def agent_structure() -> dict[str, object]:
+        """Public role descriptions; no identities, tasks or runtime state."""
+        return {"agents": [{"id": key, "name": name, "purpose": purpose} for key, name, purpose in AGENT_ROLES]}
 
     async def actor_for(request: Request) -> Actor:
         headers = request.scope.get("headers", ())
@@ -131,6 +157,20 @@ def create_human_review_app(
             raise HTTPException(403, str(exc)) from exc
         except (UnicodeDecodeError, ValueError, jwt.PyJWTError, OSError) as exc:
             raise HTTPException(401, "invalid human bearer token") from exc
+
+    @app.get("/assistant/activity")
+    async def agent_activity(request: Request) -> dict[str, object]:
+        await actor_for(request)
+        if activity_provider is None:
+            return {
+                "telemetry": "unavailable",
+                "agents": [
+                    {"id": key, "name": name, "purpose": purpose,
+                     "status": "unobserved", "task": None}
+                    for key, name, purpose in AGENT_ROLES
+                ],
+            }
+        return {"telemetry": "connected", "agents": await activity_provider.snapshot()}
 
     @asynccontextmanager
     async def service() -> AsyncIterator[Any]:
