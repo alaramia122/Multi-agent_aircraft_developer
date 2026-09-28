@@ -1,6 +1,6 @@
 # AI Studio agent package for first engineering project
 
-Status: configuration design, **not deployed as Agent Atelier agents**. The
+Status: eight Agent Atelier staging role templates deployed as V1; MCP attachment and orchestration pending. The
 external Gateway MCP Hub connection is live in staging. A real aircraft
 requirement or model is not needed to create these role templates; no
 engineering claims or baselines may be generated from placeholder content.
@@ -66,3 +66,22 @@ tool confirmations and credentials are reviewed. Add the agent IDs to a YaWL
 workflow; do not put secrets, personal IdP tokens or artificial engineering
 content in the specification. Run MVP-1/2 on actual project inputs during
 operation, as agreed with the project owner.
+
+## Live Agent Atelier deployment (2026-09-28)
+
+The project owner signed into AI Studio in folder `b1giu3819pc928o3i2gi`. Eight private staging text agents were created with model **DeepSeek 4 Flash** and a saved V1 instruction. They are not published to external channels and do not yet have the MCP server attached:
+
+| Role | Agent ID |
+| --- | --- |
+| Requirements Agent | `aacddn75vtqjn21i1s99` |
+| System Architect | `aacmb2flcud622tstuh3` |
+| Safety Agent | `aac0kr1maotmtp1usafe` |
+| Verification Agent | `aachqbvs9th8hk2g35uj` |
+| Chief Engineer | `aacghvulpqggjkak1fh6` |
+| Software Architect | `aac3qnvrhifnir80g9tf` |
+| Configuration Agent | `aac4rgj9hjnp2pnr4fgu` |
+| Cost Agent | `aacp4t12t4308e2b68fn` |
+
+The Independent Reviewer was intentionally not created under the same identity or L2 MCP credential; separate reviewer identity and evidence are required. The AI Studio selector displays `engineering-gateway-staging` as Active, private, Streamable HTTP, with eight tools, but its row and checkbox are disabled when attaching it to a text agent. The logged-in owner has inherited cloud owner access; the service account has `serverless.mcpGateways.invoker`. Root cause of the disabled selector remains unverified. Do not make the gateway public or grant an AI token L3 to work around this. The MCP Hub invocation itself passed an authenticated read-only live probe and rejected anonymous access.
+
+A live Agent Atelier test sent only `EngineeringElement ID REQ-001` with no source text, baseline or Standard Profile to the Requirements Agent. It returned `status: BLOCKED`, empty proposed elements/relations, and identified the missing source URI/version/digest, text, baseline, profile and Change Request. This confirms one refusal behavior, not the full engineering workflow. No generated engineering baseline was asserted.
