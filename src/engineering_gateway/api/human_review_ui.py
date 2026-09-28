@@ -157,6 +157,7 @@ HTML = """<!doctype html>
 <span id="alice-state" class="badge">Ожидает запроса</span>
 </div>
           <p class="muted">Поможет разобраться в данных и следующем шаге. Его ответ не является проверкой или утверждением baseline.</p>
+          <div id="chat-project" class="chat-project">Черновик проекта не выбран. Выберите его в разделе «Структура проекта», чтобы обсудить исходную цель.</div>
           <div id="conversation" class="conversation" role="log" aria-live="polite">
 <div class="welcome">
 <span class="avatar">✦</span>
@@ -533,8 +534,10 @@ color:#47606a}
 .draft-list{display:grid;gap:7px;margin-top:6px}
 .draft-item{border:1px solid #dce8e3;border-radius:7px;background:white;padding:10px;font-size:11px;overflow-wrap:anywhere}
 .draft-item strong,.draft-item small{display:block;margin-bottom:4px}
+.draft-item .button{margin-top:8px}
 .project-feedback{font-size:11px;line-height:1.5;color:#37685b}
 .project-feedback.error{color:#9b5143}
+.chat-project{font-size:11px;color:#37685b;background:#f2f8f5;border-radius:7px;padding:9px;margin-bottom:11px;line-height:1.5}
 .input-row{display:flex;
 gap:8px;
 margin:8px 0 5px}
@@ -792,7 +795,7 @@ const $ = id => document.getElementById(id);
 const status = (message, error=false) => { $('status').textContent = message; $('status').classList.toggle('error', error); };
 const b64url = bytes => btoa(String.fromCharCode(...new Uint8Array(bytes)))
   .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-let config, token, loadedPackage;
+let config, token, loadedPackage, selectedProjectId;
 let refreshToken, tokenExpiresAt = 0;
 const dialogue = [];
 const redirect = location.origin + '/human/';
@@ -895,6 +898,17 @@ async function loadProjects() {
       element('div', '', project.goal),
       element('small', '', 'Автор: ' + project.author_id + ' · SHA-256: ' + project.source_hash));
     if (project.constraints) card.append(element('div', '', 'Ограничения: ' + project.constraints));
+    const discuss = element('button', 'button', 'Обсудить с Alice');
+    discuss.type = 'button';
+    discuss.onclick = () => {
+      selectedProjectId = project.id;
+      $('chat-project').textContent = 'Исходный черновик: ' + project.name + ' · версия ' + project.version +
+        ' · SHA-256: ' + project.source_hash + '. Alice получит его текст только после отправки сообщения.';
+      $('message').value = 'Какие исходные сведения и ограничения мне нужно уточнить для проектирования этого БПЛА? Задай конкретные вопросы, не создавая утверждённых требований.';
+      location.hash = 'assistant';
+      $('message').focus();
+    };
+    card.append(discuss);
     list.append(card);
   }
 }
@@ -1019,7 +1033,8 @@ window.addEventListener('DOMContentLoaded', () => {
     $('send').disabled = true;
     $('alice-state').textContent = 'Отвечает сейчас';
     try {
-      const data = await api('assistant/chat', 'POST', {message, workspace_id, history:dialogue.slice(-6)});
+      const data = await api('assistant/chat', 'POST', {
+        message, workspace_id, project_id:selectedProjectId || null, history:dialogue.slice(-6)});
       addTurn('user', message); addTurn('assistant', data.answer);
       dialogue.push({role:'user',text:message}, {role:'assistant',text:data.answer.slice(0, 2000)});
       $('message').value = '';
