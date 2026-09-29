@@ -25,6 +25,18 @@ from tests.unit.test_gateway_service import FakeGit, FakeRepository, InMemoryCha
 
 @pytest.mark.asyncio
 async def test_confirmed_start_is_pinned_idempotent_and_fail_closed():
+    class UnitOfWork:
+        def __init__(self):
+            self.commits = 0
+
+        async def commit(self):
+            self.commits += 1
+
+        async def rollback(self):
+            pass
+
+    uow = UnitOfWork()
+
     class Adapter:
         def __init__(self, name):
             self.system_name = name
@@ -37,8 +49,10 @@ async def test_confirmed_start_is_pinned_idempotent_and_fail_closed():
         def __init__(self):
             super().__init__("openproject")
             self.calls = []
+            self.commits_before_write = []
 
         async def create_change_request(self, title, description, idempotency_key=None):
+            self.commits_before_write.append(uow.commits)
             self.calls.append((title, description, idempotency_key))
             return "123"
 
@@ -52,6 +66,7 @@ async def test_confirmed_start_is_pinned_idempotent_and_fail_closed():
         git=git, external_adapters=(strictdoc, capella, openproject),
         openproject=openproject, change_requests=changes, workspaces=workspaces,
         reconciliation_coordinator=ProcessLocalReconciliationCoordinator(),
+        uow=uow,
     )
     human = Actor("owner", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE)
     commit, versions = await gateway.preview_initial_sources(human, "repo")
@@ -68,6 +83,7 @@ async def test_confirmed_start_is_pinned_idempotent_and_fail_closed():
                                             commit, versions)
     assert openproject.calls == []
     capella.version = "v1"
+    uow.commits = 0
     change, workspace_id = await gateway.start_initial_project(
         human, draft_id, "a" * 64, "Project", "Starting project", "repo", "HEAD",
         commit, versions,
@@ -75,6 +91,8 @@ async def test_confirmed_start_is_pinned_idempotent_and_fail_closed():
     workspace = await workspaces.get(workspace_id)
     assert workspace is not None and workspace.project_draft_id == draft_id
     assert workspace.source_baseline_id is None and workspace.source_git_commit == commit
+    assert openproject.commits_before_write == [0]
+    assert uow.commits == 1
     repeated = await gateway.start_initial_project(
         human, draft_id, "a" * 64, "Project", "Starting project", "repo", "HEAD",
         commit, versions,
