@@ -205,7 +205,8 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             )
         human_app = create_human_review_app(
             lambda: governed_gateway_context(
-                database, git=git, adapter_set=adapter_set, budget_gate=budget_gate,
+                database, git=git, openproject=adapter_config.openproject,
+                adapter_set=adapter_set, budget_gate=budget_gate,
                 require_independent_review=settings.review.required,
             ),
             HumanTokenVerifier(
@@ -216,6 +217,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             assistant_client,
             project_store=ProjectDraftStore(database),
             dialogue_store=ProjectDialogueStore(database),
+            initial_project_repository=settings.gateway.initial_project_repository,
         )
         human_route = Mount("/human", app=human_app)
         application.router.routes.append(human_route)

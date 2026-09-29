@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from engineering_gateway.application.governed_gateway_service import (
     GovernedGatewayApplicationService,
 )
-from engineering_gateway.domain.adapters import GitAdapter, ReadAdapter
+from engineering_gateway.domain.adapters import GitAdapter, OpenProjectAdapter, ReadAdapter
 from engineering_gateway.domain.budget import BudgetGate
 from engineering_gateway.domain.reconciliation import WorkspaceReconciler
 from engineering_gateway.infrastructure.adapter_composition import ExternalAdapterSet
@@ -36,6 +36,7 @@ async def governed_gateway_context(
     database: Database,
     *,
     git: GitAdapter | None = None,
+    openproject: OpenProjectAdapter | None = None,
     external_adapters: tuple[ReadAdapter, ...] | None = None,
     adapter_set: ExternalAdapterSet | None = None,
     workspace_reconciler: WorkspaceReconciler | None = None,
@@ -114,6 +115,7 @@ async def governed_gateway_context(
             reconciliation_coordinator=PostgresReconciliationCoordinator(session),
             budget_gate=budget_gate,
             review_reader=audit if require_independent_review else None,
+            openproject=openproject,
         )
 
 

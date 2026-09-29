@@ -18,15 +18,22 @@ and review evidence with traceable origins.
 The owner can select **Discuss with Alice** on a saved draft. The chat sends
 the selected draft's original goal, constraints, author, version and source
 hash to the conversational model with explicit opt-in from the send button.
-The dialogue is now owner-scoped in PostgreSQL and restored after login. Alice
-is instructed to summarize when enough information has been provided and to
-identify the next action. This still does not create typed engineering
-artifacts or run the role agents. The next implementation phase is project
-genesis (profile, repository, empty StrictDoc/Capella sources and Change Request)
-and an AI Studio Workflow which consumes that exact source version before L1
-proposals enter the governed Gateway.
+The dialogue is owner-scoped in PostgreSQL and restored after login. Alice can
+assemble a bounded JSON start form from the draft and recent dialogue, or ask
+for essential missing details. The portal shows the proposed Change Request
+title and description, draft hash, pinned Git commit and StrictDoc/Capella/
+OpenProject versions. The owner may edit the text and must explicitly confirm.
+Only a human L2 token can then create the OpenProject Change Request and first
+workspace. Alice cannot send this write request or decide L3. No typed
+engineering artifacts or role-agent execution result from this action.
 
-Deploy migrations 0015 and 0016 before the new application image; readiness requires
-schema version 16. Older conversations were browser-only and cannot be restored
+`GATEWAY__INITIAL_PROJECT_REPOSITORY` must point to the dedicated, initialized
+engineering artifact Git repository. StrictDoc and Capella must expose clean,
+readable source projects; OpenProject must be configured. The action pins
+these source versions and isolates later changes in a new workspace. It does
+not provision the sources or assert that any UAV model has been reviewed.
+
+Deploy migrations through 0017 before the new application image; readiness requires
+schema version 17. Older conversations were browser-only and cannot be restored
 from the server. Test with an interactive human `gateway-propose` token, not a
 service credential. No personal L3 decision is needed to create a draft.
