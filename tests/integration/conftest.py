@@ -45,7 +45,7 @@ def _postgres_workspace_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
 
     async def create_with_test_dependencies(self, workspace):
         baselines = SqlAlchemyBaselineRegistry(self._session, autocommit=False)
-        if await baselines.get(workspace.source_baseline_id) is None:
+        if workspace.source_baseline_id is not None and await baselines.get(workspace.source_baseline_id) is None:
             await baselines.register(
                 Baseline(
                     id=workspace.source_baseline_id,
