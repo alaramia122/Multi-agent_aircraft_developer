@@ -252,7 +252,9 @@ def create_human_review_app(
             except GatewayServiceError as exc:
                 raise HTTPException(409, str(exc)) from exc
         return {"workspace_id": str(workspace.id), "source_baseline_id": None,
-                "project_draft_id": str(project_id), "state": workspace.state.value}
+                "project_draft_id": str(project_id),
+                "source_git_commit": workspace.source_git_commit,
+                "state": workspace.state.value}
 
     @app.get("/projects/{project_id}/dialogue")
     async def project_dialogue(project_id: UUID, request: Request) -> dict[str, object]:

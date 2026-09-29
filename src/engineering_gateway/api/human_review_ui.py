@@ -71,20 +71,19 @@ HTML = """<!doctype html>
           <li><strong>Создайте черновик.</strong> Укажите цель и известные ограничения. Это ваши исходные сведения, ещё не требования и не модель.</li>
           <li><strong>Выберите черновик и обсудите его с Alice.</strong> Она получает исходный текст и часть сохранённого диалога.
             Ниже чата показано, сколько именно реплик передано.</li>
-          <li><strong>Сверяйте следующий этап со шкалой.</strong> Сейчас создание инженерного проекта из черновика
-            и запись требований через портал ещё не доступны. Ответ Alice сам по себе не переключает этап.</li>
+          <li><strong>Создайте первую рабочую область.</strong> Понадобятся открытый Change Request без исходного baseline
+            и Git-репозиторий с исходным commit. Запись требований через портал ещё не доступна.</li>
           <li><strong>Проверяйте рабочую область, когда она создана.</strong> Загрузите UUID, изучите версии и evidence;
             независимый reviewer записывает review. Только человек с L3 может утвердить baseline.</li>
         </ol>
         <div class="baseline-guide">
           <strong>Что такое baseline и как его менять?</strong>
-          <p>Исходный пустой шаблон — начальная версия для работы, без утверждения конструкции. Рабочая область содержит
+          <p>Исходный пустой снимок — начальная версия для работы, без утверждения конструкции. Рабочая область содержит
             предлагаемые изменения. Утверждённый baseline фиксирует проверенный состав проекта: Git commit/tag и версии
             внешних систем. Его нельзя редактировать на месте; следующая редакция проходит через новый Change Request,
             рабочую область, проверки и личное решение L3.</p>
-          <p>В интерфейсе уже есть просмотр пакета, независимый review и утверждение существующей готовой области.
-            Создание первой области из вашего черновика и запуск нового цикла изменений ещё разрабатываются;
-            кнопка прямого редактирования baseline нарушила бы прослеживаемость.</p>
+          <p>Первая область создаётся без baseline из зафиксированного Git-снимка и открытого Change Request.
+            Исходный черновик служит выбранным контекстом; его текст пока не переносится в инженерные артефакты автоматически.</p>
         </div>
         <p class="fine">Подробности: <a href="https://github.com/alaramia122/Multi-agent_aircraft_developer/blob/main/docs/user-guide.md"
           target="_blank" rel="noopener noreferrer">руководство пользователя</a>.</p>
@@ -172,6 +171,18 @@ HTML = """<!doctype html>
 <div id="project-feedback" class="project-feedback" role="status" aria-live="polite"></div>
 <small>После сохранения показываются автор, версия и хэш исходного текста. Агентная обработка пока не запускается.</small>
 <div id="draft-list" class="draft-list">Войдите, чтобы увидеть ваши черновики.</div>
+</div>
+          <div class="project-start">
+<h3>Первая рабочая область</h3>
+<p class="muted">Выберите свой черновик выше. Нужна роль gateway-modify, открытый Change Request без baseline и подготовленный Git-репозиторий.</p>
+<label for="initial-cr">UUID Change Request</label>
+<input id="initial-cr" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off" spellcheck="false">
+<label for="initial-repo">Git-репозиторий</label>
+<input id="initial-repo" placeholder="Путь или адрес репозитория, доступный Gateway" autocomplete="off" spellcheck="false">
+<label for="initial-ref">Git ref</label>
+<input id="initial-ref" value="HEAD" autocomplete="off" spellcheck="false">
+<button id="create-workspace" class="button button-primary">Создать первую область</button>
+<div id="workspace-feedback" class="project-feedback" role="status" aria-live="polite"></div>
 </div>
           <h3>Инженерная рабочая область</h3>
           <p class="muted">Фактические элементы и связи выбранной области — её изменения, а не вся утверждённая модель.</p>
@@ -983,7 +994,7 @@ function selectProject(project, discuss=false) {
   $('lifecycle-badge').textContent = stage ? 'Замысел · черновик' : 'Состояние требует проверки';
   $('lifecycle-summary').textContent = project.name + ' · версия ' + project.version +
     ' · источник: ввод человека · SHA-256: ' + project.source_hash +
-    (stage ? '. Следующий этап — инициализация проекта; переход пока не доступен.' : '. Этап не определён по черновику.');
+    (stage ? '. Следующий этап — первая рабочая область с открытым Change Request.' : '. Этап не определён по черновику.');
   $('chat-project').textContent = 'Исходный черновик: ' + project.name + ' · версия ' + project.version +
     ' · SHA-256: ' + project.source_hash + '. Alice получит его текст только после отправки сообщения.';
   if (discuss) {
@@ -1137,6 +1148,26 @@ window.addEventListener('DOMContentLoaded', () => {
       feedback.classList.add('error');
       feedback.textContent = 'Не удалось создать черновик: ' + error.message;
     } finally { $('create-project').disabled = false; }
+  };
+  $('create-workspace').onclick = async () => {
+    const feedback = $('workspace-feedback');
+    feedback.classList.remove('error');
+    $('create-workspace').disabled = true;
+    try {
+      if (!selectedProjectId) throw Error('Сначала выберите черновик проекта');
+      const change_request_id = $('initial-cr').value.trim();
+      const git_repository = $('initial-repo').value.trim();
+      const git_ref = $('initial-ref').value.trim();
+      if (!change_request_id || !git_repository || !git_ref) throw Error('Укажите Change Request, Git-репозиторий и ref');
+      const result = await api('projects/' + encodeURIComponent(selectedProjectId) + '/workspaces', 'POST',
+        {change_request_id, git_repository, git_ref});
+      $('workspace').value = result.workspace_id;
+      feedback.textContent = 'Рабочая область ' + result.workspace_id + ' создана из Git commit ' + result.source_git_commit + '. Загрузите пакет для проверки.';
+      status('Первая рабочая область создана без утверждённого baseline.');
+    } catch (error) {
+      feedback.classList.add('error');
+      feedback.textContent = 'Не удалось создать область: ' + error.message;
+    } finally { $('create-workspace').disabled = false; }
   };
   $('workspace').addEventListener('input', () => {
     for (const id of ['review-action', 'approve', 'reject']) $(id).disabled = true;

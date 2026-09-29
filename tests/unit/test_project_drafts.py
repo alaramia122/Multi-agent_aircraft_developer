@@ -81,7 +81,8 @@ def test_initial_workspace_http_requires_owner_and_human_l2():
             assert (actor.actor_id, draft_id, change_id, repository, ref) == (
                 "owner", project_id, cr_id, "repo", "HEAD",
             )
-            return SimpleNamespace(id=uuid4(), state=SimpleNamespace(value="active"))
+            return SimpleNamespace(id=uuid4(), source_git_commit="abc123",
+                                   state=SimpleNamespace(value="active"))
 
     class Factory:
         async def __aenter__(self):
@@ -106,4 +107,6 @@ def test_initial_workspace_http_requires_owner_and_human_l2():
     assert client.post(path, json=data).status_code == 401
     assert client.post(path, json=data, headers=auth("owner", "gateway-read")).status_code == 403
     assert client.post(path, json=data, headers=auth("other", "gateway-modify")).status_code == 404
-    assert client.post(path, json=data, headers=auth("owner", "gateway-modify")).status_code == 201
+    created = client.post(path, json=data, headers=auth("owner", "gateway-modify"))
+    assert created.status_code == 201
+    assert created.json()["source_git_commit"] == "abc123"
