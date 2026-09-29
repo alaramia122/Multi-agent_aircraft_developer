@@ -21,6 +21,7 @@ class GatewayHttpConfig(BaseModel):
     port: int = Field(default=8000, ge=1, le=65535)
     environment: Environment = "development"
     version: str = "0.2.0"
+    initial_project_repository: str | None = None
     log_level: LogLevel = "INFO"
 
     @field_validator("host", "version")

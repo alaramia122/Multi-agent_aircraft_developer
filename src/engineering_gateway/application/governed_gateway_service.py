@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from engineering_gateway.application.gateway_service import (
     Actor,
@@ -23,9 +23,11 @@ from engineering_gateway.domain.baselines import Baseline
 from engineering_gateway.domain.budget import BudgetGate, BudgetPlan
 from engineering_gateway.domain.change_control import (
     AuthorizationLevel,
+    ChangeRequest,
     ChangeGate,
     ChangeRequestState,
 )
+from engineering_gateway.domain.adapters import ExternalVersion, OpenProjectAdapter
 from engineering_gateway.domain.models import EngineeringElement, EngineeringRelation
 from engineering_gateway.domain.ports import (
     AuditSink,
@@ -55,6 +57,7 @@ class GovernedGatewayApplicationService(
         audit: AuditSink | None = None,
         budget_gate: BudgetGate | None = None,
         review_reader: IndependentReviewReader | None = None,
+        openproject: OpenProjectAdapter | None = None,
         **kwargs: Any,
     ) -> None:
         if workspace_registry is not None:
@@ -68,6 +71,8 @@ class GovernedGatewayApplicationService(
         super().__init__(*args, **kwargs)
         self._budget_gate = budget_gate
         self._review_reader = review_reader
+        self._openproject = openproject
+        self._start_coordinator = reconciliation_coordinator
         if workspace_reconciler is None:
             self._workspace_reconciliation = None
         else:
@@ -92,6 +97,68 @@ class GovernedGatewayApplicationService(
                 audit=audit_sink,
                 coordinator=reconciliation_coordinator,
             )
+
+    async def preview_initial_sources(
+        self, actor: Actor, repository: str, ref: str = "HEAD",
+    ) -> tuple[str, tuple[ExternalVersion, ...]]:
+        self._require_read(actor)
+        if self._git is None or self._openproject is None:
+            raise GatewayServiceError("Git and OpenProject must be configured")
+        snapshot = await self._git.get_snapshot(repository, ref)
+        versions = tuple(sorted(
+            [await adapter.get_version() for adapter in self._external_adapters],
+            key=lambda version: version.system,
+        ))
+        systems = {item.system for item in versions}
+        if not {"strictdoc", "capella", "openproject"}.issubset(systems) or len(systems) != len(versions):
+            raise GatewayServiceError("Git, StrictDoc, Capella and OpenProject sources are required")
+        return snapshot.commit, versions
+
+    async def start_initial_project(
+        self, actor: Actor, draft_id: UUID, draft_hash: str, title: str, description: str,
+        repository: str, ref: str, expected_commit: str,
+        expected_versions: tuple[ExternalVersion, ...],
+    ) -> tuple[ChangeRequest, UUID]:
+        """Create a retry-safe CR and first workspace after explicit human confirmation."""
+        self._require_modify(actor)
+        if actor.is_ai:
+            raise GatewayServiceError("project start requires human L2 confirmation")
+        if self._openproject is None or self._change_requests is None or self._workspaces is None:
+            raise GatewayServiceError("project start services are not configured")
+        if self._start_coordinator is None:
+            raise GatewayServiceError("project start coordination is not configured")
+        change_id = uuid5(NAMESPACE_URL, f"engineering-start:{draft_id}:{draft_hash}")
+        async with self._start_coordinator.lock(change_id):
+            existing = await self._change_requests.get(change_id)
+            if existing is not None and existing.workspace_id is not None:
+                workspace = await self._workspaces.get(existing.workspace_id)
+                if (workspace is None or workspace.project_draft_id != draft_id
+                        or existing.title != title):
+                    raise GatewayServiceError("initial workspace provenance is inconsistent")
+                return existing, workspace.id
+            commit, versions = await self.preview_initial_sources(actor, repository, ref)
+            if commit != expected_commit or versions != expected_versions:
+                raise GatewayServiceError("initial source versions changed; review the form again")
+            if existing is None:
+                key = f"gateway-start-{change_id.hex}"
+                external_id = await self._openproject.create_change_request(
+                    title, description, idempotency_key=key,
+                )
+                existing = await self._change_requests.create(ChangeRequest(
+                    id=change_id, external_system="openproject", external_id=external_id,
+                    title=title,
+                ))
+            elif existing.state is not ChangeRequestState.OPEN or existing.title != title:
+                raise GatewayServiceError("initial Change Request conflicts with the confirmed form")
+            workspace = await GatewayApplicationService.create_initial_workspace(
+                self, actor, draft_id, existing.id, repository, ref,
+            )
+            if workspace.source_git_commit != commit or workspace.source_external_versions != versions:
+                raise GatewayServiceError("initial source versions changed during creation")
+            linked = await self._change_requests.get(existing.id)
+            if linked is None or linked.workspace_id != workspace.id:
+                raise GatewayServiceError("initial Change Request was not linked")
+            return linked, workspace.id
 
     async def prepare_for_approval(
         self,

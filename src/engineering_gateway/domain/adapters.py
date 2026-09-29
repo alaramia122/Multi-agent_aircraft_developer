@@ -82,7 +82,9 @@ class CapellaAdapter(WorkspaceAdapter, Protocol):
 class OpenProjectAdapter(ReadAdapter, Protocol):
     """OpenProject change-management integration boundary."""
 
-    async def create_change_request(self, title: str, description: str) -> str: ...
+    async def create_change_request(
+        self, title: str, description: str, idempotency_key: str | None = None
+    ) -> str: ...
 
     async def update_change_request(self, external_id: str, status: str) -> None: ...
 

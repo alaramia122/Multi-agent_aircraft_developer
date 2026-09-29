@@ -237,6 +237,22 @@ HTML = """<!doctype html>
 <button id="send" class="button button-primary">Отправить <span aria-hidden="true">↗</span>
 </button>
 </div>
+          <div class="project-start">
+<h3>Начать проект по итогам диалога</h3>
+<p class="muted">Alice задаст недостающие вопросы и предложит форму. Запись в OpenProject и создание области
+произойдут только после вашего подтверждения с ролью gateway-modify.</p>
+<button id="prepare-start" class="button">Собрать форму из диалога</button>
+<div id="start-feedback" class="project-feedback" role="status" aria-live="polite"></div>
+<div id="start-form" hidden>
+<label for="start-title">Название Change Request</label>
+<input id="start-title" maxlength="255">
+<label for="start-description">Описание и исходная цель</label>
+<textarea id="start-description" rows="5" maxlength="10000"></textarea>
+<pre id="start-sources" class="project-meta"></pre>
+<label class="check"><input id="start-confirmed" type="checkbox"> Я проверил форму и подтверждаю создание Change Request и первой рабочей области</label>
+<button id="confirm-start" class="button button-primary">Подтвердить и создать</button>
+</div>
+</div>
         </section>
         <section id="review" class="panel" aria-labelledby="review-title">
           <div class="panel-heading">
@@ -889,7 +905,7 @@ const $ = id => document.getElementById(id);
 const status = (message, error=false) => { $('status').textContent = message; $('status').classList.toggle('error', error); };
 const b64url = bytes => btoa(String.fromCharCode(...new Uint8Array(bytes)))
   .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-let config, token, loadedPackage, selectedProjectId;
+let config, token, loadedPackage, selectedProjectId, startProposal;
 let refreshToken, tokenExpiresAt = 0;
 const redirect = location.origin + '/human/';
 const sessionIntent = 'gateway_session_intent';
@@ -981,6 +997,9 @@ async function loadActivity() {
 }
 function selectProject(project, discuss=false) {
   selectedProjectId = project.id;
+  startProposal = undefined;
+  $('start-form').hidden = true;
+  $('start-confirmed').checked = false;
   sessionStorage.setItem('gateway_selected_project', project.id);
   $('memory-state').textContent = 'Контекст Alice: загружаем сохранённый диалог…';
   loadDialogue(project.id, project.version, project.source_hash).catch(error => status(error.message, true));
@@ -1184,6 +1203,8 @@ window.addEventListener('DOMContentLoaded', () => {
     if (!token) throw Error('Сначала войдите через Keycloak');
     const message = $('message').value.trim();
     if (!message) throw Error('Введите сообщение');
+    startProposal = undefined;
+    $('start-form').hidden = true;
     const workspace_id = $('include-workspace').checked ? $('workspace').value.trim() : null;
     if ($('include-workspace').checked) selectedWorkspace();
     $('send').disabled = true;
@@ -1201,6 +1222,49 @@ window.addEventListener('DOMContentLoaded', () => {
       } else $('memory-state').textContent = 'Диалог без выбранного проекта не сохраняется.';
       $('message').value = '';
     } finally { $('send').disabled = false; $('alice-state').textContent = 'Ожидает запроса'; }
+  });
+  $('prepare-start').onclick = run(async () => {
+    if (!selectedProjectId) throw Error('Сначала выберите черновик проекта');
+    $('prepare-start').disabled = true;
+    $('start-feedback').textContent = 'Alice собирает данные…';
+    try {
+      const data = await api('projects/' + encodeURIComponent(selectedProjectId) + '/start-form', 'POST');
+      if (!data.ready) {
+        startProposal = undefined;
+        $('start-form').hidden = true;
+        const questions = data.questions.length ? data.questions.join('\n') : 'Уточните цель проекта в диалоге.';
+        $('start-feedback').textContent = 'Для формы нужны ответы: ' + questions;
+        addTurn('assistant', questions);
+        return;
+      }
+      startProposal = {projectId:selectedProjectId, ...data};
+      $('start-title').value = data.title;
+      $('start-description').value = data.description;
+      $('start-sources').textContent = 'Черновик SHA-256: ' + data.draft_source_hash +
+        '\nGit commit: ' + data.source_git_commit + '\nИсходные системы: ' +
+        data.source_external_versions.map(item => item.system + ' @ ' + item.version).join(', ');
+      $('start-confirmed').checked = false;
+      $('start-form').hidden = false;
+      $('start-feedback').textContent = 'Проверьте и при необходимости исправьте данные перед подтверждением.';
+    } finally { $('prepare-start').disabled = false; }
+  });
+  $('confirm-start').onclick = run(async () => {
+    if (!startProposal || startProposal.projectId !== selectedProjectId) throw Error('Соберите форму заново');
+    if (!$('start-confirmed').checked) throw Error('Подтвердите проверку формы');
+    $('confirm-start').disabled = true;
+    try {
+      const result = await api('projects/' + encodeURIComponent(selectedProjectId) + '/start', 'POST', {
+        confirmed:true, draft_source_hash:startProposal.draft_source_hash,
+        title:$('start-title').value.trim(), description:$('start-description').value.trim(),
+        source_git_commit:startProposal.source_git_commit,
+        source_external_versions:startProposal.source_external_versions});
+      $('workspace').value = result.workspace_id;
+      $('initial-cr').value = result.change_request_id;
+      $('start-feedback').textContent = 'Создан OpenProject #' + result.openproject_id +
+        ', рабочая область ' + result.workspace_id + '. Загрузите пакет области.';
+      $('start-form').hidden = true;
+      startProposal = undefined;
+    } finally { $('confirm-start').disabled = false; }
   });
   $('review-action').onclick = run(async () => {
     await api('workspaces/' + selectedWorkspace() + '/review', 'POST',
