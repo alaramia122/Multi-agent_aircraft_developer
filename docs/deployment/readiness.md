@@ -50,7 +50,7 @@ The response is deliberately structured and stable:
 {
   "status": "ready",
   "checks": [
-    {"name": "postgresql", "status": "ready", "detail": "schema version 16"},
+    {"name": "postgresql", "status": "ready", "detail": "schema version 17"},
     {"name": "identity", "status": "disabled", "detail": "external identity mapping is disabled"}
   ]
 }
