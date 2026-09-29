@@ -4,6 +4,7 @@ import os
 import subprocess
 
 import pytest
+from sqlalchemy import text
 
 from engineering_gateway.application.gateway_service import Actor
 from engineering_gateway.domain.adapters import ExternalVersion
@@ -16,6 +17,7 @@ from engineering_gateway.infrastructure.metadata_repositories import (
     SqlAlchemyChangeRequestRepository, SqlAlchemyWorkspaceRegistry,
 )
 from engineering_gateway.infrastructure.project_drafts import ProjectDraftStore
+from engineering_gateway.infrastructure.reconciliation_coordination import _advisory_lock_key
 
 
 POSTGRES_TEST_URL = os.getenv("POSTGRES_TEST_URL")
@@ -33,11 +35,20 @@ class Source:
 
 
 class OpenProject(Source):
-    def __init__(self):
+    def __init__(self, database):
         super().__init__("openproject")
+        self.database = database
+        self.lock_key = None
         self.created = {}
 
     async def create_change_request(self, title, description, idempotency_key=None):
+        assert self.lock_key is not None
+        async with self.database.session() as probe:
+            available = await probe.scalar(
+                text("SELECT pg_try_advisory_xact_lock(:lock_key)"),
+                {"lock_key": self.lock_key},
+            )
+        assert available is False, "project-start lock was released before the external write"
         return self.created.setdefault(idempotency_key, "42")
 
 
@@ -51,14 +62,17 @@ async def test_confirmed_project_start_commits_once_and_replays(tmp_path):
                     ["git", "-C", str(repo), "commit", "--allow-empty", "-m", "clean source"]):
         subprocess.run(command, check=True, capture_output=True)
     database = Database(POSTGRES_TEST_URL)
-    openproject = OpenProject()
+    openproject = OpenProject(database)
     adapters = (Source("strictdoc"), Source("capella"), openproject)
     actor = Actor("project-start-test", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE)
     try:
         draft = await ProjectDraftStore(database).create(actor.actor_id, "Example",
                                                          "Explore a demo aircraft", "")
-        from uuid import UUID
+        from uuid import NAMESPACE_URL, UUID, uuid5
         draft_id = UUID(str(draft["id"]))
+        openproject.lock_key = _advisory_lock_key(uuid5(
+            NAMESPACE_URL, f"engineering-start:{draft_id}:{draft['source_hash']}",
+        ))
         async with governed_gateway_context(
             database, git=LocalGitAdapter(repository_root=str(repo)),
             openproject=openproject, external_adapters=adapters,

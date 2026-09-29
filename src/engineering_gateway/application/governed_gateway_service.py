@@ -136,7 +136,12 @@ class GovernedGatewayApplicationService(
                         or existing.title != title):
                     raise GatewayServiceError("initial workspace provenance is inconsistent")
                 return existing, workspace.id
-            commit, versions = await self.preview_initial_sources(actor, repository, ref)
+            # Call the implementation directly: the public attribute is wrapped by
+            # the UnitOfWork mixin and would commit here, releasing the advisory
+            # transaction lock before the external Change Request is created.
+            commit, versions = await GovernedGatewayApplicationService.preview_initial_sources(
+                self, actor, repository, ref,
+            )
             if commit != expected_commit or versions != expected_versions:
                 raise GatewayServiceError("initial source versions changed; review the form again")
             if existing is None:
