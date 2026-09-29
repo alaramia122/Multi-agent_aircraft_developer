@@ -71,8 +71,8 @@ HTML = """<!doctype html>
           <li><strong>Создайте черновик.</strong> Укажите цель и известные ограничения. Это ваши исходные сведения, ещё не требования и не модель.</li>
           <li><strong>Выберите черновик и обсудите его с Alice.</strong> Она получает исходный текст и часть сохранённого диалога.
             Ниже чата показано, сколько именно реплик передано.</li>
-          <li><strong>Создайте первую рабочую область.</strong> Понадобятся открытый Change Request без исходного baseline
-            и Git-репозиторий с исходным commit. Запись требований через портал ещё не доступна.</li>
+          <li><strong>Соберите форму из диалога.</strong> Alice задаст нужные вопросы; проверьте её предложение и
+            подтвердите создание Change Request и первой области с ролью gateway-modify.</li>
           <li><strong>Проверяйте рабочую область, когда она создана.</strong> Загрузите UUID, изучите версии и evidence;
             независимый reviewer записывает review. Только человек с L3 может утвердить baseline.</li>
         </ol>
@@ -82,7 +82,7 @@ HTML = """<!doctype html>
             предлагаемые изменения. Утверждённый baseline фиксирует проверенный состав проекта: Git commit/tag и версии
             внешних систем. Его нельзя редактировать на месте; следующая редакция проходит через новый Change Request,
             рабочую область, проверки и личное решение L3.</p>
-          <p>Первая область создаётся без baseline из зафиксированного Git-снимка и открытого Change Request.
+          <p>Первая область создаётся без baseline из зафиксированного Git-снимка и Change Request после вашего подтверждения.
             Исходный черновик служит выбранным контекстом; его текст пока не переносится в инженерные артефакты автоматически.</p>
         </div>
         <p class="fine">Подробности: <a href="https://github.com/alaramia122/Multi-agent_aircraft_developer/blob/main/docs/user-guide.md"
@@ -159,6 +159,11 @@ HTML = """<!doctype html>
 </div>
 </div>
           <p class="muted">Черновик проекта хранит введённые вами исходные данные. Он не создаёт требований, модели или baseline автоматически.</p>
+          <details class="project-start">
+            <summary>Три демонстрационные цепочки проектов</summary>
+            <p class="muted">Примеры показывают полные типизированные связи по профилям. Их документы, испытания и baseline не создавались в рабочих системах.</p>
+            <div id="example-list" class="draft-list">Загружаем примеры…</div>
+          </details>
           <div class="project-start">
 <h3>Новый проект с нуля</h3>
 <label for="new-name">Название</label>
@@ -1061,6 +1066,41 @@ async function loadProjects() {
     list.append(card);
   }
 }
+async function loadExamples() {
+  const response = await fetch('/human/examples', {cache:'no-store'});
+  if (!response.ok) throw Error('Не удалось загрузить демонстрационные проекты');
+  const data = await response.json();
+  const list = $('example-list');
+  list.replaceChildren();
+  for (const example of data.examples) {
+    const card = element('div', 'draft-item');
+    card.append(element('strong', '', example.name),
+      element('small', '', 'Демонстрация · ' + example.profile.id + '@' + example.profile.version +
+        ' · ' + example.elements.length + ' элементов · ' + example.relations.length + ' связей'),
+      element('p', '', example.goal));
+    const inspect = element('details', 'raw');
+    inspect.append(element('summary', '', 'Посмотреть содержание и трассировку'));
+    for (const item of example.elements) {
+      inspect.append(element('p', '', item.type_id + ' · ' + item.name + ': ' + item.detail));
+    }
+    for (const [source, relation, target] of example.relations) {
+      inspect.append(element('small', '', source + ' → ' + relation + ' → ' + target));
+      inspect.append(document.createElement('br'));
+    }
+    card.append(inspect);
+    const use = element('button', 'button', 'Взять как основу нового черновика');
+    use.type = 'button';
+    use.onclick = () => {
+      $('new-name').value = example.name;
+      $('new-goal').value = example.goal;
+      $('new-constraints').value = example.constraints;
+      location.hash = 'project';
+      $('new-name').focus();
+    };
+    card.append(use);
+    list.append(card);
+  }
+}
 function renderAgents(data) {
   const list = $('agent-list');
   list.replaceChildren();
@@ -1284,6 +1324,7 @@ window.addEventListener('DOMContentLoaded', () => {
   run(async () => {
     await loadConfig();
     loadStructure().catch(error => status(error.message, true));
+    loadExamples().catch(error => status(error.message, true));
     const returnedFromIdp = await finishLogin();
     if (!returnedFromIdp && sessionStorage.getItem(sessionIntent)) await login(true);
   })();
