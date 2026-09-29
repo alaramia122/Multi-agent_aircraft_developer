@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import jwt
 import pytest
@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from engineering_gateway.api.human_review import HumanTokenVerifier, create_human_review_app
 from engineering_gateway.infrastructure.db import Base, Database
+from engineering_gateway.infrastructure.metadata_models import WorkspaceRecord
 from engineering_gateway.infrastructure.project_drafts import ProjectDraftStore, ProjectDraftRecord  # noqa: F401
 
 
@@ -27,6 +28,39 @@ async def test_drafts_persist_with_provenance_and_are_owner_scoped(tmp_path):
         assert draft["version"] == 1 and len(str(draft["source_hash"])) == 64
         assert (await ProjectDraftStore(database).list_for("human-a")) == [draft]
         assert await store.list_for("human-b") == []
+    finally:
+        await database.dispose()
+
+
+@pytest.mark.asyncio
+async def test_owned_draft_recovers_linked_workspace_after_reload(tmp_path):
+    database = Database(f"sqlite+aiosqlite:///{tmp_path / 'linked-projects.db'}")
+    async with database.engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    try:
+        store = ProjectDraftStore(database)
+        first = await store.create("human-a", "Курс", "Исследовать управление курсом", "")
+        other = await store.create("human-b", "Питание", "Исследовать заряд аккумулятора", "")
+        workspace_id, other_workspace_id = uuid4(), uuid4()
+        changes = {str(first["id"]): uuid4(), str(other["id"]): uuid4()}
+        async with database.session() as session:
+            for project, identifier in ((first, workspace_id), (other, other_workspace_id)):
+                session.add(WorkspaceRecord(
+                    id=identifier, version=0, source_baseline_id=None,
+                    source_git_commit="a" * 40, source_git_repository="repo",
+                    source_external_versions=[], project_draft_id=UUID(str(project["id"])),
+                    change_request_id=changes[str(project["id"])], git_ref="HEAD", state="active",
+                ))
+            await session.commit()
+        recovered = (await ProjectDraftStore(database).list_for("human-a"))[0]
+        assert recovered["workspaces"] == [{
+            "id": str(workspace_id), "state": "active",
+            "change_request_id": str(changes[str(first["id"])]),
+            "source_git_commit": "a" * 40,
+        }]
+        assert (await store.get_for("human-a", UUID(str(first["id"])))) == recovered
+        assert await store.get_for("human-b", UUID(str(first["id"]))) is None
+        assert str(other_workspace_id) not in str(recovered)
     finally:
         await database.dispose()
 
