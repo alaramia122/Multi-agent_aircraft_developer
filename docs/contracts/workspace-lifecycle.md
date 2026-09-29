@@ -1,6 +1,6 @@
 # Workspace lifecycle
 
-A Workspace is a temporary, baseline-derived modification boundary. It isolates unapproved engineering changes from the canonical Gateway reference model.
+A Workspace is a temporary modification boundary. The first workspace starts from a human project draft and pinned Git/external versions. Later workspaces originate from an approved baseline. It isolates unapproved engineering changes from the canonical Gateway reference model.
 
 ## Lifecycle
 
@@ -28,7 +28,7 @@ Before `approve_workspace`, an approved engineering change should be reconciled 
 
 ## Invariants
 
-1. A workspace is created from exactly one immutable source baseline and source Git commit.
+1. A workspace has one immutable origin: an approved source baseline and Git commit, or a human project draft with a pinned Git commit and authoritative source versions. The draft is not an approved baseline.
 2. A Change Request can be linked to at most one active workspace.
 3. Workspace engineering writes require human L2 authority and an ACTIVE workspace.
 4. Workspace changes are stored in a separate change-set overlay.
@@ -41,6 +41,8 @@ Before `approve_workspace`, an approved engineering change should be reconciled 
 11. Approval captures authoritative Git/external-system versions into an immutable Baseline.
 12. An approved workspace is not writable and can only be closed through the governed close operation.
 13. A closed workspace is immutable.
+
+The first approved baseline is produced only when the initial workspace passes validation, reconciliation, independent review and human L3 approval. Subsequent workspaces use that baseline as their source. An initial workspace may be created through the human API `POST /human/projects/{project_id}/workspaces` by its draft owner with human L2 authority and an existing open OpenProject Change Request; it supplies `change_request_id`, `git_repository` and `git_ref`. Source versions are captured at creation, and adapters reject publication when a required source version is missing.
 
 ## Reconciliation boundary
 
