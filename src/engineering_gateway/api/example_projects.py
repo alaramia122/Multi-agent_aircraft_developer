@@ -1,0 +1,273 @@
+"""Reviewed, read-only teaching examples of complete profile trace chains.
+
+These are fictional source statements. They do not stand for native StrictDoc,
+Capella or OpenProject records, test results, or an approved baseline.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+
+def example_projects() -> list[dict[str, Any]]:
+    """Return separate copies so HTTP serialization cannot mutate the catalog."""
+    return [
+        {
+            "id": "course-hold",
+            "name": "Учебный БПЛА: удержание курса",
+            "goal": "Разработать учебный контур удержания курса для малого беспилотного самолёта на испытательном стенде.",
+            "constraints": "Только стендовая демонстрация; допущения о датчиках и времени реакции требуют проверки.",
+            "profile": {"id": "arp4754a", "version": "2.0"},
+            "elements": [
+                {
+                    "key": "flight",
+                    "kind": "architecture",
+                    "type_id": "aircraft_function",
+                    "name": "Сохранять заданное направление полёта",
+                    "detail": "Функция верхнего уровня для учебного сценария.",
+                },
+                {
+                    "key": "control",
+                    "kind": "architecture",
+                    "type_id": "system_function",
+                    "name": "Оценивать курс и формировать коррекцию",
+                    "detail": "Вход: измеренный и заданный курс; выход: ограниченная команда управления.",
+                },
+                {
+                    "key": "requirement",
+                    "kind": "requirement",
+                    "type_id": "system_requirement",
+                    "name": "Период обновления команды",
+                    "detail": "Проектное допущение: обновлять команду не реже одного раза в 50 мс при валидном измерении; порог подлежит испытанию.",
+                },
+                {
+                    "key": "architecture",
+                    "kind": "architecture",
+                    "type_id": "system_architecture",
+                    "name": "Контур управления курсом",
+                    "detail": "Датчик направления, вычислитель, ограничитель и исполнительный интерфейс.",
+                },
+                {
+                    "key": "software",
+                    "kind": "architecture",
+                    "type_id": "software_item",
+                    "name": "Контроллер курса",
+                    "detail": "Учебный программный элемент с проверкой валидности измерения.",
+                },
+                {
+                    "key": "hazard",
+                    "kind": "safety",
+                    "type_id": "hazard",
+                    "name": "Неверный знак коррекции",
+                    "detail": "Предполагаемое опасное состояние: команда увеличивает отклонение курса.",
+                },
+                {
+                    "key": "safety",
+                    "kind": "requirement",
+                    "type_id": "safety_requirement",
+                    "name": "Отключение коррекции при недостоверном измерении",
+                    "detail": "Проектное допущение: при потере валидности входа прекратить автоматическую коррекцию и зарегистрировать событие.",
+                },
+                {
+                    "key": "verification",
+                    "kind": "verification",
+                    "type_id": "verification_activity",
+                    "name": "Стендовая проверка коррекции и отказа датчика",
+                    "detail": "План: подать ступенчатое отклонение и смоделировать потерю валидности; записать времена и команды.",
+                },
+                {
+                    "key": "evidence",
+                    "kind": "verification",
+                    "type_id": "verification_evidence",
+                    "name": "Шаблон протокола стендовой проверки",
+                    "detail": "Перечень ожидаемых измерений; фактический протокол испытания пока не создан.",
+                },
+            ],
+            "relations": [
+                ["control", "refines", "flight"],
+                ["requirement", "derives_from", "control"],
+                ["requirement", "allocated_to", "architecture"],
+                ["architecture", "allocated_to", "software"],
+                ["hazard", "affects", "control"],
+                ["safety", "derives_from", "requirement"],
+                ["safety", "mitigates", "hazard"],
+                ["safety", "allocated_to", "architecture"],
+                ["requirement", "verified_by", "verification"],
+                ["safety", "verified_by", "verification"],
+                ["verification", "verified_by", "evidence"],
+            ],
+        },
+        {
+            "id": "battery-monitor",
+            "name": "Учебный БПЛА: контроль аккумулятора",
+            "goal": "Спроектировать демонстрационный контроль напряжения аккумулятора с предупреждением оператора.",
+            "constraints": "Пороги, точность измерения и действия оператора являются предположениями до анализа опасностей и испытаний.",
+            "profile": {"id": "arp4754a", "version": "2.0"},
+            "elements": [
+                {
+                    "key": "flight",
+                    "kind": "architecture",
+                    "type_id": "aircraft_function",
+                    "name": "Обеспечивать энергоснабжение полёта",
+                    "detail": "Учебная функция верхнего уровня.",
+                },
+                {
+                    "key": "monitor",
+                    "kind": "architecture",
+                    "type_id": "system_function",
+                    "name": "Оценивать доступный заряд",
+                    "detail": "Получать измерения и передавать предупреждение оператору.",
+                },
+                {
+                    "key": "requirement",
+                    "kind": "requirement",
+                    "type_id": "system_requirement",
+                    "name": "Периодичность контроля питания",
+                    "detail": "Проектное допущение: обновлять оценку не реже одного раза в секунду при доступных измерениях.",
+                },
+                {
+                    "key": "architecture",
+                    "kind": "architecture",
+                    "type_id": "system_architecture",
+                    "name": "Подсистема контроля питания",
+                    "detail": "Измеритель, вычислитель состояния и канал предупреждения.",
+                },
+                {
+                    "key": "software",
+                    "kind": "architecture",
+                    "type_id": "software_item",
+                    "name": "Оценщик состояния батареи",
+                    "detail": "Отмечает недостоверные измерения и формирует сообщение.",
+                },
+                {
+                    "key": "hazard",
+                    "kind": "safety",
+                    "type_id": "hazard",
+                    "name": "Пропущенное предупреждение о разряде",
+                    "detail": "Потенциальная потеря доступной энергии без уведомления оператора.",
+                },
+                {
+                    "key": "safety",
+                    "kind": "requirement",
+                    "type_id": "safety_requirement",
+                    "name": "Индикация недостоверного измерения",
+                    "detail": "Проектное допущение: явно сообщать о потере измерения и не показывать прежнее значение как актуальное.",
+                },
+                {
+                    "key": "verification",
+                    "kind": "verification",
+                    "type_id": "verification_activity",
+                    "name": "Испытание падения напряжения и обрыва датчика",
+                    "detail": "План: подать последовательность измерений, проверить предупреждение и отметку недостоверности.",
+                },
+                {
+                    "key": "evidence",
+                    "kind": "verification",
+                    "type_id": "verification_evidence",
+                    "name": "Шаблон журнала стендового испытания",
+                    "detail": "Форма будущего результата с временем, входом и выводом; фактических измерений нет.",
+                },
+            ],
+            "relations": [
+                ["monitor", "refines", "flight"],
+                ["requirement", "derives_from", "monitor"],
+                ["requirement", "allocated_to", "architecture"],
+                ["architecture", "allocated_to", "software"],
+                ["hazard", "affects", "monitor"],
+                ["safety", "derives_from", "requirement"],
+                ["safety", "mitigates", "hazard"],
+                ["safety", "allocated_to", "architecture"],
+                ["requirement", "verified_by", "verification"],
+                ["safety", "verified_by", "verification"],
+                ["verification", "verified_by", "evidence"],
+            ],
+        },
+        {
+            "id": "telemetry-integrity",
+            "name": "Учебная авионика: целостность телеметрии",
+            "goal": "Разработать демонстрационный программный путь проверки и отображения принятых пакетов телеметрии.",
+            "constraints": "Формат пакета и критерии задержки должны быть согласованы с реальным каналом; результаты испытаний отсутствуют.",
+            "profile": {"id": "do-178c", "version": "2.0"},
+            "elements": [
+                {
+                    "key": "system",
+                    "kind": "requirement",
+                    "type_id": "system_requirement",
+                    "name": "Отображение достоверной телеметрии",
+                    "detail": "Проектное допущение: оператор видит только пакеты, прошедшие проверку целостности.",
+                },
+                {"key": "item", "kind": "architecture", "type_id": "software_item", "name": "Приёмник телеметрии", "detail": "Учебный программный элемент обработки пакетов."},
+                {
+                    "key": "hlr",
+                    "kind": "requirement",
+                    "type_id": "high_level_requirement",
+                    "name": "Отбрасывание повреждённого пакета",
+                    "detail": "При несовпадении контрольного поля пометить пакет как недостоверный и не передавать на дисплей.",
+                },
+                {
+                    "key": "architecture",
+                    "kind": "architecture",
+                    "type_id": "software_architecture",
+                    "name": "Конвейер проверки пакета",
+                    "detail": "Парсер, проверка поля целостности и интерфейс отображения.",
+                },
+                {
+                    "key": "llr",
+                    "kind": "requirement",
+                    "type_id": "low_level_requirement",
+                    "name": "Проверка поля до декодирования",
+                    "detail": "Проектное допущение: выполнять сравнение контрольного поля перед чтением полезных данных.",
+                },
+                {
+                    "key": "source",
+                    "kind": "configuration",
+                    "type_id": "source_code",
+                    "name": "Заготовка модуля декодера",
+                    "detail": "Иллюстративный элемент конфигурации; исполняемый исходный код не опубликован.",
+                },
+                {
+                    "key": "executable",
+                    "kind": "configuration",
+                    "type_id": "executable",
+                    "name": "Планируемая сборка декодера",
+                    "detail": "Иллюстративный элемент; исполняемый артефакт не создан.",
+                },
+                {
+                    "key": "case",
+                    "kind": "verification",
+                    "type_id": "verification_case",
+                    "name": "Случаи валидного и повреждённого пакета",
+                    "detail": "План тестов с двумя классами входных сообщений и ожидаемым отображением.",
+                },
+                {
+                    "key": "result",
+                    "kind": "verification",
+                    "type_id": "verification_result",
+                    "name": "Шаблон результата декодирования",
+                    "detail": "Место для фактического вердикта теста; тест ещё не выполнен.",
+                },
+                {
+                    "key": "evidence",
+                    "kind": "verification",
+                    "type_id": "evidence",
+                    "name": "Шаблон журнала проверки",
+                    "detail": "Место для контрольных сумм и логов; фактическое свидетельство отсутствует.",
+                },
+            ],
+            "relations": [
+                ["hlr", "derives_from", "system"],
+                ["hlr", "allocated_to", "item"],
+                ["llr", "refines", "hlr"],
+                ["llr", "allocated_to", "architecture"],
+                ["architecture", "implements", "source"],
+                ["source", "implements", "executable"],
+                ["hlr", "verified_by", "case"],
+                ["llr", "verified_by", "case"],
+                ["case", "verified_by", "result"],
+                ["result", "verified_by", "evidence"],
+            ],
+        },
+    ]
+
+
+__all__ = ["example_projects"]

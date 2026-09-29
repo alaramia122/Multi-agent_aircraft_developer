@@ -1,6 +1,9 @@
 # Standard profile examples
 
-This directory will contain executable example profiles after the profile schema is finalized.
+The portal exposes three fictional project trace chains from
+`engineering_gateway.api.example_projects`. Their graphs are checked against
+the executable `arp4754a@2.0` and `do-178c@2.0` profiles in CI. The example
+elements are not native external records, test results, or approved baselines.
 
 The intended composition for the first vertical slices is:
 

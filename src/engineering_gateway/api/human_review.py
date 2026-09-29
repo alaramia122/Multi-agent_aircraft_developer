@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from engineering_gateway.application.gateway_service import Actor, GatewayServiceError
 from engineering_gateway.api.human_review_ui import HTML, SCRIPT, STYLES
+from engineering_gateway.api.example_projects import example_projects
 from engineering_gateway.api.assistant_markdown import render_assistant_markdown
 from engineering_gateway.domain.audit import ActorType
 from engineering_gateway.domain.change_control import AuthorizationLevel
@@ -232,6 +233,11 @@ def create_human_review_app(
     async def agent_structure() -> dict[str, object]:
         """Public role descriptions; no identities, tasks or runtime state."""
         return {"agents": [{"id": key, "name": name, "purpose": purpose} for key, name, purpose in AGENT_ROLES]}
+
+    @app.get("/examples")
+    async def project_examples() -> dict[str, object]:
+        """Show fictional trace examples without claiming external records or L3."""
+        return {"examples": example_projects(), "kind": "read_only_demonstration"}
 
     async def actor_for(request: Request) -> Actor:
         headers = request.scope.get("headers", ())
