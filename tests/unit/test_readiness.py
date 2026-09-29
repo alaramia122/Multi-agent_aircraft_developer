@@ -75,7 +75,8 @@ async def test_readiness_fails_when_schema_version_is_wrong() -> None:
 async def test_readiness_fails_when_enabled_strictdoc_is_unavailable() -> None:
     configuration = Settings(
         git={"repository_root": str(Path.cwd())},
-        strictdoc={"enabled": True, "project_path": str(Path.cwd())},
+        strictdoc={"enabled": True, "project_path": str(Path.cwd()),
+                   "executable": "strictdoc-command-absent-for-readiness-test"},
     )
     report = await check_readiness(_Database(), configuration)
 
