@@ -3,7 +3,7 @@
 from enum import StrEnum
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from engineering_gateway.domain.adapters import ExternalVersion
 
@@ -23,9 +23,12 @@ class Workspace(BaseModel):
     model_config = ConfigDict(extra="forbid")
     id: UUID = Field(default_factory=uuid4)
     version: int = Field(default=0, ge=0)
-    source_baseline_id: UUID
+    source_baseline_id: UUID | None = None
     source_git_commit: str = Field(min_length=1)
     change_request_id: UUID
+    source_git_repository: str | None = Field(default=None, min_length=1)
+    source_external_versions: tuple[ExternalVersion, ...] = ()
+    project_draft_id: UUID | None = None
     git_ref: str = Field(default="HEAD", min_length=1)
     profile_id: str | None = Field(default=None, min_length=1)
     profile_version: str | None = Field(default=None, min_length=1)
@@ -35,6 +38,15 @@ class Workspace(BaseModel):
     reconciled_change_set_hash: str | None = Field(default=None, min_length=64, max_length=64)
     reconciliation_external_versions: tuple[ExternalVersion, ...] = ()
     state: WorkspaceState = WorkspaceState.ACTIVE
+
+    @model_validator(mode="after")
+    def require_single_origin(self) -> "Workspace":
+        if self.source_baseline_id is None:
+            if self.project_draft_id is None or self.source_git_repository is None:
+                raise ValueError("initial workspace requires a draft and pinned Git repository")
+        elif self.project_draft_id is not None:
+            raise ValueError("workspace cannot originate from both draft and baseline")
+        return self
 
     def bind_profile(self, profile_id: str, profile_version: str) -> "Workspace":
         if self.profile_id is not None and self.profile_id != profile_id:
@@ -151,6 +163,9 @@ class WorkspaceRegistry:
         if (
             current.source_baseline_id != workspace.source_baseline_id
             or current.source_git_commit != workspace.source_git_commit
+            or current.source_git_repository != workspace.source_git_repository
+            or current.source_external_versions != workspace.source_external_versions
+            or current.project_draft_id != workspace.project_draft_id
             or current.change_request_id != workspace.change_request_id
             or current.git_ref != workspace.git_ref
         ):

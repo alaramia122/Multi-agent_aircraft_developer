@@ -214,6 +214,9 @@ class SqlAlchemyWorkspaceRegistry(_TransactionAware):
                 version=workspace.version,
                 source_baseline_id=workspace.source_baseline_id,
                 source_git_commit=workspace.source_git_commit,
+                source_git_repository=workspace.source_git_repository,
+                source_external_versions=[item.model_dump(mode="json") for item in workspace.source_external_versions],
+                project_draft_id=workspace.project_draft_id,
                 change_request_id=workspace.change_request_id,
                 git_ref=workspace.git_ref,
                 profile_id=workspace.profile_id,
@@ -247,6 +250,9 @@ class SqlAlchemyWorkspaceRegistry(_TransactionAware):
         if (
             record.source_baseline_id != workspace.source_baseline_id
             or record.source_git_commit != workspace.source_git_commit
+            or record.source_git_repository != workspace.source_git_repository
+            or tuple(ExternalVersion.model_validate(item) for item in record.source_external_versions) != workspace.source_external_versions
+            or record.project_draft_id != workspace.project_draft_id
             or record.change_request_id != workspace.change_request_id
             or record.git_ref != workspace.git_ref
         ):
@@ -371,6 +377,9 @@ def _to_workspace(record: WorkspaceRecord) -> Workspace:
         version=record.version,
         source_baseline_id=record.source_baseline_id,
         source_git_commit=record.source_git_commit,
+        source_git_repository=record.source_git_repository,
+        source_external_versions=tuple(ExternalVersion.model_validate(item) for item in record.source_external_versions),
+        project_draft_id=record.project_draft_id,
         change_request_id=record.change_request_id,
         git_ref=record.git_ref,
         profile_id=record.profile_id,

@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from engineering_gateway.domain.audit import ActorType, AuditEvent, AuditResult
+from engineering_gateway.domain.adapters import ExternalVersion
 from engineering_gateway.domain.change_control import AuthorizationLevel, ChangeRequest, ChangeRequestState
 from engineering_gateway.domain.workspaces import Workspace, WorkspaceState
 from engineering_gateway.infrastructure.db import Base
@@ -90,6 +91,20 @@ async def test_workspace_repository_allows_validation_reset_on_rejection_path(se
     assert restored.state is WorkspaceState.ACTIVE
     assert restored.validation_graph_hash is None
     assert restored.validation_evidence == {}
+
+
+@pytest.mark.asyncio
+async def test_initial_workspace_origin_round_trips_and_is_immutable(session) -> None:
+    repository = SqlAlchemyWorkspaceRegistry(session)
+    workspace = Workspace(
+        project_draft_id=uuid4(), source_git_repository="repo",
+        source_git_commit="abc123", change_request_id=uuid4(),
+        source_external_versions=(ExternalVersion(system="strictdoc", version="source-1"),),
+    )
+    await repository.create(workspace)
+    assert await repository.get(workspace.id) == workspace
+    with pytest.raises(ValueError, match="origin"):
+        await repository.update(workspace.model_copy(update={"source_git_repository": "other"}))
 
 
 @pytest.mark.asyncio

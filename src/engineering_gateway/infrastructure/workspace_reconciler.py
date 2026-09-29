@@ -75,7 +75,18 @@ class AdapterWorkspaceReconciler:
 
         used = sorted(systems)
         source_versions: dict[str, str] = {}
-        if self._baselines is not None and used:
+        if workspace.source_baseline_id is None:
+            if not workspace.source_git_repository:
+                raise WorkspaceReconciliationError("initial workspace has no Git source repository")
+            source_versions = {version.system: version.version for version in workspace.source_external_versions}
+            if len(source_versions) != len(workspace.source_external_versions):
+                raise WorkspaceReconciliationError("duplicate initial source versions")
+            missing_versions = sorted(set(used) - source_versions.keys())
+            if missing_versions:
+                raise WorkspaceReconciliationError(
+                    "initial source lacks authoritative versions: " + ", ".join(missing_versions)
+                )
+        elif self._baselines is not None and used:
             source_baseline = await self._baselines.get(workspace.source_baseline_id)
             if source_baseline is None or source_baseline.git_commit != workspace.source_git_commit:
                 raise WorkspaceReconciliationError("workspace source baseline is missing or stale")

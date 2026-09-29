@@ -206,6 +206,46 @@ class GatewayApplicationService:
         )
         return created
 
+    async def create_initial_workspace(
+        self, actor: Actor, project_draft_id: UUID, change_request_id: UUID,
+        git_repository: str, git_ref: str = "HEAD",
+    ) -> Workspace:
+        """Start the first workspace from a pinned Git snapshot, before any L3 baseline."""
+        self._require_modify(actor)
+        if self._git is None or self._workspaces is None or self._change_requests is None:
+            raise GatewayServiceError("Git/change-request/workspace services are not configured")
+        change_request = await self._change_requests.get(change_request_id)
+        if change_request is None or change_request.source_baseline_id is not None:
+            raise GatewayServiceError("initial change request must have no source baseline")
+        if change_request.workspace_id is not None or change_request.state is not ChangeRequestState.OPEN:
+            raise GatewayServiceError("initial change request is already in use")
+        snapshot = await self._git.get_snapshot(git_repository, git_ref)
+        versions = tuple(sorted(
+            [await adapter.get_version() for adapter in self._external_adapters],
+            key=lambda version: version.system,
+        ))
+        if len({version.system for version in versions}) != len(versions):
+            raise GatewayServiceError("duplicate authoritative source system")
+        workspace = Workspace(
+            source_git_repository=snapshot.repository,
+            source_git_commit=snapshot.commit,
+            source_external_versions=versions,
+            project_draft_id=project_draft_id,
+            change_request_id=change_request.id,
+            git_ref=git_ref,
+        )
+        created = await self._workspaces.create(workspace)
+        await self._change_requests.update(change_request.model_copy(update={
+            "state": ChangeRequestState.IN_PROGRESS, "workspace_id": created.id,
+        }))
+        await self._record(actor, "create_initial_workspace", "workspace", created.id,
+                           AuditResult.SUCCESS, metadata={
+                               "project_draft_id": str(project_draft_id),
+                               "source_git_commit": snapshot.commit,
+                               "change_request_id": str(change_request.id),
+                           })
+        return created
+
     async def reject_workspace(self, actor: Actor, workspace_id: UUID, reason: str) -> None:
         if self._workspaces is None or self._change_requests is None:
             raise GatewayServiceError("workspace/change-request registries are not configured")
@@ -362,19 +402,23 @@ class GatewayApplicationService:
             )
         if workspace.profile_id is None or workspace.profile_version is None:
             raise GatewayServiceError("workspace has no validation profile provenance")
-        source = await self._baselines.get(workspace.source_baseline_id)
-        if source is None:
+        source = (await self._baselines.get(workspace.source_baseline_id)
+                  if workspace.source_baseline_id is not None else None)
+        if source is None and workspace.source_baseline_id is not None:
             raise GatewayServiceError("workspace source baseline was not found")
-        if workspace.source_git_commit != source.git_commit:
+        if source is not None and workspace.source_git_commit != source.git_commit:
             raise GatewayServiceError("workspace provenance no longer matches its source baseline")
+        repository = source.git_repository if source else workspace.source_git_repository
+        if not repository:
+            raise GatewayServiceError("initial workspace has no pinned Git repository")
         if not workspace.reconciliation_external_versions:
             raise GatewayServiceError(
                 "workspace has no authoritative reconciliation version evidence"
             )
         try:
-            snapshot = await self._git.get_snapshot(source.git_repository, workspace.git_ref)
+            snapshot = await self._git.get_snapshot(repository, workspace.git_ref)
             if not await self._git.is_ancestor(
-                source.git_repository, workspace.source_git_commit, workspace.git_ref
+                repository, workspace.source_git_commit, workspace.git_ref
             ):
                 raise GatewayServiceError(
                     "workspace Git ref does not descend from its source baseline commit"
@@ -421,7 +465,7 @@ class GatewayApplicationService:
             metadata={
                 "workspace_id": str(workspace_id),
                 "change_request_id": str(change_request.id),
-                "source_baseline_id": str(source.id),
+                "source_baseline_id": str(source.id) if source else None,
                 "source_git_commit": workspace.source_git_commit,
                 "git_commit": registered.git_commit,
                 "git_tag": registered.git_tag,

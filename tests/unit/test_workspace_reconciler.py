@@ -73,6 +73,25 @@ def _workspace() -> Workspace:
     )
 
 
+@pytest.mark.asyncio
+async def test_initial_workspace_uses_pinned_external_version_and_rejects_missing_source():
+    adapter = FakeAdapter("strictdoc")
+    element = _element("strictdoc", "REQ-1")
+    initial = Workspace(
+        source_git_repository="repo", source_git_commit="abc123",
+        project_draft_id=uuid4(), change_request_id=uuid4(),
+        source_external_versions=(ExternalVersion(system="strictdoc", version="draft-rev-1"),),
+    )
+    reconciler = AdapterWorkspaceReconciler((adapter,))
+    await reconciler.reconcile(initial, EngineeringGraph(elements=[element]))
+    assert adapter.created[0][1] == "draft-rev-1"
+    with pytest.raises(WorkspaceReconciliationError, match="lacks authoritative versions"):
+        await reconciler.reconcile(
+            initial.model_copy(update={"source_external_versions": ()}),
+            EngineeringGraph(elements=[element]),
+        )
+
+
 def _element(system: str, external_id: str, element_id: UUID | None = None) -> EngineeringElement:
     return EngineeringElement(
         id=element_id or uuid4(),

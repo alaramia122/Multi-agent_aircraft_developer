@@ -74,6 +74,11 @@ class NewProject(BaseModel):
         return value
 
 
+class InitialWorkspaceRequest(BaseModel):
+    change_request_id: UUID
+    git_repository: str = Field(min_length=1, max_length=2048)
+    git_ref: str = Field(default="HEAD", min_length=1, max_length=2048)
+
 class AssistantClient(Protocol):
     async def answer(self, input_text: str) -> dict[str, str]: ...
 
@@ -226,6 +231,30 @@ def create_human_review_app(
         if project is None:
             raise HTTPException(404, "project draft not found")
         return project
+
+    @app.post("/projects/{project_id}/workspaces", status_code=201)
+    async def create_initial_workspace(
+        project_id: UUID, data: InitialWorkspaceRequest, request: Request,
+    ) -> dict[str, object]:
+        actor = await actor_for(request)
+        if actor.authorization_level is not AuthorizationLevel.L2_MODIFY_WORKSPACE:
+            raise HTTPException(403, "human L2 workspace modification authority required")
+        if project_store is None:
+            raise HTTPException(503, "project drafts are not configured")
+        if await project_store.get_for(actor.actor_id, project_id) is None:
+            raise HTTPException(404, "project draft not found")
+        async with service() as gateway:
+            try:
+                workspace = await gateway.create_initial_workspace(
+                    actor, project_id, data.change_request_id,
+                    data.git_repository, data.git_ref,
+                )
+            except GatewayServiceError as exc:
+                raise HTTPException(409, str(exc)) from exc
+        return {"workspace_id": str(workspace.id), "source_baseline_id": None,
+                "project_draft_id": str(project_id),
+                "source_git_commit": workspace.source_git_commit,
+                "state": workspace.state.value}
 
     @app.get("/projects/{project_id}/dialogue")
     async def project_dialogue(project_id: UUID, request: Request) -> dict[str, object]:

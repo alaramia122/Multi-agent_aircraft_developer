@@ -270,6 +270,54 @@ async def test_workspace_creation_binds_baseline_and_change_request(workflow_ser
 
 
 @pytest.mark.asyncio
+async def test_first_workspace_starts_without_approved_baseline(workflow_service) -> None:
+    gateway, _, baselines, workspaces, _, change_requests = workflow_service
+    cr = await make_change_request(change_requests)
+    draft_id = uuid4()
+    engineer = Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE)
+    workspace = await gateway.create_initial_workspace(
+        engineer, draft_id, cr.id, "repo", "first-project"
+    )
+    assert workspace.source_baseline_id is None
+    assert workspace.project_draft_id == draft_id
+    assert workspace.source_git_commit == "def456"
+    assert workspace.source_external_versions == (
+        ExternalVersion(system="strictdoc", version="rev-42"),
+    )
+    assert await baselines.list() == []
+    assert (await change_requests.get(cr.id)).workspace_id == workspace.id
+    with pytest.raises(GatewayServiceError, match="already in use"):
+        await gateway.create_initial_workspace(engineer, draft_id, cr.id, "repo")
+    with pytest.raises(GatewayServiceError, match="L2"):
+        await gateway.create_initial_workspace(
+            Actor("reader", ActorType.HUMAN, AuthorizationLevel.L0_READ),
+            uuid4(), cr.id, "repo",
+        )
+    assert await workspaces.get(workspace.id) == workspace
+
+
+@pytest.mark.asyncio
+async def test_first_approved_baseline_requires_human_l3(workflow_service) -> None:
+    gateway, _, baselines, workspaces, _, change_requests = workflow_service
+    cr = await make_change_request(change_requests)
+    workspace = await gateway.create_initial_workspace(
+        Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE),
+        uuid4(), cr.id, "repo",
+    )
+    await mark_workspace_ready(workspace, workspaces, change_requests, cr)
+    with pytest.raises(GatewayServiceError, match="human L3"):
+        await gateway.approve_workspace(
+            Actor("agent", ActorType.AI, AuthorizationLevel.L3_APPROVE), workspace.id,
+        )
+    assert await baselines.list() == []
+    baseline = await gateway.approve_workspace(
+        Actor("reviewer", ActorType.HUMAN, AuthorizationLevel.L3_APPROVE), workspace.id,
+    )
+    assert baseline.git_repository == "repo"
+    assert baseline.git_commit == "def456"
+
+
+@pytest.mark.asyncio
 async def test_only_active_workspace_can_be_modified(workflow_service) -> None:
     gateway, _, baselines, workspaces, _, change_requests = workflow_service
     source = await baselines.register(

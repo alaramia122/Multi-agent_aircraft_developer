@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from uuid import uuid4
 
 import jwt
 import pytest
@@ -63,3 +64,49 @@ def test_project_creation_rejects_machine_read_only_and_empty_input():
     assert client.post("/projects", json={**data, "goal": " "}, headers=auth()).status_code == 422
     assert client.post("/projects", json=data, headers=auth()).status_code == 201
     assert store.created == [("human-id", "БПЛА", "Новая авионика с нуля", "")]
+
+
+def test_initial_workspace_http_requires_owner_and_human_l2():
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    verifier = HumanTokenVerifier("https://issuer.test", "gateway", "https://issuer.test/keys", ("human-ui",))
+    verifier.jwks = SimpleNamespace(get_signing_key_from_jwt=lambda _: SimpleNamespace(key=key.public_key()))
+    project_id, cr_id = uuid4(), uuid4()
+
+    class Store:
+        async def get_for(self, actor_id, requested_id):
+            return {"id": str(project_id)} if actor_id == "owner" and requested_id == project_id else None
+
+    class Gateway:
+        async def create_initial_workspace(self, actor, draft_id, change_id, repository, ref):
+            assert (actor.actor_id, draft_id, change_id, repository, ref) == (
+                "owner", project_id, cr_id, "repo", "HEAD",
+            )
+            return SimpleNamespace(id=uuid4(), source_git_commit="abc123",
+                                   state=SimpleNamespace(value="active"))
+
+    class Factory:
+        async def __aenter__(self):
+            return Gateway()
+
+        async def __aexit__(self, *args):
+            return None
+
+    client = TestClient(create_human_review_app(Factory, verifier, project_store=Store()))
+
+    def auth(subject, role):
+        token = jwt.encode({
+            "sub": subject, "iss": "https://issuer.test", "aud": "gateway",
+            "azp": "human-ui", "preferred_username": subject,
+            "realm_access": {"roles": [role]},
+            "iat": datetime.now(UTC), "exp": datetime.now(UTC) + timedelta(minutes=5),
+        }, key, algorithm="RS256", headers={"kid": "test"})
+        return {"Authorization": f"Bearer {token}"}
+
+    path = f"/projects/{project_id}/workspaces"
+    data = {"change_request_id": str(cr_id), "git_repository": "repo"}
+    assert client.post(path, json=data).status_code == 401
+    assert client.post(path, json=data, headers=auth("owner", "gateway-read")).status_code == 403
+    assert client.post(path, json=data, headers=auth("other", "gateway-modify")).status_code == 404
+    created = client.post(path, json=data, headers=auth("owner", "gateway-modify"))
+    assert created.status_code == 201
+    assert created.json()["source_git_commit"] == "abc123"
