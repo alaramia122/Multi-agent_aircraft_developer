@@ -23,6 +23,7 @@ HTML = """<!doctype html>
     <div class="sidebar-caption">Рабочее пространство</div>
     <nav>
       <a href="#overview" class="nav-link selected">Обзор</a>
+      <a href="#guide" class="nav-link">Как работать</a>
       <a href="#team" class="nav-link">Команда агентов</a>
       <a href="#project" class="nav-link">Структура проекта</a>
       <a href="#assistant" class="nav-link">Помощник Alice</a>
@@ -59,6 +60,34 @@ HTML = """<!doctype html>
 <li data-stage="baseline"><strong>Baseline</strong><small>Личное решение L3</small></li>
 </ol>
         <p class="fine">После изменений цикл повторяется через Change Request. Этапы справа от текущего — схема процесса, а не выполненные действия агентов.</p>
+      </section>
+      <section id="guide" class="panel guide" aria-labelledby="guide-title">
+        <div class="panel-heading">
+          <div><div class="eyebrow">Начало работы</div><h2 id="guide-title">Как пользоваться системой</h2></div>
+          <span class="badge badge-muted">Текущие возможности</span>
+        </div>
+        <ol class="guide-steps">
+          <li><strong>Войдите через Keycloak.</strong> Ваши черновики и диалоги видны только вашей учётной записи.</li>
+          <li><strong>Создайте черновик.</strong> Укажите цель и известные ограничения. Это ваши исходные сведения, ещё не требования и не модель.</li>
+          <li><strong>Выберите черновик и обсудите его с Alice.</strong> Она получает исходный текст и часть сохранённого диалога.
+            Ниже чата показано, сколько именно реплик передано.</li>
+          <li><strong>Сверяйте следующий этап со шкалой.</strong> Сейчас создание инженерного проекта из черновика
+            и запись требований через портал ещё не доступны. Ответ Alice сам по себе не переключает этап.</li>
+          <li><strong>Проверяйте рабочую область, когда она создана.</strong> Загрузите UUID, изучите версии и evidence;
+            независимый reviewer записывает review. Только человек с L3 может утвердить baseline.</li>
+        </ol>
+        <div class="baseline-guide">
+          <strong>Что такое baseline и как его менять?</strong>
+          <p>Исходный пустой шаблон — начальная версия для работы, без утверждения конструкции. Рабочая область содержит
+            предлагаемые изменения. Утверждённый baseline фиксирует проверенный состав проекта: Git commit/tag и версии
+            внешних систем. Его нельзя редактировать на месте; следующая редакция проходит через новый Change Request,
+            рабочую область, проверки и личное решение L3.</p>
+          <p>В интерфейсе уже есть просмотр пакета, независимый review и утверждение существующей готовой области.
+            Создание первой области из вашего черновика и запуск нового цикла изменений ещё разрабатываются;
+            кнопка прямого редактирования baseline нарушила бы прослеживаемость.</p>
+        </div>
+        <p class="fine">Подробности: <a href="https://github.com/alaramia122/Multi-agent_aircraft_developer/blob/main/docs/user-guide.md"
+          target="_blank" rel="noopener noreferrer">руководство пользователя</a>.</p>
       </section>
       <section id="overview" class="hero" aria-labelledby="hero-title">
         <div>
@@ -176,6 +205,12 @@ HTML = """<!doctype html>
           <p class="muted">Поможет разобраться в данных и следующем шаге. Диалог сохраняется для выбранного проекта
             и восстановится после обновления страницы. Ответ не является проверкой или утверждением baseline.</p>
           <div id="chat-project" class="chat-project">Черновик проекта не выбран. Выберите его в разделе «Структура проекта», чтобы обсудить исходную цель.</div>
+          <div id="memory-state" class="memory-state" role="status" aria-live="polite">Контекст Alice: выберите проект.</div>
+          <details class="memory-detail"><summary>Какие прошлые сообщения получает Alice?</summary>
+            <p id="memory-detail">Полный журнал сохраняется для выбранного проекта. В один запрос модели передаются исходный
+              черновик и не более 24 последних реплик в пределах 24 000 символов. Число переданных реплик показано выше;
+              старые записи остаются в журнале, но не обязательно попадают в очередной запрос.</p>
+          </details>
           <div id="conversation" class="conversation" role="log" aria-live="polite">
 <div class="welcome">
 <span class="avatar">✦</span>
@@ -477,6 +512,15 @@ justify-content:space-between;
 align-items:flex-start;
 gap:12px}
 .lifecycle{margin-bottom:18px}
+.guide{margin-bottom:18px}
+.guide-steps{margin:12px 0 17px;padding-left:22px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 25px;font-size:12px;line-height:1.5;color:#49646b}
+.guide-steps li{padding-left:3px}
+.baseline-guide{border:1px solid #cbded6;background:#f4f9f6;border-radius:9px;padding:14px 16px;font-size:12px;line-height:1.55;color:#3f625a}
+.baseline-guide p{margin:7px 0 0}
+.memory-state{font-size:11px;color:#275d4b;font-weight:700;margin:-4px 0 8px}
+.memory-detail{font-size:11px;color:#637d79;margin-bottom:10px}
+.memory-detail summary{cursor:pointer}
+.memory-detail p{line-height:1.45;margin:7px 0}
 .lifecycle-steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:7px}
 .lifecycle-steps li{min-width:0;border:1px solid #e1eae7;background:#f8faf9;border-radius:9px;padding:12px 9px;position:relative}
 .lifecycle-steps li::before{content:counter(list-item, decimal-leading-zero);display:block;font-size:10px;font-weight:800;color:#7e9992;margin-bottom:7px}
@@ -789,6 +833,7 @@ overflow:auto}
 .nav-link{white-space:nowrap;
 padding:8px 12px}
 .columns,.columns.lower{grid-template-columns:1fr}
+.guide-steps{grid-template-columns:1fr}
 .hero-art{display:none}
 .hero{grid-template-columns:1fr}
 }
@@ -926,7 +971,8 @@ async function loadActivity() {
 function selectProject(project, discuss=false) {
   selectedProjectId = project.id;
   sessionStorage.setItem('gateway_selected_project', project.id);
-  loadDialogue(project.id).catch(error => status(error.message, true));
+  $('memory-state').textContent = 'Контекст Alice: загружаем сохранённый диалог…';
+  loadDialogue(project.id, project.version, project.source_hash).catch(error => status(error.message, true));
   const stage = project.state === 'draft' && !project.baseline_id ? 'draft' : null;
   for (const item of document.querySelectorAll('.lifecycle-steps li')) {
     const current = item.dataset.stage === stage;
@@ -946,14 +992,20 @@ function selectProject(project, discuss=false) {
     $('message').focus();
   }
 }
-async function loadDialogue(projectId) {
+async function loadDialogue(projectId, version, sourceHash) {
   const data = await api('projects/' + encodeURIComponent(projectId) + '/dialogue');
   if (selectedProjectId !== projectId) return;
+  showMemory(data.total_turns, data.next_context_turns, version, sourceHash);
   $('conversation').replaceChildren();
   if (!data.turns.length) {
     $('conversation').append(element('p', 'empty', 'Диалог пока пуст. Исходный черновик будет передан Alice с вашим первым сообщением.'));
   }
   for (const turn of data.turns) addTurn(turn.role, turn.text, turn.answer_html);
+}
+function showMemory(total, included, version, sourceHash) {
+  let label = 'Сохранено ' + total + ' реплик · в следующий запрос Alice войдут ' + included;
+  if (version !== undefined) label += ' · черновик v' + version + ' · SHA-256 ' + sourceHash.slice(0, 12);
+  $('memory-state').textContent = label;
 }
 async function loadProjects() {
   const data = await api('projects');
@@ -1109,6 +1161,13 @@ window.addEventListener('DOMContentLoaded', () => {
       const data = await api('assistant/chat', 'POST', {
         message, workspace_id, project_id:selectedProjectId || null});
       addTurn('user', message); addTurn('assistant', data.answer, data.answer_html);
+      if (data.memory) {
+        const m = data.memory;
+        $('memory-state').textContent = 'Alice получила ' + m.context_turns_sent + ' из ' +
+          m.stored_turns_before + ' сохранённых реплик · черновик v' + m.project_version +
+          ' · SHA-256 ' + m.project_source_hash.slice(0, 12) +
+          '. Теперь сохранено ' + m.stored_turns_after + ' реплик.';
+      } else $('memory-state').textContent = 'Диалог без выбранного проекта не сохраняется.';
       $('message').value = '';
     } finally { $('send').disabled = false; $('alice-state').textContent = 'Ожидает запроса'; }
   });

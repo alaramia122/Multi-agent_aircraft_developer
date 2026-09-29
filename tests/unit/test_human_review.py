@@ -8,7 +8,9 @@ import jwt
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 
-from engineering_gateway.api.human_review import HumanTokenVerifier, create_human_review_app
+from engineering_gateway.api.human_review import (
+    HumanTokenVerifier, create_human_review_app, model_dialogue_context,
+)
 from engineering_gateway.domain.change_control import AuthorizationLevel
 
 
@@ -39,6 +41,9 @@ def test_human_approval_requires_signed_user_token_with_l3_role():
     assert "style-src 'self'" in page.headers["content-security-policy"]
     assert "Структура проекта" in page.text
     assert "Жизненный цикл разработки" in page.text
+    assert "Как пользоваться системой" in page.text
+    assert "Какие прошлые сообщения получает Alice?" in page.text
+    assert "Его нельзя редактировать на месте" in page.text
     assert 'data-stage="draft"' in page.text
     assert client.get("/ui.css").status_code == 200
     plain = client.get("/?plain=1")
@@ -156,8 +161,14 @@ def test_portal_chat_requires_human_token_and_explicit_workspace_context():
     assert response.status_code == 200
     assert str(project_id) in observed[2]
     assert "human_input" in observed[2] and "Новая авионика БПЛА" in observed[2]
+    assert response.json()["memory"] == {
+        "project_version": 1, "project_source_hash": "abc",
+        "stored_turns_before": 0, "context_turns_sent": 0, "stored_turns_after": 2,
+    }
     response = client.get(f"/projects/{project_id}/dialogue", headers=headers)
     assert [turn["role"] for turn in response.json()["turns"]] == ["user", "assistant"]
+    assert response.json()["total_turns"] == 2
+    assert response.json()["next_context_turns"] == 2
     assert response.json()["turns"][1]["answer_html"].startswith("<p>")
     assert client.get(f"/projects/{project_id}/dialogue").status_code == 401
     assert client.post(path, json={"message": "Продолжим", "project_id": str(project_id),
@@ -165,7 +176,17 @@ def test_portal_chat_requires_human_token_and_explicit_workspace_context():
                        headers=headers).status_code == 200
     assert "Что уточнить?" in observed[3]
     assert "подменённый контекст" not in observed[3]
+    assert client.post(path, json={"message": "Без проекта"}, headers=headers).json().get("memory") is None
     assert client.post(f"/workspaces/{workspace_id}/approve", headers=headers).status_code == 403
-    assert client.post(path, json={"message": "Статус?"}, headers=headers).status_code == 200
     assert client.post(path, json={"message": "Статус?"}, headers=headers).status_code == 429
     assert len(observed) == 5
+
+
+def test_model_dialogue_context_reports_only_forwarded_turns():
+    turns = [{"role": "user", "text": f"реплика {i}", "id": str(i)} for i in range(30)]
+    selected = model_dialogue_context(turns)
+    assert len(selected) == 24
+    assert selected[0] == {"role": "user", "text": "реплика 6"}
+    assert selected[-1] == {"role": "user", "text": "реплика 29"}
+    oversized = [{"role": "user", "text": "x" * 2000} for _ in range(24)]
+    assert 0 < len(model_dialogue_context(oversized)) < 24

@@ -82,6 +82,14 @@ class AgentActivityProvider(Protocol):
     async def snapshot(self) -> list[dict[str, str | None]]: ...
 
 
+def model_dialogue_context(turns: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Return exactly the persisted turns forwarded to the next model request."""
+    selected = [{"role": turn["role"], "text": turn["text"]} for turn in turns[-24:]]
+    while selected and len(json.dumps(selected, ensure_ascii=False)) > 24000:
+        selected.pop(0)
+    return selected
+
+
 AGENT_ROLES = (
     ("requirements", "Требования", "Формирует и связывает требования"),
     ("system_architect", "Системная архитектура", "Распределяет функции по компонентам"),
@@ -228,7 +236,9 @@ def create_human_review_app(
             raise HTTPException(404, "project draft not found")
         turns = await dialogue_store.list_for(actor.actor_id, project_id)
         return {"turns": [{**turn, "answer_html": render_assistant_markdown(turn["text"])
-                           if turn["role"] == "assistant" else None} for turn in turns]}
+                           if turn["role"] == "assistant" else None} for turn in turns],
+                "total_turns": len(turns),
+                "next_context_turns": len(model_dialogue_context(turns))}
 
     @app.get("/assistant/activity")
     async def agent_activity(request: Request) -> dict[str, object]:
@@ -250,7 +260,7 @@ def create_human_review_app(
             yield gateway
 
     @app.post("/assistant/chat")
-    async def assistant_chat(question: AssistantQuestion, request: Request) -> dict[str, str]:
+    async def assistant_chat(question: AssistantQuestion, request: Request) -> dict[str, Any]:
         actor = await actor_for(request)
         if assistant_client is None:
             raise HTTPException(503, "AI Studio assistant is not configured")
@@ -283,10 +293,7 @@ def create_human_review_app(
         if project is not None and dialogue_store is not None and question.project_id is not None:
             previous = await dialogue_store.list_for(actor.actor_id, question.project_id)
             # The complete transcript stays in PostgreSQL. Bound the current model request.
-            recent_dialogue = [{"role": turn["role"], "text": turn["text"]}
-                               for turn in previous[-24:]]
-            while len(json.dumps(recent_dialogue, ensure_ascii=False)) > 24000:
-                recent_dialogue.pop(0)
+            recent_dialogue = model_dialogue_context(previous)
         else:
             recent_dialogue = [turn.model_dump() for turn in question.history]
         input_text = json.dumps({
@@ -311,7 +318,17 @@ def create_human_review_app(
                 await dialogue_store.append_exchange(actor.actor_id, question.project_id,
                                                      question.message, answer["answer"],
                                                      answer.get("response_id", ""))
-            return {**answer, "answer_html": render_assistant_markdown(answer["answer"])}
+            result: dict[str, Any] = {**answer,
+                                      "answer_html": render_assistant_markdown(answer["answer"])}
+            if project is not None and dialogue_store is not None:
+                result["memory"] = {
+                    "project_version": project["version"],
+                    "project_source_hash": project["source_hash"],
+                    "stored_turns_before": len(previous),
+                    "context_turns_sent": len(recent_dialogue),
+                    "stored_turns_after": len(previous) + 2,
+                }
+            return result
         except AiStudioUnavailable as exc:
             raise HTTPException(502, "AI Studio response unavailable") from exc
 
