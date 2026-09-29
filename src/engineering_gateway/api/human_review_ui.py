@@ -1008,17 +1008,24 @@ function selectProject(project, discuss=false) {
   sessionStorage.setItem('gateway_selected_project', project.id);
   $('memory-state').textContent = 'Контекст Alice: загружаем сохранённый диалог…';
   loadDialogue(project.id, project.version, project.source_hash).catch(error => status(error.message, true));
-  const stage = project.state === 'draft' && !project.baseline_id ? 'draft' : null;
+  const linked = Array.isArray(project.workspaces) ? project.workspaces[0] : null;
+  const stage = !linked && project.state === 'draft' && !project.baseline_id ? 'draft' : null;
   for (const item of document.querySelectorAll('.lifecycle-steps li')) {
     const current = item.dataset.stage === stage;
     item.classList.toggle('current', current);
     if (current) item.setAttribute('aria-current', 'step');
     else item.removeAttribute('aria-current');
   }
-  $('lifecycle-badge').textContent = stage ? 'Замысел · черновик' : 'Состояние требует проверки';
+  $('lifecycle-badge').textContent = linked ? 'Первая область · ' + linked.state :
+    stage ? 'Замысел · черновик' : 'Состояние требует проверки';
   $('lifecycle-summary').textContent = project.name + ' · версия ' + project.version +
     ' · источник: ввод человека · SHA-256: ' + project.source_hash +
-    (stage ? '. Следующий этап — первая рабочая область с открытым Change Request.' : '. Этап не определён по черновику.');
+    (linked ? '. Рабочая область ' + linked.id + ' · ' + linked.state + '. Содержание и evidence проверяйте в пакете области.' :
+      stage ? '. Следующий этап — первая рабочая область после подтверждения Change Request.' : '. Этап не определён по черновику.');
+  if (linked) {
+    $('workspace').value = linked.id;
+    for (const id of ['review-action', 'approve', 'reject']) $(id).disabled = true;
+  }
   $('chat-project').textContent = 'Исходный черновик: ' + project.name + ' · версия ' + project.version +
     ' · SHA-256: ' + project.source_hash + '. Alice получит его текст только после отправки сообщения.';
   if (discuss) {
@@ -1056,6 +1063,18 @@ async function loadProjects() {
       element('div', '', project.goal),
       element('small', '', 'Автор: ' + project.author_id + ' · SHA-256: ' + project.source_hash));
     if (project.constraints) card.append(element('div', '', 'Ограничения: ' + project.constraints));
+    for (const workspace of project.workspaces || []) {
+      const open = element('button', 'button', 'Открыть область ' + workspace.state);
+      open.type = 'button';
+      open.onclick = run(async () => {
+        selectProject(project);
+        $('workspace').value = workspace.id;
+        renderProject(await api('workspaces/' + encodeURIComponent(workspace.id)));
+        location.hash = 'project';
+        status('Открыта рабочая область ' + workspace.id + '.');
+      });
+      card.append(element('small', '', 'Область ' + workspace.id + ' · Git ' + workspace.source_git_commit.slice(0, 12)), open);
+    }
     const choose = element('button', 'button', 'Выбрать проект');
     choose.type = 'button';
     choose.onclick = () => selectProject(project);
@@ -1223,6 +1242,7 @@ window.addEventListener('DOMContentLoaded', () => {
       $('workspace').value = result.workspace_id;
       feedback.textContent = 'Рабочая область ' + result.workspace_id + ' создана из Git commit ' + result.source_git_commit + '. Загрузите пакет для проверки.';
       status('Первая рабочая область создана без утверждённого baseline.');
+      loadProjects().catch(error => status('Список областей не обновился: ' + error.message, true));
     } catch (error) {
       feedback.classList.add('error');
       feedback.textContent = 'Не удалось создать область: ' + error.message;
@@ -1304,6 +1324,7 @@ window.addEventListener('DOMContentLoaded', () => {
         ', рабочая область ' + result.workspace_id + '. Загрузите пакет области.';
       $('start-form').hidden = true;
       startProposal = undefined;
+      loadProjects().catch(error => status('Список областей не обновился: ' + error.message, true));
     } finally { $('confirm-start').disabled = false; }
   });
   $('review-action').onclick = run(async () => {

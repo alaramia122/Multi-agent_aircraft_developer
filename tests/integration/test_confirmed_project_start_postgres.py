@@ -99,5 +99,11 @@ async def test_confirmed_project_start_commits_once_and_replays(tmp_path):
             assert workspace.source_baseline_id is None
             assert workspace.source_git_commit == commit
             assert workspace.source_external_versions == versions
+        owned = await ProjectDraftStore(database).get_for(actor.actor_id, draft_id)
+        assert owned is not None and owned["workspaces"] == [{
+            "id": str(first[1]), "state": "active",
+            "change_request_id": str(first[0].id), "source_git_commit": commit,
+        }]
+        assert await ProjectDraftStore(database).get_for("other-owner", draft_id) is None
     finally:
         await database.dispose()
