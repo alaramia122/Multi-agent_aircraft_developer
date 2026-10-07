@@ -310,7 +310,7 @@ async def test_approved_workspace_is_immutable():
 
 @pytest.mark.asyncio
 async def test_approval_rejects_stale_validation_after_reconciliation():
-    gateway, _, _, workspace_id, reviewer, engineer_ai, _, _ = await _gateway()
+    gateway, _, _, workspace_id, reviewer, _, _, _ = await _gateway()
     engineer = Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE)
     changes = gateway._workspace_changes
     assert changes is not None
