@@ -330,12 +330,10 @@ async def test_approval_rejects_stale_validation_even_if_reconciliation_evidence
     assert workspace is not None
     current_changes = await changes.get_changes(workspace_id)
     current_change_set_hash = compute_change_set_hash(current_changes)
-    await workspaces.update(
-        workspace.model_copy(
-            update={
-                "reconciled_change_set_hash": current_change_set_hash,
-            }
-        )
+    # Bypass the registry invariant deliberately: this represents a corrupted
+    # persisted state where reconciliation evidence was advanced independently.
+    workspaces._workspaces[workspace.id] = workspace.model_copy(
+        update={"reconciled_change_set_hash": current_change_set_hash}
     )
 
     with pytest.raises(
