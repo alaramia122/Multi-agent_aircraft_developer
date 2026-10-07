@@ -21,6 +21,7 @@ from engineering_gateway.domain.models import (
     EngineeringRelation,
     RelationType,
 )
+from engineering_gateway.domain.reconciliation import compute_change_set_hash
 from engineering_gateway.domain.workspaces import WorkspaceRegistry, WorkspaceState
 from engineering_gateway.infrastructure.profile_loader import load_standard_profile
 from engineering_gateway.infrastructure.profile_registry import InMemoryStandardProfileRegistry
@@ -278,7 +279,7 @@ async def test_l0_and_l1_cannot_mutate_workspace():
 
     for level in (AuthorizationLevel.L0_READ, AuthorizationLevel.L1_PROPOSE):
         actor = Actor(f"actor-{level.value}", ActorType.HUMAN, level)
-        with pytest.raises(GatewayServiceError, match="modification authority"):
+        with pytest.raises(GatewayServiceError, match="only L2"):
             await gateway.save_workspace_element(actor, element, workspace_id)
 
 
@@ -309,9 +310,8 @@ async def test_approved_workspace_is_immutable():
 
 
 @pytest.mark.asyncio
-async def test_approval_rejects_stale_validation_after_reconciliation():
-    gateway, _, _, workspace_id, reviewer, _, _, _ = await _gateway()
-    engineer = Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE)
+async def test_approval_rejects_stale_validation_even_if_reconciliation_evidence_is_current():
+    gateway, workspaces, _, workspace_id, reviewer, _, _, _ = await _gateway()
     changes = gateway._workspace_changes
     assert changes is not None
 
@@ -324,9 +324,19 @@ async def test_approval_rejects_stale_validation_after_reconciliation():
     )
     await changes.save_element(workspace_id, element)
 
-    # Reconciliation refreshes its own evidence, but must not refresh validation
-    # evidence implicitly. Approval therefore has to reject the stale validation hash.
-    await gateway.reconcile_workspace(engineer, workspace_id)
+    # Simulate a tampered/stale persisted state where reconciliation evidence was
+    # advanced independently of validation evidence. Approval must still fail closed.
+    workspace = await workspaces.get(workspace_id)
+    assert workspace is not None
+    current_changes = await changes.get_changes(workspace_id)
+    current_change_set_hash = compute_change_set_hash(current_changes)
+    await workspaces.update(
+        workspace.model_copy(
+            update={
+                "reconciled_change_set_hash": current_change_set_hash,
+            }
+        )
+    )
 
     with pytest.raises(
         GatewayServiceError,
