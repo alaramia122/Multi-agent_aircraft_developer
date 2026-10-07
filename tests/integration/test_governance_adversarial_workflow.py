@@ -263,3 +263,73 @@ async def test_rejection_requires_human_l3():
 
     with pytest.raises(GatewayServiceError, match="human L3"):
         await gateway.reject_workspace(ai, workspace_id, "not authorized")
+
+
+@pytest.mark.asyncio
+async def test_l0_and_l1_cannot_mutate_workspace():
+    gateway, _, _, workspace_id, _, _, _, _ = await _gateway()
+    element = EngineeringElement(
+        kind=ElementKind.REQUIREMENT,
+        type_id="system_requirement",
+        name="FORBIDDEN",
+        external_system="strictdoc",
+        external_id="FORBIDDEN",
+    )
+
+    for level in (AuthorizationLevel.L0_READ, AuthorizationLevel.L1_PROPOSE):
+        actor = Actor(f"actor-{level.value}", ActorType.HUMAN, level)
+        with pytest.raises(GatewayServiceError, match="modification authority"):
+            await gateway.save_workspace_element(actor, element, workspace_id)
+
+
+@pytest.mark.asyncio
+async def test_l2_cannot_approve_workspace():
+    gateway, _, _, workspace_id, _, _, _, _ = await _gateway()
+    actor = Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE)
+
+    with pytest.raises(GatewayServiceError, match="L3"):
+        await gateway.approve_workspace(actor, workspace_id)
+
+
+@pytest.mark.asyncio
+async def test_approved_workspace_is_immutable():
+    gateway, _, _, workspace_id, reviewer, _, _, _ = await _gateway()
+    await gateway.approve_workspace(reviewer, workspace_id)
+
+    engineer = Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE)
+    element = EngineeringElement(
+        kind=ElementKind.REQUIREMENT,
+        type_id="system_requirement",
+        name="POST-APPROVAL-MUTATION",
+        external_system="strictdoc",
+        external_id="POST-APPROVAL-MUTATION",
+    )
+    with pytest.raises(GatewayServiceError, match="active"):
+        await gateway.save_workspace_element(engineer, element, workspace_id)
+
+
+@pytest.mark.asyncio
+async def test_approval_rejects_stale_validation_after_reconciliation():
+    gateway, _, _, workspace_id, reviewer, engineer_ai, _, _ = await _gateway()
+    engineer = Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE)
+    changes = gateway._workspace_changes
+    assert changes is not None
+
+    element = EngineeringElement(
+        kind=ElementKind.REQUIREMENT,
+        type_id="system_requirement",
+        name="UNVALIDATED-REVISION",
+        external_system="strictdoc",
+        external_id="UNVALIDATED-REVISION",
+    )
+    await changes.save_element(workspace_id, element)
+
+    # Reconciliation refreshes its own evidence, but must not refresh validation
+    # evidence implicitly. Approval therefore has to reject the stale validation hash.
+    await gateway.reconcile_workspace(engineer, workspace_id)
+
+    with pytest.raises(
+        GatewayServiceError,
+        match="validation evidence is stale",
+    ):
+        await gateway.approve_workspace(reviewer, workspace_id)
