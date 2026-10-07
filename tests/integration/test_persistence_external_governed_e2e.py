@@ -265,10 +265,10 @@ async def test_persistence_backed_governed_external_e2e(tmp_path, monkeypatch):
         assert [request["operation"] for request in requests] == [
             "get_version",
             "create_workspace",
-            "apply_element",
-            "get_workspace_version",
             "create_workspace",
             "apply_element",
+            "apply_element",
+            "get_workspace_version",
             "get_workspace_version",
         ]
         assert all(request["protocol"] == 1 for request in requests)
