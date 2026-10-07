@@ -14,6 +14,7 @@ from engineering_gateway.application.gateway_service import (
 from engineering_gateway.application.transactional_service import (
     TransactionalApplicationServiceMixin,
 )
+from engineering_gateway.application.validation import graph_hash
 from engineering_gateway.application.workspace_reconciliation import (
     ReconciliationResult,
     WorkspaceReconciliationService,
@@ -429,6 +430,59 @@ class GovernedGatewayApplicationService(
             workspace.require_reconciled(compute_change_set_hash(changes))
         except ValueError as exc:
             raise GatewayServiceError(str(exc)) from exc
+
+        # Approval must be bound to the exact graph and validation inputs that were
+        # prepared earlier. Reconciliation freshness alone is insufficient: a new
+        # change-set could otherwise be reconciled without being revalidated.
+        try:
+            if workspace.profile_id is None or workspace.profile_version is None:
+                raise GatewayServiceError("workspace has no validation profile provenance")
+            profile = await self._get_active_profile(
+                workspace.profile_id,
+                workspace.profile_version,
+                actor=actor,
+                action="approve_workspace",
+            )
+            evidence = workspace.validation_evidence
+            raw_attributes = evidence.get("attributes", {})
+            attributes = {
+                UUID(element_id): values
+                for element_id, values in raw_attributes.items()
+            } if isinstance(raw_attributes, dict) else {}
+            raw_artifacts = evidence.get("artifact_evidence", [])
+            artifact_evidence = frozenset(
+                (UUID(item[0]), str(item[1]))
+                for item in raw_artifacts
+                if isinstance(item, list) and len(item) == 2
+            ) if isinstance(raw_artifacts, list) else frozenset()
+            raw_states = evidence.get("lifecycle_states", {})
+            lifecycle_states = {
+                UUID(element_id): str(state)
+                for element_id, state in raw_states.items()
+            } if isinstance(raw_states, dict) else {}
+            raw_transitions = evidence.get("lifecycle_transitions", {})
+            lifecycle_transitions = {
+                UUID(element_id): (str(value[0]), str(value[1]))
+                for element_id, value in raw_transitions.items()
+                if isinstance(value, list) and len(value) == 2
+            } if isinstance(raw_transitions, dict) else {}
+            current_validation_hash = graph_hash(
+                await self._workspace_changes.get_graph(workspace_id),
+                profile,
+                attributes=attributes,
+                artifact_evidence=artifact_evidence,
+                lifecycle_states=lifecycle_states,
+                lifecycle_transitions=lifecycle_transitions,
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise GatewayServiceError(
+                "workspace validation evidence is malformed or cannot be reproduced"
+            ) from exc
+        if current_validation_hash != workspace.validation_graph_hash:
+            raise GatewayServiceError(
+                "workspace validation evidence is stale for the current change-set"
+            )
+
         return await super().approve_workspace(actor, workspace_id)
 
 
