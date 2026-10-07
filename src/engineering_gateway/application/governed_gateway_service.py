@@ -435,6 +435,8 @@ class GovernedGatewayApplicationService(
         # prepared earlier. Reconciliation freshness alone is insufficient: a new
         # change-set could otherwise be reconciled without being revalidated.
         try:
+            if workspace.profile_id is None or workspace.profile_version is None:
+                raise GatewayServiceError("workspace has no validation profile provenance")
             profile = await self._get_active_profile(
                 workspace.profile_id,
                 workspace.profile_version,
