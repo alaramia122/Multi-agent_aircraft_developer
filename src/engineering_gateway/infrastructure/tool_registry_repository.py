@@ -85,4 +85,16 @@ class SqlAlchemyToolRegistry:
         )
 
 
-__all__ = ["SqlAlchemyToolRegistry"]
+class SqlAlchemyToolAuditSink:
+    """Write tool invocation audit events in independent durable transactions."""
+
+    def __init__(self, database: Database) -> None:
+        self._database = database
+
+    async def record(self, event: AuditEvent) -> None:
+        async with self._database.session_factory() as session:
+            sink = SqlAlchemyAuditSink(session, autocommit=True)
+            await sink.record(event)
+
+
+__all__ = ["SqlAlchemyToolAuditSink", "SqlAlchemyToolRegistry"]
