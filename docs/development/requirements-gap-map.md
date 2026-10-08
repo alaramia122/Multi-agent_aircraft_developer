@@ -71,8 +71,10 @@
 | Vector Store / RAG | Retrieval поверх инженерной базы | Не реализован | 🔴 | После стабилизации Gateway; не делать Source of Truth |
 | AI Studio Agents | Chief Engineer, Requirements, System Architect, Safety, Software Architect, Verification, Configuration, Reviewer, Cost | Контракт ролей определён; AI Studio runtime не подключён | 🔴 | Реализовать/настроить агентов поверх контрактов |
 | AI Studio Workflows | Оркестрация агентных шагов | Не реализована | 🔴 | После Tool Registry и task lifecycle |
-| Agent contracts | Контракты входов/выходов/границ ответственности агентов | Версионированные AgentTask/AgentProposal и роли реализованы; runtime не реализован | 🟡 | Tool Registry и orchestration boundary |
-| Agent governance | AI не может обходить Gateway и выполнять L3 | Gateway-side invariant готов; AI layer отсутствует | 🟡 | Реализовать agent tools только через MCP |
+| Agent contracts | Контракты входов/выходов/границ ответственности агентов | Версионированные AgentTask/AgentProposal и роли реализованы; runtime не реализован | 🟡 | Orchestration boundary |
+| Tool Registry | Каталог внешних инструментов, trust и side effects | Domain registry + versioned descriptors реализованы; persistence/admin UI не реализованы | 🟡 | Реальные tool adapters и project policy |
+| Tool Invocation | Управляемый вызов внешних инструментов | Policy + adapter boundary + MCP discovery/invocation реализованы; concrete production adapters не подключены | 🟡 | Audit/evidence + реальные инструменты |
+| Agent governance | AI не может обходить Gateway и выполнять L3 | Gateway-side invariant и Tool Policy готовы; AI layer отсутствует | 🟡 | Реализовать agent runtime только через MCP |
 | MVP-1 | Function → System Function → Requirement → Architecture → Allocation → Safety → Verification → Baseline | Полная versioned profile/test chain реализована в `arp4754a@2.0`; production E2E нет | 🟡 | E2E на реальных системах |
 | MVP-2 | System Requirement → SW HLR → SW Architecture → SW LLR → Source → Verification → Evidence | Полная versioned profile/test chain реализована в `do-178c@2.0`; production E2E нет | 🟡 | E2E на реальных системах |
 | Cost/Budget | Cost Agent / бюджетная модель | В текущем Gateway отсутствует | 🔴 | Отдельно определить контракт и границу ответственности |
@@ -141,7 +143,9 @@ Persistence
         └────────┬────────┘
                  │
         ┌────────▼────────┐
-        │ AI contracts    │
+        │ Agent contracts │
+        │ Tool Registry   │
+        │ Tool Invocation │
         │ Agents          │
         │ Workflows       │
         └────────┬────────┘
@@ -211,7 +215,7 @@ Evidence
 5. **Реальные staging-интеграции Git / StrictDoc / Capella / OpenProject**
 6. **Gateway E2E**
 7. **Yandex AI Studio Agent contracts** — базовый контракт реализован
-8. **Connector/Tool Registry**
+8. **Tool Registry / Tool Invocation** — базовая граница реализована
 9. **Agents**
 10. **Workflows / orchestration**
 11. **RAG / Object Storage / production operations**
