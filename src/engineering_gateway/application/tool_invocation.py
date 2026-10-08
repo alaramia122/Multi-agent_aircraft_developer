@@ -7,6 +7,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from engineering_gateway.application.gateway_service import Actor
 from engineering_gateway.domain.change_control import AuthorizationLevel
 from engineering_gateway.domain.tool_registry import (
     ToolDescriptor,
@@ -64,6 +65,7 @@ class ToolPolicy:
     def authorize(
         tool: ToolDescriptor,
         request: ToolInvocationRequest,
+        actor: Actor,
         *,
         minimum_trust: ToolTrustLevel = ToolTrustLevel.UNTRUSTED,
         project_id: UUID | None = None,
@@ -89,6 +91,12 @@ class ToolPolicy:
         except ValueError as exc:
             raise ToolInvocationDenied("tool declares an invalid authorization level") from exc
 
+        if request.actor_id != actor.actor_id:
+            raise ToolInvocationDenied("tool request actor does not match current Actor")
+        if request.authorization_level is not actor.authorization_level:
+            raise ToolInvocationDenied("tool request authorization does not match current Actor")
+        if actor.is_ai and required is AuthorizationLevel.L3_APPROVE:
+            raise ToolInvocationDenied("AI actors cannot execute L3 tool operations")
         if _AUTH_LEVELS[request.authorization_level] < _AUTH_LEVELS[required]:
             raise ToolInvocationDenied("actor authorization level is insufficient")
 
@@ -106,6 +114,7 @@ class ToolInvocationService:
     async def invoke(
         self,
         request: ToolInvocationRequest,
+        actor: Actor,
         *,
         minimum_trust: ToolTrustLevel = ToolTrustLevel.UNTRUSTED,
         project_id: UUID | None = None,
@@ -117,6 +126,7 @@ class ToolInvocationService:
         ToolPolicy.authorize(
             tool,
             request,
+            actor,
             minimum_trust=minimum_trust,
             project_id=project_id,
         )
