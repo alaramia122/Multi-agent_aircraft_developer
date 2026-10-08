@@ -1,5 +1,3 @@
-from uuid import uuid4
-
 import pytest
 
 from engineering_gateway.application.gateway_service import Actor
