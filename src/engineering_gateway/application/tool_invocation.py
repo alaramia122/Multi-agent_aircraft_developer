@@ -60,15 +60,25 @@ _TRUST_LEVELS = list(ToolTrustLevel)
 class ToolPolicy:
     """Fail-closed authorization for a single tool operation."""
 
+    _AI_MINIMUM_TRUST = ToolTrustLevel.SANDBOX
+
+    @staticmethod
+    def require_minimum_trust(actor: Actor, minimum_trust: ToolTrustLevel) -> None:
+        if actor.is_ai and _TRUST_LEVELS.index(minimum_trust) < _TRUST_LEVELS.index(
+            ToolPolicy._AI_MINIMUM_TRUST
+        ):
+            raise ToolInvocationDenied("AI actors cannot use untrusted tools")
+
     @staticmethod
     def authorize(
         tool: ToolDescriptor,
         request: ToolInvocationRequest,
         actor: Actor,
         *,
-        minimum_trust: ToolTrustLevel = ToolTrustLevel.UNTRUSTED,
+        minimum_trust: ToolTrustLevel = ToolTrustLevel.SANDBOX,
         project_id: UUID | None = None,
     ) -> None:
+        ToolPolicy.require_minimum_trust(actor, minimum_trust)
         if not tool.enabled:
             raise ToolInvocationDenied("tool is disabled")
         if _TRUST_LEVELS.index(tool.trust_level) < _TRUST_LEVELS.index(minimum_trust):
@@ -114,6 +124,7 @@ class ToolInvocationService:
         actor: Actor,
     ) -> tuple[ToolDescriptor, ...]:
         """Return deterministic tool discovery for the current actor."""
+        ToolPolicy.require_minimum_trust(actor, minimum_trust)
         return self._registry.list_available(
             minimum_trust=minimum_trust,
             enabled_only=True,
