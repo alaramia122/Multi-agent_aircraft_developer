@@ -20,6 +20,7 @@ from engineering_gateway.api.trusted_proxy_middleware import (
     TrustedProxyPrincipalMiddleware,
 )
 from engineering_gateway.application.gateway_service import Actor
+from engineering_gateway.application.tool_invocation import ToolInvocationService
 from engineering_gateway.config import settings
 from engineering_gateway.domain.budget import BudgetGate
 from engineering_gateway.infrastructure.adapter_composition import (
@@ -38,6 +39,10 @@ from engineering_gateway.infrastructure.openproject_adapter import (
     OpenProjectConfig,
 )
 from engineering_gateway.infrastructure.strictdoc_adapter import LocalStrictDocAdapter
+from engineering_gateway.infrastructure.tool_registry_repository import (
+    SqlAlchemyToolAuditSink,
+    SqlAlchemyToolRegistry,
+)
 from engineering_gateway.infrastructure.strictdoc_workspace_adapter import (
     LocalStrictDocWorkspaceAdapter,
     StrictDocBridgeConfig,
@@ -153,6 +158,11 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         streamable_http_path=settings.mcp.path,
         principal_mapper=principal_mapper,
         principal_claims_state_key=settings.identity.principal_claims_state_key,
+        tool_invocation_service_factory=lambda: ToolInvocationService(
+            SqlAlchemyToolRegistry(database),
+            {},
+            SqlAlchemyToolAuditSink(database),
+        ),
     )
     if settings.identity.bearer_tokens_enabled:
         assert settings.identity.issuer_url and settings.identity.audience and settings.identity.jwks_url

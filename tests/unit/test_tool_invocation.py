@@ -250,3 +250,41 @@ async def test_tool_invocation_records_success_and_denial() -> None:
         AuditResult.SUCCESS,
         AuditResult.DENIED,
     ]
+
+
+@pytest.mark.asyncio
+async def test_custom_tool_registration_is_human_l2_and_defaults_to_untrusted_disabled() -> None:
+    registry = ToolRegistry()
+    audit = InMemoryAuditSink()
+    service = ToolInvocationService(registry, {}, audit)
+    descriptor = make_tool(ToolTrustLevel.ENGINEERING_VERIFIED)
+    human = Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE)
+
+    registered = await service.register_user_tool(descriptor, human)
+
+    assert registered.trust_level is ToolTrustLevel.UNTRUSTED
+    assert registered.enabled is False
+    assert await registry.get_persisted("cad.export") == registered
+
+    with pytest.raises(ToolInvocationDenied, match="only human"):
+        await service.register_user_tool(
+            make_tool(), Actor("agent", ActorType.AI, AuthorizationLevel.L2_MODIFY_WORKSPACE)
+        )
+
+
+@pytest.mark.asyncio
+async def test_custom_tool_registration_rejects_l3_capability() -> None:
+    registry = ToolRegistry()
+    service = ToolInvocationService(registry, {}, InMemoryAuditSink())
+    descriptor = ToolDescriptor(
+        tool_id="custom.approval",
+        name="Custom approval",
+        description="Must not expose approval",
+        permissions=(
+            ToolPermission(operation="approve", authorization_level="L3_APPROVE"),
+        ),
+    )
+    human = Actor("engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE)
+
+    with pytest.raises(ToolInvocationDenied, match="cannot declare L3"):
+        await service.register_user_tool(descriptor, human)

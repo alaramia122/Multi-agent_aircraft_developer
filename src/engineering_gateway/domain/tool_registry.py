@@ -7,7 +7,7 @@ must still pass Gateway authorization and the tool's trust/policy checks.
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any
+from typing import Any, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -52,7 +52,7 @@ class ToolDescriptor(BaseModel):
 
 
 class ToolRegistry:
-    """Deterministic in-memory registry; persistence can be added behind a port."""
+    """Deterministic in-memory registry implementation for tests and local use."""
 
     def __init__(self) -> None:
         self._tools: dict[str, ToolDescriptor] = {}
@@ -65,6 +65,20 @@ class ToolRegistry:
 
     def get(self, tool_id: str) -> ToolDescriptor | None:
         return self._tools.get(tool_id)
+
+    async def get_persisted(self, tool_id: str) -> ToolDescriptor | None:
+        return self.get(tool_id)
+
+    async def register_persisted(self, tool: ToolDescriptor) -> ToolDescriptor:
+        return self.register(tool)
+
+    async def list_persisted(self, *, enabled_only: bool = False) -> tuple[ToolDescriptor, ...]:
+        return self.list_available(enabled_only=enabled_only)
+
+    async def list_available_persisted(
+        self, *, minimum_trust: ToolTrustLevel, enabled_only: bool = True
+    ) -> tuple[ToolDescriptor, ...]:
+        return self.list_available(minimum_trust=minimum_trust, enabled_only=enabled_only)
 
     def list_available(
         self,
@@ -82,10 +96,26 @@ class ToolRegistry:
         return tuple(sorted(result, key=lambda item: item.tool_id))
 
 
+class ToolRegistryStore(Protocol):
+    async def get_persisted(self, tool_id: str) -> ToolDescriptor | None: ...
+    async def register_persisted(self, tool: ToolDescriptor) -> ToolDescriptor: ...
+    async def list_persisted(
+        self, *, enabled_only: bool = False
+    ) -> tuple[ToolDescriptor, ...]: ...
+
+    async def list_available_persisted(
+        self,
+        *,
+        minimum_trust: ToolTrustLevel,
+        enabled_only: bool = True,
+    ) -> tuple[ToolDescriptor, ...]: ...
+
+
 __all__ = [
     "ToolDescriptor",
     "ToolPermission",
     "ToolRegistry",
+    "ToolRegistryStore",
     "ToolSideEffect",
     "ToolTrustLevel",
 ]
