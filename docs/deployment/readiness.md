@@ -17,7 +17,7 @@ The repository uses the migration order documented in `migrations/README.md`:
 
 1. apply `migrations/versions/*.sql` in lexical order;
 2. apply `migrations/*.sql` in lexical order;
-3. verify that migration `0018_tool_registry.sql` advanced `gateway_schema_version` to `18`.
+3. verify that migration `0019_git_snapshot_tool.sql` advanced `gateway_schema_version` to `19`.
 
 Migration execution remains an explicit deployment operation. The Gateway does not mutate the production schema implicitly during application startup.
 
@@ -50,7 +50,7 @@ The response is deliberately structured and stable:
 {
   "status": "ready",
   "checks": [
-    {"name": "postgresql", "status": "ready", "detail": "schema version 18"},
+    {"name": "postgresql", "status": "ready", "detail": "schema version 19"},
     {"name": "identity", "status": "disabled", "detail": "external identity mapping is disabled"}
   ]
 }
