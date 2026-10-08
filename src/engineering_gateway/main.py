@@ -20,7 +20,7 @@ from engineering_gateway.api.trusted_proxy_middleware import (
     TrustedProxyPrincipalMiddleware,
 )
 from engineering_gateway.application.gateway_service import Actor
-from engineering_gateway.application.tool_invocation import ToolInvocationService
+from engineering_gateway.application.tool_invocation import ToolExecutionAdapter, ToolInvocationService
 from engineering_gateway.config import settings
 from engineering_gateway.domain.budget import BudgetGate
 from engineering_gateway.infrastructure.adapter_composition import (
@@ -39,6 +39,7 @@ from engineering_gateway.infrastructure.openproject_adapter import (
     OpenProjectConfig,
 )
 from engineering_gateway.infrastructure.strictdoc_adapter import LocalStrictDocAdapter
+from engineering_gateway.infrastructure.tool_adapters import GitSnapshotToolAdapter
 from engineering_gateway.infrastructure.tool_registry_repository import (
     SqlAlchemyToolAuditSink,
     SqlAlchemyToolRegistry,
@@ -144,6 +145,12 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         )
         principal_mapper = None
 
+    tool_adapters: dict[str, ToolExecutionAdapter] = {}
+    if git is not None and settings.git.repository_root:
+        tool_adapters["gateway.git.snapshot"] = GitSnapshotToolAdapter(
+            git, settings.git.repository_root
+        )
+
     mcp_app = create_mcp_http_app(
         lambda: governed_gateway_context(
             database,
@@ -160,7 +167,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         principal_claims_state_key=settings.identity.principal_claims_state_key,
         tool_invocation_service_factory=lambda: ToolInvocationService(
             SqlAlchemyToolRegistry(database),
-            {},
+            tool_adapters,
             SqlAlchemyToolAuditSink(database),
         ),
     )

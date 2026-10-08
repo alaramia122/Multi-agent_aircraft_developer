@@ -16,7 +16,7 @@ from engineering_gateway.infrastructure.db import Database
 from engineering_gateway.infrastructure.evidence_store import configured_evidence_store
 
 CheckStatus = Literal["ready", "disabled", "not_ready"]
-SCHEMA_VERSION = 18
+SCHEMA_VERSION = 19
 
 
 @dataclass(frozen=True)
