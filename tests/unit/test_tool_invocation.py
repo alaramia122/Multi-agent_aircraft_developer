@@ -8,7 +8,7 @@ from engineering_gateway.application.tool_invocation import (
     ToolInvocationRequest,
     ToolInvocationService,
 )
-from engineering_gateway.domain.audit import ActorType
+from engineering_gateway.domain.audit import ActorType, AuditResult, InMemoryAuditSink
 from engineering_gateway.domain.change_control import AuthorizationLevel
 from engineering_gateway.domain.tool_registry import (
     ToolDescriptor,
@@ -50,7 +50,8 @@ def make_tool(
 async def test_invocation_rechecks_policy_and_executes_registered_adapter() -> None:
     registry = ToolRegistry()
     registry.register(make_tool())
-    service = ToolInvocationService(registry, {"cad.export": FakeAdapter()})
+    audit = InMemoryAuditSink()
+    service = ToolInvocationService(registry, {"cad.export": FakeAdapter()}, audit)
     actor = Actor("agent-1", ActorType.AI, AuthorizationLevel.L0_READ)
 
     result = await service.invoke(
@@ -73,8 +74,7 @@ async def test_invocation_rechecks_policy_and_executes_registered_adapter() -> N
 async def test_untrusted_tool_is_denied_at_invocation() -> None:
     registry = ToolRegistry()
     registry.register(make_tool(ToolTrustLevel.UNTRUSTED))
-    service = ToolInvocationService(registry, {"cad.export": FakeAdapter()})
-    actor = Actor("agent-1", ActorType.AI, AuthorizationLevel.L0_READ)
+    service = ToolInvocationService(registry, {"cad.export": FakeAdapter()}, InMemoryAuditSink())    actor = Actor("agent-1", ActorType.AI, AuthorizationLevel.L0_READ)
 
     with pytest.raises(ToolInvocationDenied, match="trust level"):
         await service.invoke(
@@ -108,7 +108,7 @@ async def test_write_requires_declared_authorization() -> None:
             ),
         )
     )
-    service = ToolInvocationService(registry, {"cad.modify": FakeAdapter()})
+    service = ToolInvocationService(registry, {"cad.modify": FakeAdapter()}, InMemoryAuditSink())
     actor = Actor("agent-1", ActorType.AI, AuthorizationLevel.L1_PROPOSE)
 
     with pytest.raises(ToolInvocationDenied, match="authorization"):
@@ -162,7 +162,7 @@ async def test_ai_actor_cannot_execute_l3_tool_operation() -> None:
             ),
         )
     )
-    service = ToolInvocationService(registry, {"review.approve": FakeAdapter()})
+    service = ToolInvocationService(registry, {"review.approve": FakeAdapter()}, InMemoryAuditSink())
     actor = Actor("agent-1", ActorType.AI, AuthorizationLevel.L3_APPROVE)
 
     with pytest.raises(ToolInvocationDenied, match="AI actors cannot execute L3"):
@@ -215,3 +215,39 @@ async def test_ai_cannot_lower_minimum_trust_to_untrusted() -> None:
             actor,
             minimum_trust=ToolTrustLevel.UNTRUSTED,
         )
+
+
+@pytest.mark.asyncio
+async def test_tool_invocation_records_success_and_denial() -> None:
+    registry = ToolRegistry()
+    registry.register(make_tool())
+    audit = InMemoryAuditSink()
+    service = ToolInvocationService(registry, {"cad.export": FakeAdapter()}, audit)
+    actor = Actor("agent-1", ActorType.AI, AuthorizationLevel.L0_READ)
+
+    await service.invoke(
+        ToolInvocationRequest(
+            tool_id="cad.export",
+            operation="export",
+            actor_id=actor.actor_id,
+            authorization_level=actor.authorization_level,
+        ),
+        actor,
+    )
+
+    with pytest.raises(ToolInvocationDenied):
+        await service.invoke(
+            ToolInvocationRequest(
+                tool_id="missing.tool",
+                operation="run",
+                actor_id=actor.actor_id,
+                authorization_level=actor.authorization_level,
+            ),
+            actor,
+        )
+
+    events = await audit.list()
+    assert [event.result for event in events] == [
+        AuditResult.SUCCESS,
+        AuditResult.DENIED,
+    ]
