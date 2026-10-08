@@ -26,12 +26,13 @@ The current active migration sequence is:
 - `0016_project_dialogue.sql` — owner-scoped, durable Alice transcript associated with a human draft.
 - `0017_initial_workspace.sql` — first workspace provenance from a draft and pinned source versions without an approved baseline.
 - `0018_tool_registry.sql` — durable metadata for registered external tools; user-defined descriptors remain untrusted and disabled by default.
+- `0019_git_snapshot_tool.sql` — registers the fixed-root, read-only Git snapshot tool.
 
 Migration `0007` is intentionally absent. Numeric gaps are historical and must not be reused.
 
 For a fresh database, apply `migrations/versions/*.sql` in lexical order first, then `migrations/*.sql` in lexical order. The CI workflow follows this bootstrap-plus-active-sequence order. The two directories must not be treated as parallel active migration sequences.
 
-The `gateway_schema_version` marker is Gateway deployment metadata. Readiness requires version `18`; application startup does not mutate the schema implicitly.
+The `gateway_schema_version` marker is Gateway deployment metadata. Readiness requires version `19`; application startup does not mutate the schema implicitly.
 
 Current schema responsibilities:
 
