@@ -135,7 +135,7 @@ class ToolInvocationService:
         request: ToolInvocationRequest,
         actor: Actor,
         *,
-        minimum_trust: ToolTrustLevel = ToolTrustLevel.UNTRUSTED,
+        minimum_trust: ToolTrustLevel = ToolTrustLevel.SANDBOX,
         project_id: UUID | None = None,
     ) -> ToolInvocationResult:
         tool = self._registry.get(request.tool_id)
