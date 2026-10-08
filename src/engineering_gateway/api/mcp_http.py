@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from mcp.server.transport_security import TransportSecuritySettings
@@ -11,6 +11,7 @@ from engineering_gateway.api.actor_provider import ActorProvider
 from engineering_gateway.api.mcp_server import GatewayServiceFactory, create_mcp_server
 from engineering_gateway.api.principal_mapper import PrincipalActorMapper
 from engineering_gateway.api.request_actor_middleware import TrustedPrincipalMiddleware
+from engineering_gateway.application.tool_invocation import ToolInvocationService
 
 
 def create_mcp_http_app(
@@ -22,6 +23,7 @@ def create_mcp_http_app(
     streamable_http_path: str = "/mcp",
     json_response: bool = False,
     principal_mapper: PrincipalActorMapper | None = None,
+    tool_invocation_service_factory: Callable[[], ToolInvocationService] | None = None,
     principal_claims_state_key: str = "trusted_principal_claims",
 ) -> Any:
     """Build the ASGI application used to expose Gateway MCP over HTTP.
@@ -41,7 +43,11 @@ def create_mcp_http_app(
         allowed_hosts=list(hosts),
         allowed_origins=list(origins),
     )
-    server = create_mcp_server(service_factory, actor_provider)
+    server = create_mcp_server(
+        service_factory,
+        actor_provider,
+        tool_invocation_service_factory,
+    )
     app: Any = server.streamable_http_app(
         streamable_http_path=streamable_http_path,
         json_response=json_response,
