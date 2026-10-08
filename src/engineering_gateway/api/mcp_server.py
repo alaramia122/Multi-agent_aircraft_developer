@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
+from typing import Any
 from uuid import UUID
 
 from mcp.server import MCPServer
@@ -16,12 +17,18 @@ from engineering_gateway.application.gateway_service import Actor, GatewayApplic
 from engineering_gateway.application.governed_gateway_service import (
     GovernedGatewayApplicationService,
 )
+from engineering_gateway.application.tool_invocation import (
+    ToolInvocationRequest,
+    ToolInvocationService,
+)
 from engineering_gateway.domain.budget import BudgetPlan
 from engineering_gateway.domain.change_control import AuthorizationLevel
 from engineering_gateway.domain.models import EngineeringElement, EngineeringRelation
+from engineering_gateway.domain.tool_registry import ToolDescriptor, ToolTrustLevel
 
 
 GatewayServiceFactory = Callable[[], AbstractAsyncContextManager[GatewayApplicationService]]
+ToolInvocationServiceFactory = Callable[[], ToolInvocationService]
 
 
 class ElementAttributesInput(BaseModel):
@@ -137,7 +144,9 @@ def _validation_evidence(
 
 
 def create_mcp_server(
-    service_factory: GatewayServiceFactory, actor_provider: ActorProvider | Actor
+    service_factory: GatewayServiceFactory,
+    actor_provider: ActorProvider | Actor,
+    tool_invocation_service_factory: ToolInvocationServiceFactory | None = None,
 ) -> MCPServer:
     """Create an MCP server backed by transaction-scoped Gateway services.
 
@@ -158,6 +167,67 @@ def create_mcp_server(
         actor_provider = StaticActorProvider(actor_provider)
 
     server = MCPServer("Engineering Gateway")
+
+    @server.tool(
+        name="list_available_tools",
+        title="List available engineering tools",
+        annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False),
+        structured_output=True,
+    )
+    async def list_available_tools(
+        minimum_trust: ToolTrustLevel = ToolTrustLevel.SANDBOX,
+    ) -> list[ToolDescriptor]:
+        """List registered tools above the requested trust threshold."""
+        if tool_invocation_service_factory is None:
+            raise ToolError("external tool invocation is not configured")
+        actor = actor_provider.get_actor()
+        service = tool_invocation_service_factory()
+        try:
+            return list(service.list_available_tools(minimum_trust=minimum_trust, actor=actor))
+        except ValueError as exc:
+            raise ToolError(str(exc)) from exc
+
+    @server.tool(
+        name="invoke_engineering_tool",
+        title="Invoke engineering tool",
+        annotations=ToolAnnotations(
+            read_only_hint=False,
+            destructive_hint=False,
+            idempotent_hint=False,
+            open_world_hint=True,
+        ),
+        structured_output=True,
+    )
+    async def invoke_engineering_tool(
+        tool_id: str,
+        operation: str,
+        arguments: dict[str, Any] | None = None,
+        project_id: str | None = None,
+        minimum_trust: ToolTrustLevel = ToolTrustLevel.SANDBOX,
+    ) -> dict[str, object]:
+        """Invoke one registered tool through the current Actor and Gateway policy."""
+        if tool_invocation_service_factory is None:
+            raise ToolError("external tool invocation is not configured")
+        actor = actor_provider.get_actor()
+        request_project_id = _parse_uuid(project_id, "project_id") if project_id else None
+        service = tool_invocation_service_factory()
+        try:
+            result = await service.invoke(
+                ToolInvocationRequest(
+                    tool_id=_require_non_blank(tool_id, "tool_id"),
+                    operation=_require_non_blank(operation, "operation"),
+                    actor_id=actor.actor_id,
+                    authorization_level=actor.authorization_level,
+                    project_id=request_project_id,
+                    arguments=arguments or {},
+                ),
+                actor,
+                minimum_trust=minimum_trust,
+                project_id=request_project_id,
+            )
+        except ValueError as exc:
+            raise ToolError(str(exc)) from exc
+        return result.model_dump(mode="json")
 
     @server.tool(
         name="get_engineering_element",
