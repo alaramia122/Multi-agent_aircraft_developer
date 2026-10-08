@@ -20,6 +20,7 @@ from engineering_gateway.api.trusted_proxy_middleware import (
     TrustedProxyPrincipalMiddleware,
 )
 from engineering_gateway.application.gateway_service import Actor
+from engineering_gateway.application.tool_invocation import ToolInvocationService
 from engineering_gateway.config import settings
 from engineering_gateway.domain.budget import BudgetGate
 from engineering_gateway.infrastructure.adapter_composition import (
@@ -38,7 +39,7 @@ from engineering_gateway.infrastructure.openproject_adapter import (
     OpenProjectConfig,
 )
 from engineering_gateway.infrastructure.strictdoc_adapter import LocalStrictDocAdapter
-from engineering_gateway.infrastructure.strictdoc_workspace_adapter import (
+from engineering_gateway.infrastructure.tool_registry_repository import (\n    SqlAlchemyToolAuditSink,\n    SqlAlchemyToolRegistry,\n)\nfrom engineering_gateway.infrastructure.strictdoc_workspace_adapter import (
     LocalStrictDocWorkspaceAdapter,
     StrictDocBridgeConfig,
 )
