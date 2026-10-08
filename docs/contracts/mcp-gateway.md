@@ -8,6 +8,18 @@ The MCP server delegates operations to the Gateway application services. Gateway
 
 ## Tool classes
 
+### External tool boundary
+
+When the Tool Invocation Service is configured, MCP exposes:
+
+- `list_available_tools` — deterministic discovery from the Tool Registry;
+- `invoke_engineering_tool` — execution through the Tool Policy and registered adapter.
+
+The invocation receives the current request-scoped Actor. Client-supplied actor identity or authorization is never trusted. Tool trust, operation permission, project scope and side-effect policy are rechecked immediately before execution.
+
+Physical side effects are fail-closed until a dedicated safety gate is introduced. L3 approval remains outside the AI tool surface.
+
+
 ### Read-capable actors
 
 - `get_engineering_element`
