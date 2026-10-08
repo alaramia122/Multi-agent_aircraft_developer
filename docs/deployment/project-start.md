@@ -33,7 +33,7 @@ readable source projects; OpenProject must be configured. The action pins
 these source versions and isolates later changes in a new workspace. It does
 not provision the sources or assert that any UAV model has been reviewed.
 
-Deploy migrations through 0017 before the new application image; readiness requires
-schema version 17. Older conversations were browser-only and cannot be restored
+Deploy migrations through 0018 before the new application image; readiness requires
+schema version 18. Older conversations were browser-only and cannot be restored
 from the server. Test with an interactive human `gateway-propose` token, not a
 service credential. No personal L3 decision is needed to create a draft.
