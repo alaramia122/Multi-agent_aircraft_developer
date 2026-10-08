@@ -7,6 +7,7 @@ from engineering_gateway.application.tool_invocation import (
     ToolInvocationRequest,
     ToolInvocationService,
 )
+from engineering_gateway.domain.audit import ActorType
 from engineering_gateway.domain.change_control import AuthorizationLevel
 from engineering_gateway.domain.tool_registry import (
     ToolDescriptor,
@@ -129,5 +130,6 @@ async def test_physical_operation_is_fail_closed():
                 authorization_level=AuthorizationLevel.L2_MODIFY_WORKSPACE,
                 project_id=uuid4(),
             ),
+            Actor("agent-1", ActorType.AI, AuthorizationLevel.L2_MODIFY_WORKSPACE),
             minimum_trust=ToolTrustLevel.ENGINEERING_VERIFIED,
         )
