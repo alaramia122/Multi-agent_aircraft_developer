@@ -76,6 +76,11 @@ class ToolRegistry:
     async def list_persisted(self, *, enabled_only: bool = False) -> tuple[ToolDescriptor, ...]:
         return self.list_available(enabled_only=enabled_only)
 
+    async def list_available_persisted(
+        self, *, minimum_trust: ToolTrustLevel, enabled_only: bool = True
+    ) -> tuple[ToolDescriptor, ...]:
+        return self.list_available(minimum_trust=minimum_trust, enabled_only=enabled_only)
+
     def list_available(
         self,
         *,
@@ -96,6 +101,7 @@ class ToolRegistryStore(Protocol):
     async def get_persisted(self, tool_id: str) -> ToolDescriptor | None: ...
     async def register_persisted(self, tool: ToolDescriptor) -> ToolDescriptor: ...
     async def list_persisted(self, *, enabled_only: bool = False) -> tuple[ToolDescriptor, ...]: ...
+    async def list_available_persisted(self, *, minimum_trust: ToolTrustLevel, enabled_only: bool = True) -> tuple[ToolDescriptor, ...]: ...
 
 
 __all__ = [
