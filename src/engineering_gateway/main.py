@@ -153,6 +153,11 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         streamable_http_path=settings.mcp.path,
         principal_mapper=principal_mapper,
         principal_claims_state_key=settings.identity.principal_claims_state_key,
+        tool_invocation_service_factory=lambda: ToolInvocationService(
+            SqlAlchemyToolRegistry(database),
+            {},
+            SqlAlchemyToolAuditSink(database),
+        ),
     )
     if settings.identity.bearer_tokens_enabled:
         assert settings.identity.issuer_url and settings.identity.audience and settings.identity.jwks_url
