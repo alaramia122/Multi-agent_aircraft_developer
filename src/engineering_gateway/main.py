@@ -20,7 +20,7 @@ from engineering_gateway.api.trusted_proxy_middleware import (
     TrustedProxyPrincipalMiddleware,
 )
 from engineering_gateway.application.gateway_service import Actor
-from engineering_gateway.application.tool_invocation import ToolInvocationService
+from engineering_gateway.application.tool_invocation import ToolExecutionAdapter, ToolInvocationService
 from engineering_gateway.config import settings
 from engineering_gateway.domain.budget import BudgetGate
 from engineering_gateway.infrastructure.adapter_composition import (
@@ -145,11 +145,11 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         )
         principal_mapper = None
 
-    tool_adapters = (
-        {"gateway.git.snapshot": GitSnapshotToolAdapter(git, settings.git.repository_root)}
-        if git is not None and settings.git.repository_root
-        else {}
-    )
+    tool_adapters: dict[str, ToolExecutionAdapter] = {}
+    if git is not None and settings.git.repository_root:
+        tool_adapters["gateway.git.snapshot"] = GitSnapshotToolAdapter(
+            git, settings.git.repository_root
+        )
 
     mcp_app = create_mcp_http_app(
         lambda: governed_gateway_context(
