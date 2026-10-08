@@ -11,9 +11,11 @@ from mcp.server.mcpserver.exceptions import ToolError
 from engineering_gateway.api.mcp_server import create_mcp_server
 from engineering_gateway.application.gateway_service import Actor, GatewayApplicationService
 from engineering_gateway.application.governed_gateway_service import GovernedGatewayApplicationService
+from engineering_gateway.application.tool_invocation import ToolInvocationService
 from engineering_gateway.application.validation import ValidationResult
 from engineering_gateway.domain.audit import ActorType, InMemoryAuditSink
 from engineering_gateway.domain.change_control import AuthorizationLevel
+from engineering_gateway.domain.tool_registry import ToolDescriptor, ToolPermission, ToolRegistry, ToolTrustLevel
 from engineering_gateway.domain.models import (
     ElementKind,
     EngineeringElement,
@@ -130,6 +132,8 @@ async def test_l0_mcp_server_exposes_all_tools_but_enforces_l2_at_invocation() -
         "prepare_workspace_for_approval",
         "record_independent_review",
         "reconcile_workspace",
+        "list_available_tools",
+        "invoke_engineering_tool",
     } == names
 
     with pytest.raises(ToolError, match="MCP workspace mutation requires L2 authorization"):
@@ -370,3 +374,54 @@ async def test_mcp_runtime_authorization_follows_current_actor() -> None:
     provider.actor = _actor(AuthorizationLevel.L2_MODIFY_WORKSPACE)
     await server.list_tools()
     assert provider.calls == 1
+
+
+
+class _ToolAdapter:
+    async def execute(
+        self, tool: ToolDescriptor, operation: str, arguments: dict[str, object]
+    ) -> dict[str, object]:
+        return {"operation": operation, "arguments": arguments}
+
+
+@pytest.mark.asyncio
+async def test_mcp_discovers_and_invokes_registered_tool() -> None:
+    repository = _Repository()
+    registry = ToolRegistry()
+    registry.register(
+        ToolDescriptor(
+            tool_id="cad.export",
+            name="CAD export",
+            description="Export engineering model",
+            trust_level=ToolTrustLevel.ENGINEERING_VERIFIED,
+            project_scoped=False,
+            permissions=(
+                ToolPermission(
+                    operation="export",
+                    authorization_level="L0_READ",
+                ),
+            ),
+        )
+    )
+    invocation = ToolInvocationService(registry, {"cad.export": _ToolAdapter()}, InMemoryAuditSink())
+    server = create_mcp_server(
+        _factory(_service(repository)),
+        _actor(),
+        lambda: invocation,
+    )
+
+    discovery = await server.call_tool(
+        "list_available_tools",
+        {"minimum_trust": "engineering_verified"},
+    )
+    assert discovery is not None
+
+    result = await server.call_tool(
+        "invoke_engineering_tool",
+        {
+            "tool_id": "cad.export",
+            "operation": "export",
+            "arguments": {"format": "step"},
+        },
+    )
+    assert result is not None
