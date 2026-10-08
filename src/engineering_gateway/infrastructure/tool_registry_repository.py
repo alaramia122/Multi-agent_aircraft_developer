@@ -3,9 +3,11 @@
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
+from engineering_gateway.domain.audit import AuditEvent
 from engineering_gateway.domain.tool_registry import ToolDescriptor, ToolTrustLevel
 from engineering_gateway.infrastructure.db import Database
 from engineering_gateway.infrastructure.metadata_models import ToolRegistryRecord
+from engineering_gateway.infrastructure.metadata_repositories import SqlAlchemyAuditSink
 
 
 class SqlAlchemyToolRegistry:
