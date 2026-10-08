@@ -3,7 +3,7 @@
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from engineering_gateway.domain.tool_registry import ToolDescriptor
+from engineering_gateway.domain.tool_registry import ToolDescriptor, ToolTrustLevel
 from engineering_gateway.infrastructure.db import Database
 from engineering_gateway.infrastructure.metadata_models import ToolRegistryRecord
 
@@ -56,6 +56,17 @@ class SqlAlchemyToolRegistry:
                 statement = statement.where(ToolRegistryRecord.enabled.is_(True))
             records = await session.scalars(statement)
             return tuple(self._to_descriptor(record) for record in records)
+
+    async def list_available_persisted(
+        self, *, minimum_trust: ToolTrustLevel, enabled_only: bool = True
+    ) -> tuple[ToolDescriptor, ...]:
+        levels = list(ToolTrustLevel)
+        minimum_index = levels.index(minimum_trust)
+        tools = await self.list_persisted(enabled_only=enabled_only)
+        return tuple(
+            tool for tool in tools
+            if levels.index(tool.trust_level) >= minimum_index
+        )
 
     @staticmethod
     def _to_descriptor(record: ToolRegistryRecord) -> ToolDescriptor:
