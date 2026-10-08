@@ -8,7 +8,9 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from engineering_gateway.application.gateway_service import Actor
+from engineering_gateway.domain.audit import AuditEvent, AuditResult
 from engineering_gateway.domain.change_control import AuthorizationLevel
+from engineering_gateway.domain.ports import AuditSink
 from engineering_gateway.domain.tool_registry import (
     ToolDescriptor,
     ToolRegistry,
@@ -113,9 +115,36 @@ class ToolPolicy:
 class ToolInvocationService:
     """Resolve, authorize and execute one registered tool operation."""
 
-    def __init__(self, registry: ToolRegistry, adapters: dict[str, ToolExecutionAdapter]) -> None:
+    def __init__(
+        self,
+        registry: ToolRegistry,
+        adapters: dict[str, ToolExecutionAdapter],
+        audit: AuditSink,
+    ) -> None:
         self._registry = registry
         self._adapters = adapters
+        self._audit = audit
+
+    async def _record(
+        self,
+        actor: Actor,
+        result: AuditResult,
+        reason: str,
+        tool_id: str,
+        operation: str,
+    ) -> None:
+        await self._audit.record(
+            AuditEvent(
+                actor_id=actor.actor_id,
+                actor_type=actor.actor_type,
+                authorization_level=actor.authorization_level,
+                action="tool_invoke",
+                target_type="external_tool",
+                result=result,
+                reason=reason,
+                metadata={"tool_id": tool_id, "operation": operation},
+            )
+        )
 
     def list_available_tools(
         self,
@@ -139,19 +168,48 @@ class ToolInvocationService:
         project_id: UUID | None = None,
     ) -> ToolInvocationResult:
         tool = self._registry.get(request.tool_id)
-        if tool is None:
-            raise ToolInvocationDenied("tool is not registered")
-        ToolPolicy.authorize(
-            tool,
-            request,
+        try:
+            if tool is None:
+                raise ToolInvocationDenied("tool is not registered")
+            ToolPolicy.authorize(
+                tool,
+                request,
+                actor,
+                minimum_trust=minimum_trust,
+                project_id=project_id,
+            )
+            adapter = self._adapters.get(request.tool_id)
+            if adapter is None:
+                raise ToolInvocationDenied("tool execution adapter is not registered")
+        except ToolInvocationDenied as exc:
+            await self._record(
+                actor,
+                AuditResult.DENIED,
+                str(exc),
+                request.tool_id,
+                request.operation,
+            )
+            raise
+
+        try:
+            output = await adapter.execute(tool, request.operation, request.arguments)
+        except Exception as exc:
+            await self._record(
+                actor,
+                AuditResult.FAILURE,
+                str(exc),
+                request.tool_id,
+                request.operation,
+            )
+            raise
+
+        await self._record(
             actor,
-            minimum_trust=minimum_trust,
-            project_id=project_id,
+            AuditResult.SUCCESS,
+            "tool execution completed",
+            tool.tool_id,
+            request.operation,
         )
-        adapter = self._adapters.get(request.tool_id)
-        if adapter is None:
-            raise ToolInvocationDenied("tool execution adapter is not registered")
-        output = await adapter.execute(tool, request.operation, request.arguments)
         return ToolInvocationResult(
             tool_id=tool.tool_id,
             operation=request.operation,
