@@ -19,7 +19,7 @@ from engineering_gateway.domain.tool_registry import (
 
 
 class FakeAdapter:
-    async def execute(self, tool, operation, arguments):
+    async def execute(self, tool: ToolDescriptor, operation: str, arguments: dict[str, object]) -> dict[str, object]:
         return {"received": arguments}
 
 
@@ -131,5 +131,58 @@ async def test_physical_operation_is_fail_closed():
                 project_id=uuid4(),
             ),
             Actor("agent-1", ActorType.AI, AuthorizationLevel.L2_MODIFY_WORKSPACE),
+            minimum_trust=ToolTrustLevel.ENGINEERING_VERIFIED,
+        )
+
+
+
+@pytest.mark.asyncio
+async def test_ai_actor_cannot_execute_l3_tool_operation() -> None:
+    registry = ToolRegistry()
+    registry.register(
+        ToolDescriptor(
+            tool_id="review.approve",
+            name="Review approval",
+            description="Restricted approval operation",
+            trust_level=ToolTrustLevel.ENGINEERING_VERIFIED,
+            project_scoped=False,
+            permissions=(
+                ToolPermission(
+                    operation="approve",
+                    authorization_level="L3_APPROVE",
+                ),
+            ),
+        )
+    )
+    service = ToolInvocationService(registry, {"review.approve": FakeAdapter()})
+
+    with pytest.raises(ToolInvocationDenied, match="AI actors cannot execute L3"):
+        await service.invoke(
+            ToolInvocationRequest(
+                tool_id="review.approve",
+                operation="approve",
+                actor_id="agent-1",
+                authorization_level=AuthorizationLevel.L3_APPROVE,
+            ),
+            Actor("agent-1", ActorType.AI, AuthorizationLevel.L3_APPROVE),
+        )
+
+
+@pytest.mark.asyncio
+async def test_invocation_rejects_actor_identity_mismatch() -> None:
+    registry = ToolRegistry()
+    registry.register(make_tool())
+    service = ToolInvocationService(registry, {"cad.export": FakeAdapter()})
+
+    with pytest.raises(ToolInvocationDenied, match="does not match current Actor"):
+        await service.invoke(
+            ToolInvocationRequest(
+                tool_id="cad.export",
+                operation="export",
+                actor_id="spoofed",
+                authorization_level=AuthorizationLevel.L0_READ,
+                project_id=uuid4(),
+            ),
+            Actor("agent-1", ActorType.AI, AuthorizationLevel.L0_READ),
             minimum_trust=ToolTrustLevel.ENGINEERING_VERIFIED,
         )
