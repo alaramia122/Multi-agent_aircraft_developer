@@ -42,7 +42,8 @@ from engineering_gateway.infrastructure.strictdoc_adapter import LocalStrictDocA
 from engineering_gateway.infrastructure.tool_registry_repository import (
     SqlAlchemyToolAuditSink,
     SqlAlchemyToolRegistry,
-)\nfrom engineering_gateway.infrastructure.strictdoc_workspace_adapter import (
+)
+from engineering_gateway.infrastructure.strictdoc_workspace_adapter import (
     LocalStrictDocWorkspaceAdapter,
     StrictDocBridgeConfig,
 )
