@@ -24,20 +24,32 @@ def test_build_request_is_versioned_and_deterministic() -> None:
 @pytest.mark.parametrize(
     ("response", "message"),
     [
-        ({"protocol": 2, "ok": True}, "unsupported bridge protocol"),
+        ({"protocol": 2, "operation": "get_version", "ok": True}, "unsupported bridge protocol"),
         ({"protocol": 1, "operation": "other", "ok": True}, "unexpected operation"),
-        ({"protocol": 1, "ok": False, "error": "boom"}, "boom"),
-        ({"protocol": 1, "ok": False}, "unknown bridge error"),
+        ({"protocol": 1, "operation": "get_version", "ok": "yes"}, "boolean ok"),
+        ({"protocol": 1, "operation": "get_version", "ok": False}, "non-empty error"),
+        ({"protocol": 1, "operation": "get_version", "ok": False, "error": ""}, "non-empty error"),
+        ({"protocol": 1, "operation": "get_version", "ok": True, "error": "boom"}, "must not contain error"),
         ([], "non-object JSON response"),
     ],
 )
-def test_validate_response_rejects_invalid_envelopes(
-    response: object, message: str
-) -> None:
+def test_validate_response_rejects_invalid_envelopes(response: object, message: str) -> None:
     with pytest.raises(BridgeProtocolError, match=message):
         validate_response(response, "get_version")
 
 
-def test_validate_response_allows_omitted_operation_for_backward_compatible_bridge() -> None:
-    response = validate_response({"protocol": 1, "ok": True, "version": "42"}, "get_version")
+def test_validate_response_accepts_strict_success_envelope() -> None:
+    response = validate_response(
+        {"protocol": 1, "operation": "get_version", "ok": True, "version": "42"},
+        "get_version",
+    )
     assert response["version"] == "42"
+
+
+def test_build_request_rejects_malformed_input() -> None:
+    with pytest.raises(BridgeProtocolError, match="operation"):
+        build_request("", "/model", {})
+    with pytest.raises(BridgeProtocolError, match="project_path"):
+        build_request("get_version", "", {})
+    with pytest.raises(BridgeProtocolError, match="payload"):
+        build_request("get_version", "/model", [])  # type: ignore[arg-type]
