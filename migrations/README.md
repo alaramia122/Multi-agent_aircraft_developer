@@ -24,7 +24,8 @@ The current active migration sequence is:
 - `0014_deployment_readiness_schema.sql` — deployment readiness schema-version marker.
 - `0015_project_drafts.sql` — immutable human-authored project briefs before any baseline exists.
 - `0016_project_dialogue.sql` — owner-scoped, durable Alice transcript associated with a human draft.
-- `0017_initial_workspace.sql` — first workspace provenance from a draft and pinned source versions without an approved baseline.\n- `0018_tool_registry.sql` — durable metadata for registered external tools; user-defined descriptors remain untrusted and disabled by default.
+- `0017_initial_workspace.sql` — first workspace provenance from a draft and pinned source versions without an approved baseline.
+- `0018_tool_registry.sql` — durable metadata for registered external tools; user-defined descriptors remain untrusted and disabled by default.
 
 Migration `0007` is intentionally absent. Numeric gaps are historical and must not be reused.
 
@@ -40,7 +41,8 @@ Current schema responsibilities:
 - `workspaces` — workspace provenance, profile binding, validation evidence, reconciliation evidence, optimistic-concurrency version, and Git reference;
 - `audit_events` — append-oriented governance audit trail;
 - `gateway_schema_version` — exact deployed Gateway schema version used by readiness checks.
-- `project_drafts` — owner-scoped initial goal and constraints with provenance hash; no engineering requirements or approved baseline.\n- `tool_registry` — versioned tool descriptors, trust level, declared operations and configuration schema; no executable code or credentials.
+- `project_drafts` — owner-scoped initial goal and constraints with provenance hash; no engineering requirements or approved baseline.
+- `tool_registry` — versioned tool descriptors, trust level, declared operations and configuration schema; no executable code or credentials.
 
 The workspace evidence fields are intentionally metadata rather than an engineering model:
 
