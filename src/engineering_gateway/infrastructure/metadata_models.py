@@ -103,3 +103,22 @@ class AuditEventRecord(Base):
     event_metadata: Mapped[dict[str, object]] = mapped_column(
         "metadata", JSON, nullable=False, default=dict
     )
+
+
+class ToolRegistryRecord(Base):
+    """Versioned Gateway-owned descriptor for an external engineering tool."""
+
+    __tablename__ = "tool_registry"
+    __table_args__ = (
+        Index("ix_tool_registry_enabled_trust", "enabled", "trust_level"),
+    )
+
+    tool_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    contract_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    trust_level: Mapped[str] = mapped_column(String(32), nullable=False)
+    permissions: Mapped[list[dict[str, object]]] = mapped_column(JSON, nullable=False)
+    project_scoped: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    configuration_schema: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
