@@ -58,6 +58,13 @@ def handle(request: dict[str, object]) -> dict[str, object]:
         raise ValueError("private Capella service unavailable") from exc
     if not isinstance(response, dict):
         raise ValueError("invalid private Capella response")
+    # Normalize native service output to the Gateway bridge envelope. The native
+    # service is not allowed to define a second wire contract for the Gateway.
+    response = dict(response)
+    response.setdefault("protocol", 1)
+    response.setdefault("operation", str(operation))
+    if not isinstance(response.get("ok"), bool):
+        raise ValueError("invalid private Capella response status")
     return response
 
 
