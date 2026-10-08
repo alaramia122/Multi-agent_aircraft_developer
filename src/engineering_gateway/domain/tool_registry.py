@@ -7,8 +7,7 @@ must still pass Gateway authorization and the tool's trust/policy checks.
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Protocol
-from typing import Any
+from typing import Any, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -53,7 +52,7 @@ class ToolDescriptor(BaseModel):
 
 
 class ToolRegistry:
-    """Deterministic in-memory registry; persistence can be added behind a port."""
+    """Deterministic in-memory registry implementation for tests and local use."""
 
     def __init__(self) -> None:
         self._tools: dict[str, ToolDescriptor] = {}
@@ -100,8 +99,16 @@ class ToolRegistry:
 class ToolRegistryStore(Protocol):
     async def get_persisted(self, tool_id: str) -> ToolDescriptor | None: ...
     async def register_persisted(self, tool: ToolDescriptor) -> ToolDescriptor: ...
-    async def list_persisted(self, *, enabled_only: bool = False) -> tuple[ToolDescriptor, ...]: ...
-    async def list_available_persisted(self, *, minimum_trust: ToolTrustLevel, enabled_only: bool = True) -> tuple[ToolDescriptor, ...]: ...
+    async def list_persisted(
+        self, *, enabled_only: bool = False
+    ) -> tuple[ToolDescriptor, ...]: ...
+
+    async def list_available_persisted(
+        self,
+        *,
+        minimum_trust: ToolTrustLevel,
+        enabled_only: bool = True,
+    ) -> tuple[ToolDescriptor, ...]: ...
 
 
 __all__ = [
