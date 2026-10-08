@@ -133,6 +133,7 @@ async def test_l0_mcp_server_exposes_all_tools_but_enforces_l2_at_invocation() -
         "record_independent_review",
         "reconcile_workspace",
         "list_available_tools",
+        "register_custom_tool",
         "invoke_engineering_tool",
     } == names
 
@@ -425,3 +426,52 @@ async def test_mcp_discovers_and_invokes_registered_tool() -> None:
         },
     )
     assert result is not None
+
+
+@pytest.mark.asyncio
+async def test_mcp_custom_tool_registration_is_governed_and_forces_untrusted_disabled() -> None:
+    registry = ToolRegistry()
+    invocation = ToolInvocationService(registry, {}, InMemoryAuditSink())
+    server = create_mcp_server(
+        _factory(_service(_Repository())),
+        Actor("human-engineer", ActorType.HUMAN, AuthorizationLevel.L2_MODIFY_WORKSPACE),
+        lambda: invocation,
+    )
+
+    await server.call_tool(
+        "register_custom_tool",
+        {
+            "descriptor": {
+                "tool_id": "custom.cad",
+                "name": "Custom CAD",
+                "description": "User-supplied CAD connector",
+                "trust_level": "engineering_verified",
+                "enabled": True,
+                "project_scoped": False,
+                "permissions": [
+                    {"operation": "export", "authorization_level": "L0_READ", "side_effect": "read"}
+                ],
+            }
+        },
+    )
+
+    stored = await registry.get_persisted("custom.cad")
+    assert stored is not None
+    assert stored.trust_level is ToolTrustLevel.UNTRUSTED
+    assert stored.enabled is False
+
+
+@pytest.mark.asyncio
+async def test_mcp_ai_cannot_register_custom_tool() -> None:
+    registry = ToolRegistry()
+    invocation = ToolInvocationService(registry, {}, InMemoryAuditSink())
+    server = create_mcp_server(
+        _factory(_service(_Repository())), _actor(AuthorizationLevel.L2_MODIFY_WORKSPACE),
+        lambda: invocation,
+    )
+
+    with pytest.raises(ToolError, match="only human actors"):
+        await server.call_tool(
+            "register_custom_tool",
+            {"descriptor": {"tool_id": "custom.cad", "name": "CAD", "description": "x"}},
+        )
