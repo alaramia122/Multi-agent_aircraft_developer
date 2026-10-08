@@ -403,7 +403,7 @@ async def test_mcp_discovers_and_invokes_registered_tool() -> None:
             ),
         )
     )
-    invocation = ToolInvocationService(registry, {"cad.export": _ToolAdapter()})
+    invocation = ToolInvocationService(registry, {"cad.export": _ToolAdapter()}, InMemoryAuditSink())
     server = create_mcp_server(
         _factory(_service(repository)),
         _actor(),
