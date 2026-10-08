@@ -74,7 +74,8 @@ async def test_invocation_rechecks_policy_and_executes_registered_adapter() -> N
 async def test_untrusted_tool_is_denied_at_invocation() -> None:
     registry = ToolRegistry()
     registry.register(make_tool(ToolTrustLevel.UNTRUSTED))
-    service = ToolInvocationService(registry, {"cad.export": FakeAdapter()}, InMemoryAuditSink())    actor = Actor("agent-1", ActorType.AI, AuthorizationLevel.L0_READ)
+    service = ToolInvocationService(registry, {"cad.export": FakeAdapter()}, InMemoryAuditSink())
+    actor = Actor("agent-1", ActorType.AI, AuthorizationLevel.L0_READ)
 
     with pytest.raises(ToolInvocationDenied, match="trust level"):
         await service.invoke(
@@ -128,7 +129,7 @@ async def test_write_requires_declared_authorization() -> None:
 async def test_physical_operation_is_fail_closed() -> None:
     registry = ToolRegistry()
     registry.register(make_tool(side_effect=ToolSideEffect.PHYSICAL))
-    service = ToolInvocationService(registry, {"cad.export": FakeAdapter()})
+    service = ToolInvocationService(registry, {"cad.export": FakeAdapter()}, InMemoryAuditSink())
     actor = Actor("agent-1", ActorType.AI, AuthorizationLevel.L2_MODIFY_WORKSPACE)
 
     with pytest.raises(ToolInvocationDenied, match="physical"):
@@ -181,7 +182,7 @@ async def test_ai_actor_cannot_execute_l3_tool_operation() -> None:
 async def test_invocation_rejects_actor_identity_mismatch() -> None:
     registry = ToolRegistry()
     registry.register(make_tool())
-    service = ToolInvocationService(registry, {"cad.export": FakeAdapter()})
+    service = ToolInvocationService(registry, {"cad.export": FakeAdapter()}, InMemoryAuditSink())
     actor = Actor("agent-1", ActorType.AI, AuthorizationLevel.L0_READ)
 
     with pytest.raises(ToolInvocationDenied, match="does not match current Actor"):
