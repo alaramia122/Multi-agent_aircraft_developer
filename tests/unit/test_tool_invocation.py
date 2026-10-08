@@ -202,7 +202,7 @@ async def test_invocation_rejects_actor_identity_mismatch() -> None:
 async def test_ai_cannot_lower_minimum_trust_to_untrusted() -> None:
     registry = ToolRegistry()
     registry.register(make_tool(ToolTrustLevel.UNTRUSTED))
-    service = ToolInvocationService(registry, {"cad.export": FakeAdapter()})
+    service = ToolInvocationService(registry, {"cad.export": FakeAdapter()}, InMemoryAuditSink())
     actor = Actor("agent-1", ActorType.AI, AuthorizationLevel.L0_READ)
 
     with pytest.raises(ToolInvocationDenied, match="AI actors cannot use untrusted"):
