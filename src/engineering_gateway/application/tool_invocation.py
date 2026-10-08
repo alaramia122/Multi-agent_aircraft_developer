@@ -8,7 +8,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from engineering_gateway.application.gateway_service import Actor
-from engineering_gateway.domain.audit import AuditEvent, AuditResult
+from engineering_gateway.domain.audit import ActorType, AuditEvent, AuditResult
 from engineering_gateway.domain.change_control import AuthorizationLevel
 from engineering_gateway.domain.ports import AuditSink
 from engineering_gateway.domain.tool_registry import (
@@ -16,6 +16,7 @@ from engineering_gateway.domain.tool_registry import (
     ToolRegistry,
     ToolSideEffect,
     ToolTrustLevel,
+    ToolRegistryStore,
 )
 
 
@@ -117,7 +118,7 @@ class ToolInvocationService:
 
     def __init__(
         self,
-        registry: ToolRegistry,
+        registry: ToolRegistryStore,
         adapters: dict[str, ToolExecutionAdapter],
         audit: AuditSink,
     ) -> None:
@@ -146,7 +147,7 @@ class ToolInvocationService:
             )
         )
 
-    def list_available_tools(
+    async def list_available_tools(
         self,
         *,
         minimum_trust: ToolTrustLevel,
@@ -154,10 +155,34 @@ class ToolInvocationService:
     ) -> tuple[ToolDescriptor, ...]:
         """Return deterministic tool discovery for the current actor."""
         ToolPolicy.require_minimum_trust(actor, minimum_trust)
-        return self._registry.list_available(
+        return await self._registry.list_available_persisted(
             minimum_trust=minimum_trust,
             enabled_only=True,
         )
+
+    async def register_user_tool(self, tool: ToolDescriptor, actor: Actor) -> ToolDescriptor:
+        """Register user-supplied metadata as disabled and untrusted by default."""
+        if actor.actor_type is not ActorType.HUMAN:
+            raise ToolInvocationDenied("only human actors may register custom tools")
+        if actor.authorization_level is not AuthorizationLevel.L2_MODIFY_WORKSPACE:
+            raise ToolInvocationDenied("custom tool registration requires L2 authorization")
+        if any(
+            permission.authorization_level == AuthorizationLevel.L3_APPROVE.value
+            for permission in tool.permissions
+        ):
+            raise ToolInvocationDenied("custom tools cannot declare L3 operations")
+        untrusted = tool.model_copy(
+            update={"trust_level": ToolTrustLevel.UNTRUSTED, "enabled": False}
+        )
+        registered = await self._registry.register_persisted(untrusted)
+        await self._record(
+            actor,
+            AuditResult.SUCCESS,
+            "custom tool registered disabled and untrusted",
+            registered.tool_id,
+            "register",
+        )
+        return registered
 
     async def invoke(
         self,
@@ -167,7 +192,7 @@ class ToolInvocationService:
         minimum_trust: ToolTrustLevel = ToolTrustLevel.SANDBOX,
         project_id: UUID | None = None,
     ) -> ToolInvocationResult:
-        tool = self._registry.get(request.tool_id)
+        tool = await self._registry.get_persisted(request.tool_id)
         try:
             if tool is None:
                 raise ToolInvocationDenied("tool is not registered")
