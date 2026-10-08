@@ -7,6 +7,7 @@ must still pass Gateway authorization and the tool's trust/policy checks.
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Protocol
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -66,6 +67,15 @@ class ToolRegistry:
     def get(self, tool_id: str) -> ToolDescriptor | None:
         return self._tools.get(tool_id)
 
+    async def get_persisted(self, tool_id: str) -> ToolDescriptor | None:
+        return self.get(tool_id)
+
+    async def register_persisted(self, tool: ToolDescriptor) -> ToolDescriptor:
+        return self.register(tool)
+
+    async def list_persisted(self, *, enabled_only: bool = False) -> tuple[ToolDescriptor, ...]:
+        return self.list_available(enabled_only=enabled_only)
+
     def list_available(
         self,
         *,
@@ -82,10 +92,17 @@ class ToolRegistry:
         return tuple(sorted(result, key=lambda item: item.tool_id))
 
 
+class ToolRegistryStore(Protocol):
+    async def get_persisted(self, tool_id: str) -> ToolDescriptor | None: ...
+    async def register_persisted(self, tool: ToolDescriptor) -> ToolDescriptor: ...
+    async def list_persisted(self, *, enabled_only: bool = False) -> tuple[ToolDescriptor, ...]: ...
+
+
 __all__ = [
     "ToolDescriptor",
     "ToolPermission",
     "ToolRegistry",
+    "ToolRegistryStore",
     "ToolSideEffect",
     "ToolTrustLevel",
 ]
