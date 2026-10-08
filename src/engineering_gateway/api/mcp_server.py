@@ -183,7 +183,24 @@ def create_mcp_server(
         actor = actor_provider.get_actor()
         service = tool_invocation_service_factory()
         try:
-            return list(service.list_available_tools(minimum_trust=minimum_trust, actor=actor))
+            return list(await service.list_available_tools(minimum_trust=minimum_trust, actor=actor))
+        except ValueError as exc:
+            raise ToolError(str(exc)) from exc
+
+    @server.tool(
+        name="register_custom_tool",
+        title="Register custom engineering tool",
+        annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=False),
+        structured_output=True,
+    )
+    async def register_custom_tool(descriptor: dict[str, Any]) -> ToolDescriptor:
+        """Register a user-defined tool descriptor; it remains disabled and untrusted."""
+        if tool_invocation_service_factory is None:
+            raise ToolError("external tool invocation is not configured")
+        actor = actor_provider.get_actor()
+        try:
+            tool = ToolDescriptor.model_validate(descriptor)
+            return await tool_invocation_service_factory().register_user_tool(tool, actor)
         except ValueError as exc:
             raise ToolError(str(exc)) from exc
 
