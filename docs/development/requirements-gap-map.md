@@ -69,9 +69,9 @@
 | Production configuration | Typed settings, env groups, readiness | Реализовано | 🟢 | Staging deployment |
 | Object Storage | Крупные бинарные артефакты | Контракт/архитектурная роль определены, production storage не подключён | 🟡 | Выбрать и подключить staging backend |
 | Vector Store / RAG | Retrieval поверх инженерной базы | Не реализован | 🔴 | После стабилизации Gateway; не делать Source of Truth |
-| AI Studio Agents | Chief Engineer, Requirements, System Architect, Safety, Software Architect, Verification, Configuration, Reviewer, Cost | Не реализованы | 🔴 | После Gateway E2E |
-| AI Studio Workflows | Оркестрация агентных шагов | Не реализована | 🔴 | После определения agent contracts |
-| Agent contracts | Контракты входов/выходов/границ ответственности агентов | Не реализованы | 🔴 | Спроектировать после фиксации Gateway API |
+| AI Studio Agents | Chief Engineer, Requirements, System Architect, Safety, Software Architect, Verification, Configuration, Reviewer, Cost | Контракт ролей определён; AI Studio runtime не подключён | 🔴 | Реализовать/настроить агентов поверх контрактов |
+| AI Studio Workflows | Оркестрация агентных шагов | Не реализована | 🔴 | После Tool Registry и task lifecycle |
+| Agent contracts | Контракты входов/выходов/границ ответственности агентов | Версионированные AgentTask/AgentProposal и роли реализованы; runtime не реализован | 🟡 | Tool Registry и orchestration boundary |
 | Agent governance | AI не может обходить Gateway и выполнять L3 | Gateway-side invariant готов; AI layer отсутствует | 🟡 | Реализовать agent tools только через MCP |
 | MVP-1 | Function → System Function → Requirement → Architecture → Allocation → Safety → Verification → Baseline | Полная versioned profile/test chain реализована в `arp4754a@2.0`; production E2E нет | 🟡 | E2E на реальных системах |
 | MVP-2 | System Requirement → SW HLR → SW Architecture → SW LLR → Source → Verification → Evidence | Полная versioned profile/test chain реализована в `do-178c@2.0`; production E2E нет | 🟡 | E2E на реальных системах |
@@ -210,11 +210,12 @@ Evidence
 4. **Полный quality gate** — подтверждён на `main`
 5. **Реальные staging-интеграции Git / StrictDoc / Capella / OpenProject**
 6. **Gateway E2E**
-7. **Yandex AI Studio Agent contracts**
-8. **Agents**
-9. **Workflows / orchestration**
-10. **RAG / Object Storage / production operations**
-11. **Cost/Budget subsystem**
+7. **Yandex AI Studio Agent contracts** — базовый контракт реализован
+8. **Connector/Tool Registry**
+9. **Agents**
+10. **Workflows / orchestration**
+11. **RAG / Object Storage / production operations**
+12. **Cost/Budget subsystem**
 
 ## 7. Критерий перехода к агентам
 
@@ -232,6 +233,10 @@ Gateway E2E
 stable MCP contracts
         ↓
 AI Agent contracts
+        ↓
+Tool Registry
+        ↓
+Agents / Workflows
 ```
 
 Иначе агентный слой будет проектироваться поверх неподтверждённого integration boundary.
