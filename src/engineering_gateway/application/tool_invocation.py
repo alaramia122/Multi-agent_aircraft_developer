@@ -13,10 +13,9 @@ from engineering_gateway.domain.change_control import AuthorizationLevel
 from engineering_gateway.domain.ports import AuditSink
 from engineering_gateway.domain.tool_registry import (
     ToolDescriptor,
-    ToolRegistry,
+    ToolRegistryStore,
     ToolSideEffect,
     ToolTrustLevel,
-    ToolRegistryStore,
 )
 
 
