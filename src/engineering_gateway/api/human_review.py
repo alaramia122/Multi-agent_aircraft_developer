@@ -260,12 +260,62 @@ def create_human_review_app(
         except (UnicodeDecodeError, ValueError, jwt.PyJWTError, OSError) as exc:
             raise HTTPException(401, "invalid human bearer token") from exc
 
+    @app.get("/tools/pending-review")
+    async def pending_tool_reviews(request: Request) -> dict[str, object]:
+        actor = await actor_for(request)
+        if actor.actor_type is not ActorType.HUMAN or actor.authorization_level not in {
+            AuthorizationLevel.L2_MODIFY_WORKSPACE, AuthorizationLevel.L3_APPROVE,
+        }:
+            raise HTTPException(403, "human L2 or L3 authority required")
+        if tool_lifecycle_service_factory is None:
+            raise HTTPException(503, "tool review lifecycle is not configured")
+        try:
+            tools = await tool_lifecycle_service_factory().list_pending(actor)
+        except ToolLifecycleDenied as exc:
+            raise HTTPException(403, str(exc)) from exc
+        return {"tools": [
+            {
+                "tool_id": tool.tool_id,
+                "name": tool.name,
+                "description": tool.description,
+                "trust_level": tool.trust_level.value,
+                "lifecycle_state": tool.lifecycle_state.value,
+                "permissions": [permission.model_dump(mode="json") for permission in tool.permissions],
+            }
+            for tool in tools
+        ]}
+
+    @app.post("/tools/{tool_id}/revoke")
+    async def revoke_custom_tool(
+        tool_id: str, data: Rejection, request: Request,
+    ) -> dict[str, object]:
+        actor = await actor_for(request)
+        if actor.actor_type is not ActorType.HUMAN or actor.authorization_level not in {
+            AuthorizationLevel.L2_MODIFY_WORKSPACE, AuthorizationLevel.L3_APPROVE,
+        }:
+            raise HTTPException(403, "human L2 or L3 authority required")
+        if tool_lifecycle_service_factory is None:
+            raise HTTPException(503, "tool review lifecycle is not configured")
+        try:
+            revoked = await tool_lifecycle_service_factory().revoke(tool_id, actor, data.reason)
+        except ToolLifecycleDenied as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return {
+            "tool_id": revoked.tool_id,
+            "lifecycle_state": revoked.lifecycle_state.value,
+            "trust_level": revoked.trust_level.value,
+            "enabled": revoked.enabled,
+        }
+
     @app.post("/tools/{tool_id}/review")
     async def review_custom_tool(
         tool_id: str, decision: ToolReviewDecision, request: Request,
     ) -> dict[str, object]:
         actor = await actor_for(request)
-        if actor.actor_type is not ActorType.HUMAN or actor.authorization_level is not AuthorizationLevel.L3_APPROVE:
+        if (
+            actor.actor_type is not ActorType.HUMAN
+            or actor.authorization_level is not AuthorizationLevel.L3_APPROVE
+        ):
             raise HTTPException(403, "human L3 approval authority required")
         if tool_lifecycle_service_factory is None:
             raise HTTPException(503, "tool review lifecycle is not configured")
