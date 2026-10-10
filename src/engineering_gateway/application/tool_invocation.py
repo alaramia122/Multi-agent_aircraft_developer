@@ -13,6 +13,7 @@ from engineering_gateway.domain.change_control import AuthorizationLevel
 from engineering_gateway.domain.ports import AuditSink
 from engineering_gateway.domain.tool_registry import (
     ToolDescriptor,
+    ToolLifecycleState,
     ToolRegistryStore,
     ToolSideEffect,
     ToolTrustLevel,
@@ -81,6 +82,8 @@ class ToolPolicy:
         project_id: UUID | None = None,
     ) -> None:
         ToolPolicy.require_minimum_trust(actor, minimum_trust)
+        if tool.lifecycle_state is not ToolLifecycleState.ACTIVE:
+            raise ToolInvocationDenied("tool lifecycle state does not permit invocation")
         if not tool.enabled:
             raise ToolInvocationDenied("tool is disabled")
         if _TRUST_LEVELS.index(tool.trust_level) < _TRUST_LEVELS.index(minimum_trust):
@@ -154,9 +157,13 @@ class ToolInvocationService:
     ) -> tuple[ToolDescriptor, ...]:
         """Return deterministic tool discovery for the current actor."""
         ToolPolicy.require_minimum_trust(actor, minimum_trust)
-        return await self._registry.list_available_persisted(
+        tools = await self._registry.list_available_persisted(
             minimum_trust=minimum_trust,
             enabled_only=True,
+        )
+        return tuple(
+            tool for tool in tools
+            if tool.lifecycle_state is ToolLifecycleState.ACTIVE
         )
 
     async def register_user_tool(self, tool: ToolDescriptor, actor: Actor) -> ToolDescriptor:
@@ -171,7 +178,11 @@ class ToolInvocationService:
         ):
             raise ToolInvocationDenied("custom tools cannot declare L3 operations")
         untrusted = tool.model_copy(
-            update={"trust_level": ToolTrustLevel.UNTRUSTED, "enabled": False}
+            update={
+                "trust_level": ToolTrustLevel.UNTRUSTED,
+                "enabled": False,
+                "lifecycle_state": ToolLifecycleState.PENDING_REVIEW,
+            }
         )
         registered = await self._registry.register_persisted(untrusted)
         await self._record(
