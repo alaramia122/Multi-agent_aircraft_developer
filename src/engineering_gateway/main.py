@@ -21,6 +21,7 @@ from engineering_gateway.api.trusted_proxy_middleware import (
 )
 from engineering_gateway.application.gateway_service import Actor
 from engineering_gateway.application.tool_invocation import ToolExecutionAdapter, ToolInvocationService
+from engineering_gateway.application.tool_lifecycle import ToolLifecycleService
 from engineering_gateway.config import settings
 from engineering_gateway.domain.budget import BudgetGate
 from engineering_gateway.infrastructure.adapter_composition import (
@@ -235,6 +236,9 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             project_store=ProjectDraftStore(database),
             dialogue_store=ProjectDialogueStore(database),
             initial_project_repository=settings.gateway.initial_project_repository,
+            tool_lifecycle_service_factory=lambda: ToolLifecycleService(
+                SqlAlchemyToolRegistry(database), SqlAlchemyToolAuditSink(database)
+            ),
         )
         human_route = Mount("/human", app=human_app)
         application.router.routes.append(human_route)

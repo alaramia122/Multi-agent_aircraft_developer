@@ -11,6 +11,7 @@ from engineering_gateway.domain.audit import ActorType, AuditResult, InMemoryAud
 from engineering_gateway.domain.change_control import AuthorizationLevel
 from engineering_gateway.domain.tool_registry import (
     ToolDescriptor,
+    ToolLifecycleState,
     ToolPermission,
     ToolRegistry,
     ToolSideEffect,
@@ -265,6 +266,7 @@ async def test_custom_tool_registration_is_human_l2_and_defaults_to_untrusted_di
 
     assert registered.trust_level is ToolTrustLevel.UNTRUSTED
     assert registered.enabled is False
+    assert registered.lifecycle_state is ToolLifecycleState.PENDING_REVIEW
     assert await registry.get_persisted("cad.export") == registered
 
     with pytest.raises(ToolInvocationDenied, match="only human"):
@@ -309,3 +311,45 @@ def test_tool_descriptor_rejects_duplicate_operation_contracts() -> None:
                 ToolPermission(operation="read", authorization_level="L2_MODIFY_WORKSPACE"),
             ),
         )
+
+
+
+@pytest.mark.asyncio
+async def test_invocation_denies_tool_outside_active_lifecycle() -> None:
+    registry = ToolRegistry()
+    revoked = make_tool().model_copy(update={
+        "lifecycle_state": ToolLifecycleState.REVOKED,
+        "enabled": True,
+    })
+    registry.register(revoked)
+    service = ToolInvocationService(registry, {"cad.export": FakeAdapter()}, InMemoryAuditSink())
+    actor = Actor("agent-1", ActorType.AI, AuthorizationLevel.L0_READ)
+
+    with pytest.raises(ToolInvocationDenied, match="lifecycle state"):
+        await service.invoke(
+            ToolInvocationRequest(
+                tool_id="cad.export",
+                operation="export",
+                actor_id=actor.actor_id,
+                authorization_level=actor.authorization_level,
+            ),
+            actor,
+        )
+
+
+@pytest.mark.asyncio
+async def test_tool_discovery_excludes_pending_review_descriptors() -> None:
+    registry = ToolRegistry()
+    registry.register(make_tool().model_copy(update={
+        "lifecycle_state": ToolLifecycleState.PENDING_REVIEW,
+        "trust_level": ToolTrustLevel.SANDBOX,
+        "enabled": True,
+    }))
+    service = ToolInvocationService(registry, {}, InMemoryAuditSink())
+    actor = Actor("agent-1", ActorType.AI, AuthorizationLevel.L0_READ)
+
+    tools = await service.list_available_tools(
+        minimum_trust=ToolTrustLevel.SANDBOX, actor=actor
+    )
+
+    assert tools == ()
