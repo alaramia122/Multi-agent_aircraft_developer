@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from urllib.parse import urlsplit
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from engineering_gateway.application.gateway_service import Actor
@@ -27,10 +29,10 @@ class ToolReviewDecision(BaseModel):
 
     @model_validator(mode="after")
     def validate_evidence(self) -> ToolReviewDecision:
-        if self.accepted and (
-            self.evidence_uri is None or not self.evidence_uri.startswith("https://")
-        ):
-            raise ValueError("accepted tool review requires an HTTPS evidence URI")
+        if self.accepted:
+            parsed = urlsplit(self.evidence_uri or "")
+            if parsed.scheme != "https" or not parsed.hostname:
+                raise ValueError("accepted tool review requires an HTTPS evidence URI")
         return self
 
 
@@ -48,6 +50,20 @@ class ToolLifecycleService:
     def __init__(self, registry: ToolRegistryStore, audit: AuditSink) -> None:
         self._registry = registry
         self._audit = audit
+
+    async def list_pending(self, actor: Actor) -> tuple[ToolDescriptor, ...]:
+        if actor.actor_type is not ActorType.HUMAN:
+            raise ToolLifecycleDenied("only human actors may inspect pending tool reviews")
+        if actor.authorization_level not in {
+            AuthorizationLevel.L2_MODIFY_WORKSPACE,
+            AuthorizationLevel.L3_APPROVE,
+        }:
+            raise ToolLifecycleDenied("pending tool review listing requires human L2 or L3")
+        tools = await self._registry.list_persisted(enabled_only=False)
+        return tuple(
+            tool for tool in tools
+            if tool.lifecycle_state is ToolLifecycleState.PENDING_REVIEW
+        )
 
     async def review(
         self, tool_id: str, decision: ToolReviewDecision, actor: Actor
