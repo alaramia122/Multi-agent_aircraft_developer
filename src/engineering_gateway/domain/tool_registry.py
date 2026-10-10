@@ -29,6 +29,13 @@ class ToolSideEffect(StrEnum):
     PHYSICAL = "physical"
 
 
+class ToolLifecycleState(StrEnum):
+    PENDING_REVIEW = "pending_review"
+    ACTIVE = "active"
+    REJECTED = "rejected"
+    REVOKED = "revoked"
+
+
 class ToolPermission(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -60,6 +67,7 @@ class ToolDescriptor(BaseModel):
     permissions: tuple[ToolPermission, ...] = ()
     project_scoped: bool = True
     enabled: bool = True
+    lifecycle_state: ToolLifecycleState = ToolLifecycleState.ACTIVE
     configuration_schema: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -91,6 +99,22 @@ class ToolRegistry:
     async def register_persisted(self, tool: ToolDescriptor) -> ToolDescriptor:
         return self.register(tool)
 
+    async def transition_persisted(
+        self, tool_id: str, expected_state: ToolLifecycleState, updated: ToolDescriptor
+    ) -> ToolDescriptor:
+        current = self._tools.get(tool_id)
+        if current is None:
+            raise ValueError(f"tool '{tool_id}' was not found")
+        if current.lifecycle_state is not expected_state:
+            raise ValueError(
+                f"tool '{tool_id}' lifecycle state changed: expected "
+                f"{expected_state.value}, found {current.lifecycle_state.value}"
+            )
+        if updated.tool_id != tool_id:
+            raise ValueError("tool lifecycle transition cannot change tool_id")
+        self._tools[tool_id] = updated
+        return updated
+
     async def list_persisted(self, *, enabled_only: bool = False) -> tuple[ToolDescriptor, ...]:
         return self.list_available(enabled_only=enabled_only)
 
@@ -118,6 +142,9 @@ class ToolRegistry:
 class ToolRegistryStore(Protocol):
     async def get_persisted(self, tool_id: str) -> ToolDescriptor | None: ...
     async def register_persisted(self, tool: ToolDescriptor) -> ToolDescriptor: ...
+    async def transition_persisted(
+        self, tool_id: str, expected_state: ToolLifecycleState, updated: ToolDescriptor
+    ) -> ToolDescriptor: ...
     async def list_persisted(
         self, *, enabled_only: bool = False
     ) -> tuple[ToolDescriptor, ...]: ...
@@ -132,6 +159,7 @@ class ToolRegistryStore(Protocol):
 
 __all__ = [
     "ToolDescriptor",
+    "ToolLifecycleState",
     "ToolPermission",
     "ToolRegistry",
     "ToolRegistryStore",
