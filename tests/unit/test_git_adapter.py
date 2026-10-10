@@ -53,7 +53,7 @@ async def test_deployment_git_adapter_refuses_other_repositories(git_repository:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("ref", ["HEAD~1", "main^{tree}", "refs/heads/main..other", "refs/heads/main\\n"])
+@pytest.mark.parametrize("ref", ["HEAD~1", "main^{tree}", "refs/heads/main..other", "refs/heads/main\n"])
 async def test_get_snapshot_rejects_revision_expressions(git_repository: Path, ref: str) -> None:
     adapter = LocalGitAdapter()
 
