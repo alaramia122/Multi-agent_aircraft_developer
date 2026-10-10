@@ -1,4 +1,5 @@
 import pytest
+from pydantic import ValidationError
 
 from engineering_gateway.application.gateway_service import Actor
 from engineering_gateway.application.tool_invocation import (
@@ -288,3 +289,23 @@ async def test_custom_tool_registration_rejects_l3_capability() -> None:
 
     with pytest.raises(ToolInvocationDenied, match="cannot declare L3"):
         await service.register_user_tool(descriptor, human)
+
+
+
+def test_tool_permission_rejects_unknown_authorization_level() -> None:
+    with pytest.raises(ValidationError, match="authorization_level must be one of"):
+        ToolPermission(operation="read", authorization_level="ADMIN")
+
+
+def test_tool_descriptor_rejects_duplicate_operation_contracts() -> None:
+    with pytest.raises(ValidationError, match="duplicate operations"):
+        ToolDescriptor(
+            tool_id="duplicate.operations",
+            name="Duplicate operations",
+            description="Invalid contract with ambiguous operation permissions",
+            project_scoped=False,
+            permissions=(
+                ToolPermission(operation="read", authorization_level="L0_READ"),
+                ToolPermission(operation="read", authorization_level="L2_MODIFY_WORKSPACE"),
+            ),
+        )
