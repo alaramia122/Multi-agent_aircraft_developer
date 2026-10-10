@@ -18,6 +18,11 @@ from jwt import PyJWKClient
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from engineering_gateway.application.gateway_service import Actor, GatewayServiceError
+from engineering_gateway.application.tool_lifecycle import (
+    ToolLifecycleDenied,
+    ToolLifecycleService,
+    ToolReviewDecision,
+)
 from engineering_gateway.api.human_review_ui import HTML, SCRIPT, STYLES
 from engineering_gateway.api.example_projects import example_projects
 from engineering_gateway.api.assistant_markdown import render_assistant_markdown
@@ -187,6 +192,7 @@ def create_human_review_app(
     project_store: ProjectDraftStore | None = None,
     dialogue_store: ProjectDialogueStore | None = None,
     initial_project_repository: str | None = None,
+    tool_lifecycle_service_factory: Callable[[], ToolLifecycleService] | None = None,
 ) -> FastAPI:
     """Expose review evidence and decisions to authenticated human users only."""
     app = FastAPI(title="Engineering Gateway human review", docs_url=None, redoc_url=None, openapi_url=None)
@@ -253,6 +259,26 @@ def create_human_review_app(
             raise HTTPException(403, str(exc)) from exc
         except (UnicodeDecodeError, ValueError, jwt.PyJWTError, OSError) as exc:
             raise HTTPException(401, "invalid human bearer token") from exc
+
+    @app.post("/tools/{tool_id}/review")
+    async def review_custom_tool(
+        tool_id: str, decision: ToolReviewDecision, request: Request,
+    ) -> dict[str, object]:
+        actor = await actor_for(request)
+        if actor.actor_type is not ActorType.HUMAN or actor.authorization_level is not AuthorizationLevel.L3_APPROVE:
+            raise HTTPException(403, "human L3 approval authority required")
+        if tool_lifecycle_service_factory is None:
+            raise HTTPException(503, "tool review lifecycle is not configured")
+        try:
+            reviewed = await tool_lifecycle_service_factory().review(tool_id, decision, actor)
+        except ToolLifecycleDenied as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return {
+            "tool_id": reviewed.tool_id,
+            "lifecycle_state": reviewed.lifecycle_state.value,
+            "trust_level": reviewed.trust_level.value,
+            "enabled": reviewed.enabled,
+        }
 
     @app.get("/projects")
     async def list_projects(request: Request) -> dict[str, object]:
