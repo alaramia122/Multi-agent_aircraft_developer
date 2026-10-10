@@ -9,7 +9,9 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any, Protocol
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from engineering_gateway.domain.change_control import AuthorizationLevel
 
 
 class ToolTrustLevel(StrEnum):
@@ -34,6 +36,16 @@ class ToolPermission(BaseModel):
     authorization_level: str = Field(min_length=1, max_length=64)
     side_effect: ToolSideEffect = ToolSideEffect.NONE
 
+    @field_validator("authorization_level")
+    @classmethod
+    def validate_authorization_level(cls, value: str) -> str:
+        try:
+            AuthorizationLevel(value)
+        except ValueError as exc:
+            allowed = ", ".join(level.value for level in AuthorizationLevel)
+            raise ValueError(f"authorization_level must be one of: {allowed}") from exc
+        return value
+
 
 class ToolDescriptor(BaseModel):
     """Versioned description of a tool available to agents."""
@@ -49,6 +61,13 @@ class ToolDescriptor(BaseModel):
     project_scoped: bool = True
     enabled: bool = True
     configuration_schema: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_unique_operations(self) -> ToolDescriptor:
+        operations = [permission.operation for permission in self.permissions]
+        if len(operations) != len(set(operations)):
+            raise ValueError("tool permissions must not declare duplicate operations")
+        return self
 
 
 class ToolRegistry:
