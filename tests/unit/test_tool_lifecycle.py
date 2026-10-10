@@ -86,7 +86,7 @@ async def test_tool_review_requires_human_l3() -> None:
     registry.register(pending_tool())
     service = ToolLifecycleService(registry, InMemoryAuditSink())
 
-    with pytest.raises(ToolLifecycleDenied, match="human L3"):
+    with pytest.raises(ToolLifecycleDenied, match="only human"):
         await service.review(
             "custom.analysis",
             ToolReviewDecision(
