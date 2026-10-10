@@ -121,4 +121,5 @@ class ToolRegistryRecord(Base):
     permissions: Mapped[list[dict[str, object]]] = mapped_column(JSON, nullable=False)
     project_scoped: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    lifecycle_state: Mapped[str] = mapped_column(String(32), nullable=False, default="pending_review")
     configuration_schema: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
