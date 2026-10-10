@@ -30,12 +30,27 @@ class LocalGitAdapter:
         return str(resolved)
 
     async def get_snapshot(self, repository: str, ref: str = "HEAD") -> GitSnapshot:
-        """Resolve a repository ref to a reproducible commit snapshot."""
+        """Resolve an exact Git ref or full object ID to a reproducible commit snapshot."""
+        self._validate_snapshot_ref(repository, ref)
         commit = self._run_required(
             repository, "rev-parse", "--verify", "--end-of-options", f"{ref}^{{commit}}"
         )
         tag = self._run(repository, "describe", "--exact-match", "--tags", commit)
         return GitSnapshot(repository=str(Path(repository).resolve()), commit=commit, tag=tag)
+
+    def _validate_snapshot_ref(self, repository: str, ref: str) -> None:
+        """Reject revision expressions; snapshots accept exact refs or full object IDs."""
+        if not ref or ref != ref.strip() or len(ref) > 256:
+            raise ValueError("Git snapshot ref must be a non-empty exact ref of at most 256 characters")
+        if ref == "HEAD" or (
+            len(ref) in {40, 64}
+            and all(character in "0123456789abcdefABCDEF" for character in ref)
+        ):
+            return
+        try:
+            self._run_required(repository, "check-ref-format", "--allow-onelevel", ref)
+        except RuntimeError as exc:
+            raise ValueError("Git snapshot ref must be an exact ref name or full object ID") from exc
 
     async def is_ancestor(self, repository: str, ancestor_commit: str, descendant_ref: str) -> bool:
         """Return whether ``ancestor_commit`` is an ancestor of ``descendant_ref``.

@@ -53,6 +53,15 @@ async def test_deployment_git_adapter_refuses_other_repositories(git_repository:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("ref", ["HEAD~1", "main^{tree}", "refs/heads/main..other", "refs/heads/main\n"])
+async def test_get_snapshot_rejects_revision_expressions(git_repository: Path, ref: str) -> None:
+    adapter = LocalGitAdapter()
+
+    with pytest.raises(ValueError, match="exact ref name or full object ID"):
+        await adapter.get_snapshot(str(git_repository), ref)
+
+
+@pytest.mark.asyncio
 async def test_get_snapshot_rejects_unknown_ref(git_repository: Path) -> None:
     adapter = LocalGitAdapter()
 
