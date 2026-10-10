@@ -204,6 +204,10 @@ def test_custom_tool_review_route_is_human_l3_only():
     calls = []
 
     class Lifecycle:
+        async def list_pending(self, actor):
+            calls.append(("list_pending", actor))
+            return ()
+
         async def review(self, tool_id, decision, actor):
             calls.append((tool_id, decision, actor))
             return SimpleNamespace(
@@ -211,6 +215,15 @@ def test_custom_tool_review_route_is_human_l3_only():
                 lifecycle_state=SimpleNamespace(value="active"),
                 trust_level=SimpleNamespace(value="sandbox"),
                 enabled=True,
+            )
+
+        async def revoke(self, tool_id, actor, reason):
+            calls.append((tool_id, reason, actor))
+            return SimpleNamespace(
+                tool_id=tool_id,
+                lifecycle_state=SimpleNamespace(value="revoked"),
+                trust_level=SimpleNamespace(value="untrusted"),
+                enabled=False,
             )
 
     client = TestClient(create_human_review_app(
@@ -246,3 +259,23 @@ def test_custom_tool_review_route_is_human_l3_only():
     }
     assert len(calls) == 1
     assert calls[0][2].authorization_level is AuthorizationLevel.L3_APPROVE
+
+    queue_response = client.get(
+        "/tools/pending-review",
+        headers={"Authorization": f"Bearer {token(('gateway-modify',))}"},
+    )
+    assert queue_response.status_code == 200
+    assert queue_response.json() == {"tools": []}
+
+    revoke_response = client.post(
+        "/tools/custom.analysis/revoke",
+        headers={"Authorization": f"Bearer {token(('gateway-modify',))}"},
+        json={"reason": "Tool no longer required"},
+    )
+    assert revoke_response.status_code == 200
+    assert revoke_response.json() == {
+        "tool_id": "custom.analysis",
+        "lifecycle_state": "revoked",
+        "trust_level": "untrusted",
+        "enabled": False,
+    }
