@@ -190,3 +190,59 @@ def test_model_dialogue_context_reports_only_forwarded_turns():
     assert selected[-1] == {"role": "user", "text": "реплика 29"}
     oversized = [{"role": "user", "text": "x" * 2000} for _ in range(24)]
     assert 0 < len(model_dialogue_context(oversized)) < 24
+
+
+
+def test_custom_tool_review_route_is_human_l3_only():
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    verifier = HumanTokenVerifier(
+        "https://issuer.test", "gateway", "https://issuer.test/keys", ("human-ui",)
+    )
+    verifier.jwks = SimpleNamespace(
+        get_signing_key_from_jwt=lambda token: SimpleNamespace(key=private_key.public_key())
+    )
+    calls = []
+
+    class Lifecycle:
+        async def review(self, tool_id, decision, actor):
+            calls.append((tool_id, decision, actor))
+            return SimpleNamespace(
+                tool_id=tool_id,
+                lifecycle_state=SimpleNamespace(value="active"),
+                trust_level=SimpleNamespace(value="sandbox"),
+                enabled=True,
+            )
+
+    client = TestClient(create_human_review_app(
+        lambda: None, verifier,
+        tool_lifecycle_service_factory=lambda: Lifecycle(),
+    ))
+
+    def token(roles):
+        return jwt.encode({
+            "sub": "human-reviewer", "iss": "https://issuer.test", "aud": "gateway",
+            "azp": "human-ui", "preferred_username": "reviewer",
+            "realm_access": {"roles": list(roles)},
+            "iat": datetime.now(UTC), "exp": datetime.now(UTC) + timedelta(minutes=5),
+        }, private_key, algorithm="RS256", headers={"kid": "test"})
+
+    payload = {
+        "accepted": True,
+        "reason": "Reviewed in isolated test environment",
+        "evidence_uri": "https://engineering.example/evidence/tool-review",
+    }
+    path = "/tools/custom.analysis/review"
+    assert client.post(path, json=payload).status_code == 401
+    assert client.post(path, headers={"Authorization": f"Bearer {token(('gateway-modify',))}"},
+                       json=payload).status_code == 403
+    response = client.post(path, headers={"Authorization": f"Bearer {token(('gateway-approve',))}"},
+                           json=payload)
+    assert response.status_code == 200
+    assert response.json() == {
+        "tool_id": "custom.analysis",
+        "lifecycle_state": "active",
+        "trust_level": "sandbox",
+        "enabled": True,
+    }
+    assert len(calls) == 1
+    assert calls[0][2].authorization_level is AuthorizationLevel.L3_APPROVE
