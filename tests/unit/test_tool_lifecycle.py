@@ -145,3 +145,24 @@ async def test_human_l2_can_revoke_active_tool_with_audit() -> None:
     assert result.trust_level is ToolTrustLevel.UNTRUSTED
     assert result.enabled is False
     assert (await audit.list())[-1].result is AuditResult.SUCCESS
+
+
+
+@pytest.mark.asyncio
+async def test_pending_review_queue_is_human_only_and_deterministic() -> None:
+    registry = ToolRegistry()
+    registry.register(pending_tool())
+    active = pending_tool().model_copy(update={
+        "tool_id": "custom.active",
+        "lifecycle_state": ToolLifecycleState.ACTIVE,
+        "trust_level": ToolTrustLevel.SANDBOX,
+        "enabled": True,
+    })
+    registry.register(active)
+    service = ToolLifecycleService(registry, InMemoryAuditSink())
+
+    pending = await service.list_pending(reviewer(AuthorizationLevel.L2_MODIFY_WORKSPACE))
+
+    assert [tool.tool_id for tool in pending] == ["custom.analysis"]
+    with pytest.raises(ToolLifecycleDenied, match="only human"):
+        await service.list_pending(Actor("agent", ActorType.AI, AuthorizationLevel.L2_MODIFY_WORKSPACE))
